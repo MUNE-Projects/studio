@@ -388,7 +388,11 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 	}
 
 	if (actual === 'planos') {
-		const alValidar = (m: string) => void pantallaPromocion(id, 'planos', '', m).catch(fallo);
+		const alValidar = (m: string) => {
+			// vuelve a la lista (y que su enlace al plano funcione aunque sea la misma dirección)
+			history.replaceState(null, '', `#/promocion/${id}/planos`);
+			void pantallaPromocion(id, 'planos', '', m).catch(fallo);
+		};
 		if (/^[0-9]{1,12}$/.test(extra)) {
 			await pintarDetalle(caja, id, Number(extra), versionesPlanos, ctx, alValidar);
 		} else {

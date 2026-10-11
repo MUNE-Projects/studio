@@ -324,7 +324,7 @@ Nadie registra nada a mano: ni la promotora ni el comprador hacen ningún paso m
 
 Nunca «formalizado», «cobrado», «ingresado» ni «pagado»: MUNE no comprueba la firma ni el pago. Sin datos personales (ni nombre, DNI/NIE, email, teléfono, justificantes ni IBAN) ni costes internos.
 
-**Fechas de los packs desde MUNE Portal**: en *Personalización*, la persona con `personalizacion` (o quien administra) cambia la fecha de apertura y de cierre de cada pack; se aplica al momento, sin publicar una versión nueva. Solo las fechas: el catálogo, las opciones, los precios y la estructura de los packs siguen preparados por MUNE (Fase 2). Sin botón «Cerrar ahora».
+**Fechas de los packs desde MUNE Portal**: se hará en la **Fase 2**, junto con la gestión del catálogo, las opciones, los precios y los packs desde el Portal, para que esté todo junto (decisión del 11/10/2026). Hasta entonces, las fechas las prepara MUNE con cada versión.
 
 ## 6. Datos privados (bloque C)
 
