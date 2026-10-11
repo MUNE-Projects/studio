@@ -390,7 +390,9 @@ security definer
 set search_path = ''
 as $$
 	select a.user_id,
-		coalesce((select m.nombre from public.miembros m where m.user_id = a.user_id order by m.id limit 1), '—')
+		coalesce((select m.nombre from public.miembros m
+			join public.promociones pr on pr.promotora_id = m.promotora_id
+			where m.user_id = a.user_id and pr.id = a.promocion_id order by m.id limit 1), '—')
 	from public.aprobadores a
 	where a.promocion_id = p_promocion and a.tipo = p_tipo
 		and public.persona_puede(a.user_id, p_promocion, case p_tipo when 'planos' then 'planos' end)
@@ -602,6 +604,14 @@ begin
 	end if;
 	if (select s.estado from public.estado_validacion(e.id) s) = 'aprobado' then
 		raise exception 'Ya está validado para esta versión';
+	end if;
+	if new.decision = 'aprobado' and exists (
+		select 1 from (
+			select v.decision from public.validaciones v
+			join public.mismo_contenido(e.id) g on g.id = v.entregable_id
+			where v.user_id = auth.uid() order by v.momento desc limit 1) u
+		where u.decision = 'aprobado') then
+		raise exception 'Ya lo has aprobado: falta que aprueben las demás personas';
 	end if;
 	new.promocion_id := e.promocion_id;
 	new.version      := e.version;

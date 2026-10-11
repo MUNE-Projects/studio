@@ -59,7 +59,6 @@ function cadenasDe(r: Requisito, documentos: Documento[]): Documento[][] {
 	const porId = new Map(suyos.map((d) => [d.id, d]));
 	const sustituidos = new Set(suyos.map((d) => d.reemplaza_a).filter((x): x is number => typeof x === 'number'));
 	return suyos.filter((d) => !sustituidos.has(d.id))
-		.sort((a, b) => b.subido_en.localeCompare(a.subido_en))
 		.map((ultima) => {
 			const cadena = [ultima];
 			for (let d = ultima; d.reemplaza_a && porId.has(d.reemplaza_a) && cadena.length < 500;) {
@@ -67,7 +66,9 @@ function cadenasDe(r: Requisito, documentos: Documento[]): Documento[][] {
 				cadena.push(d);
 			}
 			return cadena;
-		});
+		})
+		// en el orden en que se añadió cada archivo (su primera versión)
+		.sort((a, b) => a[a.length - 1].id - b[b.length - 1].id);
 }
 
 /** Estado de un requisito según la última versión de cada archivo: en revisión > rechazado > aceptado. */
@@ -149,7 +150,7 @@ export async function pintarDocumentacion(caja: HTMLElement, p: PromocionMin): P
 			const [etiqueta, clase] = estado ? ESTADOS_DOC[estado] ?? [estado, ''] : r.obligatorio ? ['Falta por entregar', 'pendiente'] : ['Opcional', ''];
 			return `<article class="requisito-doc" data-requisito-doc="${r.id}">
 				<div class="promo-cabeza">
-					<span><strong>${esc(r.elemento)}</strong>${r.obligatorio ? '' : ' <span class="promo-lugar">(opcional)</span>'}${r.varios ? ` <span class="promo-lugar">· ${lista.length === 1 ? '1 archivo' : `${lista.length} archivos`}</span>` : ''}</span>
+					<span><strong>${esc(r.elemento)}</strong>${r.obligatorio ? '' : ' <span class="promo-lugar">(opcional)</span>'}${r.varios && lista.length ? ` <span class="promo-lugar">· ${lista.length === 1 ? '1 archivo' : `${lista.length} archivos`}</span>` : ''}</span>
 					<span class="estado ${clase}">${esc(etiqueta)}</span>
 				</div>
 				${lista.length ? lista.map((versiones) => htmlCadena(versiones, !!r.varios, quien)).join('')

@@ -114,7 +114,9 @@ function pantallaCodigo(factor: Factor): void {
 // y #/sistema.
 
 async function escritorio(): Promise<void> {
-	const { data: admin, error } = await sb.from('administradores').select('nombre').maybeSingle();
+	// (filtrado por la cuenta: si hay más de una administradora, cada una ve a todas)
+	const { data: { user } } = await sb.auth.getUser();
+	const { data: admin, error } = await sb.from('administradores').select('nombre').eq('user_id', user?.id ?? '').maybeSingle();
 	if (error) throw error;
 	if (!admin) {
 		await sb.auth.signOut();

@@ -234,7 +234,7 @@ label.desactivado { opacity: 0.45; pointer-events: none; }
 .archivo { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--linea); border-radius: 10px; background: #fff; }
 .archivo-cabeza { display: flex; justify-content: space-between; align-items: start; gap: 10px; flex-wrap: wrap; color: var(--tinta); }
 .anadir-archivo { display: grid; gap: 8px; padding: 12px; border: 1px dashed var(--linea); border-radius: 10px; }
-.anadir-archivo h4 { margin: 0; font-size: 14px; font-weight: 600; }
+
 form.desactivado { opacity: 0.45; }
 
 /* Equipo */
@@ -249,3 +249,7 @@ form.desactivado { opacity: 0.45; }
 .cambiar-acceso .peticion-form { margin-top: 8px; }
 .bloque-aprobadores { margin-top: 12px; padding: 14px 16px; border: 1px solid var(--linea); border-radius: 12px; }
 .bloque-aprobadores h3 { margin-bottom: 2px; }
+.anadir > summary { list-style: none; display: inline-block; }
+.anadir > summary::-webkit-details-marker { display: none; }
+.anadir[open] > summary { margin-bottom: 8px; }
+details.desactivado { opacity: 0.45; pointer-events: none; }

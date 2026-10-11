@@ -41,7 +41,7 @@ export async function htmlLista(id: string, version: string, versiones: string[]
 	const sinAprobadores = planos.some((p) => p.estado === 'sin_aprobadores');
 	return `
 		<h2>Validación de planos comerciales · ${esc(version)}</h2>
-		${actual ? `<p class="ayuda">MUNE los ha preparado a partir de los planos acotados de la promoción. Cada plano queda validado cuando lo aprueban todas las personas elegidas para validarlo. Si algo no está bien, pide cambios explicando qué hay que corregir. Lo que se apruebe es lo que se publicará.</p>`
+		${actual ? `<p class="ayuda">El equipo de MUNE los ha preparado a partir de los planos acotados de la promoción. Cada plano queda validado cuando lo aprueban todas las personas elegidas para validarlo. Si algo no está bien, pide cambios explicando qué hay que corregir. Lo que se apruebe es lo que se publicará.</p>`
 			: '<p class="ayuda">Es una versión anterior y solo se puede consultar.</p>'}
 		${actual && sinAprobadores ? htmlSinAprobadores(id, 'planos', ctx) : ''}
 		<p class="promo-versiones">${aprobados} de ${planos.length} aprobados</p>

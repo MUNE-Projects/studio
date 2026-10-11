@@ -106,7 +106,9 @@ const porEnviar = (v: Validacion) => ({
 
 /** Por qué no se puede publicar todavía (vacío si se puede). */
 export function motivoNoPublicar(v: Validacion): string {
-	const p = lasPartes(v).find((x) => x.lista !== 'listos');
+	// lo más importante primero: cambios pedidos, sin aprobadores, sin enviar, faltan aprobaciones
+	const orden: Lista[] = ['cambios', 'sin_aprobadores', 'sin_enviar', 'pendientes'];
+	const p = lasPartes(v).filter((x) => x.lista !== 'listos').sort((a, b) => orden.indexOf(a.lista) - orden.indexOf(b.lista))[0];
 	if (!p) return '';
 	return {
 		sin_enviar: 'Primero envía a validar a la promotora.',
@@ -273,8 +275,6 @@ export async function pintarValidacion(caja: HTMLElement, revision: string, p: {
 	const enviar = porEnviar(v);
 	const hayQueEnviar = enviar.planos || enviar.experiencia;
 	const partes = lasPartes(v);
-	const pendientes = partes.flatMap((x) => x.elementos.filter((e) => e.estado !== 'aprobado')
-		.map((e) => (x.tipo === 'planos' ? e.titulo : `Experiencia 3D · ${e.titulo}`)));
 	const mensaje = trasEnviar;
 	trasEnviar = '';
 
@@ -282,9 +282,12 @@ export async function pintarValidacion(caja: HTMLElement, revision: string, p: {
 		<h3 class="subtitulo">Validación de ${esc(v.version)}</h3>
 		${mensaje ? `<p class="aviso" role="status">${esc(mensaje)}</p>` : ''}
 		<table class="resumen-validacion"><tbody>
-			${partes.map((x) => `<tr><th scope="row">${NOMBRE[x.tipo]}</th><td>${resumenParte(x)}</td></tr>`).join('')}
+			${partes.map((x) => {
+				const faltan = x.lista === 'pendientes' || x.lista === 'cambios' ? x.elementos.filter((e) => e.estado !== 'aprobado').map((e) => e.titulo) : [];
+				return `<tr><th scope="row">${NOMBRE[x.tipo]}</th><td>${resumenParte(x)}${faltan.length
+					? `<br><span class="promo-lugar">Pendiente: ${esc(faltan.join(', '))}</span>` : ''}</td></tr>`;
+			}).join('')}
 		</tbody></table>
-		${pendientes.length && !hayQueEnviar ? `<p class="promo-lugar">Pendiente: ${esc(pendientes.join(', '))}</p>` : ''}
 		${listaParaPublicar(v) ? '<p class="ok"><strong>Lista para publicar.</strong></p>' : ''}
 		${hayQueEnviar ? `
 			<p class="ayuda">${enviar.planos ? `MUNE ha preparado ${v.manifiestoPlanos!.planos.length === 1 ? 'un plano comercial' : `${v.manifiestoPlanos!.planos.length} planos comerciales`}` : ''}${enviar.planos && enviar.experiencia ? ' y ' : ''}${enviar.experiencia ? `${enviar.planos ? '' : 'MUNE ha preparado '}la Experiencia 3D de ${v.manifiestoExperiencia!.unidades.length === 1 ? 'una tipología' : `${v.manifiestoExperiencia!.unidades.length} tipologías o variantes`}` : ''}.
@@ -334,12 +337,13 @@ export async function pintarValidacion(caja: HTMLElement, revision: string, p: {
 		} catch (e) {
 			fallado = e;
 		}
-		const avisos: string[] = [];
+		const respuestas: [string, string][] = [];
 		for (const tipo of hecho) {
 			aviso.textContent = 'Avisando a la promotora por email…';
-			const r = await avisarPromotora({ tipo, promocion: id, version: v.version });
-			avisos.push(`${tipo === 'planos' ? 'Planos comerciales' : 'Experiencia 3D'}: ${r}`);
+			respuestas.push([tipo === 'planos' ? 'Planos comerciales' : 'Experiencia 3D', await avisarPromotora({ tipo, promocion: id, version: v.version })]);
 		}
+		// si las dos respuestas son iguales (por ejemplo, el mismo fallo), se dice una vez
+		const avisos = new Set(respuestas.map(([, r]) => r)).size === 1 ? [respuestas[0][1]] : respuestas.map(([q, r]) => `${q}: ${r}`);
 		if (fallado) {
 			aviso.classList.add('error');
 			aviso.textContent = `${fallo(hecho.length ? 'Los planos comerciales se han enviado, pero no la Experiencia 3D' : 'No se ha podido enviar a validar', fallado)} ${avisos.join(' ')}`;

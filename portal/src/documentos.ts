@@ -99,8 +99,9 @@ function htmlVarios(r: Requisito, suyos: Documento[]): string {
 			${anteriores.length ? `<details class="historial-fases"><summary>Versiones anteriores (${anteriores.length})</summary>
 				<div class="historial">${anteriores.map(lineaVersion).join('')}</div></details>` : ''}
 		</div>`).join('')}</div>` : ''}
+		<details class="anadir">
+		<summary class="boton secundario pequeno">Añadir archivo</summary>
 		<form class="anadir-archivo" data-anadir="${r.id}" novalidate>
-			<h4>Añadir archivo</h4>
 			<label>¿Qué contiene? <select name="contenido" required>
 				<option value="">Elige una opción</option>
 				${opciones.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
@@ -108,8 +109,9 @@ function htmlVarios(r: Requisito, suyos: Documento[]): string {
 			<label>Detalle (opcional) <input name="detalle" maxlength="200" placeholder="${esc(ejemplo)}"></label>
 			<label>Archivo <input type="file" name="archivo"></label>
 			<p class="error" role="alert"></p>
-			<div class="acciones"><button class="boton secundario pequeno" type="submit">Añadir archivo</button></div>
+			<div class="acciones"><button class="boton pequeno" type="submit">Subir el archivo</button></div>
 		</form>
+		</details>
 		<p class="aviso" data-progreso="${r.id}" role="status" hidden></p>
 	</article>`;
 }
@@ -167,7 +169,7 @@ export async function pintarDocumentacion(caja: HTMLElement, p: Promo, requisito
 		});
 		caja.querySelectorAll<HTMLFormElement>('[data-anadir]').forEach((f) => {
 			f.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>('input, select, button').forEach((x) => { x.disabled = true; });
-			f.classList.add('desactivado');
+			f.closest('details')?.classList.add('desactivado');
 		});
 	}
 
@@ -179,7 +181,8 @@ export async function pintarDocumentacion(caja: HTMLElement, p: Promo, requisito
 		try {
 			await subir(p, requisito, archivo, campos, aviso);
 			await recargar();
-			const nuevo = caja.querySelector<HTMLElement>(`[data-progreso="${requisito}"]`);
+			// (la pestaña se ha vuelto a pintar: se busca en la página nueva)
+			const nuevo = document.querySelector<HTMLElement>(`[data-progreso="${requisito}"]`);
 			if (nuevo) {
 				nuevo.hidden = false;
 				nuevo.textContent = `Hemos recibido «${archivo.name}». Lo revisaremos y verás aquí su estado.`;

@@ -247,8 +247,10 @@ fieldset.capacidades:disabled { opacity: 0.55; }
 .lista-simple { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
 .resumen-validacion { width: auto; margin: 4px 0 8px; }
 .resumen-validacion th { text-align: left; padding-right: 24px; font-weight: 600; }
-.personas-validacion { margin: 6px 0 0; padding-left: 18px; font-size: 13px; display: grid; gap: 2px; }
+.personas-validacion { list-style: none; margin: 6px 0 0; padding-left: 0; font-size: 13px; display: grid; gap: 2px; }
 .aprobadores { margin: 10px 0; }
 .aprobadores p { margin: 4px 0; }
 p.ok { color: var(--acento); }
 .archivo-doc { display: grid; gap: 6px; margin: 8px 0; padding: 8px 0 0 10px; border-top: 1px dashed var(--linea); }
+.resumen-validacion th { text-transform: none; letter-spacing: normal; font-size: 14px; color: var(--tinta); vertical-align: top; }
+.resumen-validacion td { vertical-align: top; }
