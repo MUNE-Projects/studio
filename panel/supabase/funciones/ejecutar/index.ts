@@ -91,7 +91,8 @@ Deno.serve(async (req) => {
 			return responder(409, { error: `No se puede publicar ${version}: ${motivo}` });
 		}
 	}
-	const { data: admin } = await sb.from('administradores').select('nombre').maybeSingle();
+	const { data: { user } } = await sb.auth.getUser();
+	const { data: admin } = await sb.from('administradores').select('nombre').eq('user_id', user?.id ?? '').maybeSingle();
 
 	const llave = Deno.env.get('GITHUB_EJECUTOR');
 	if (!llave) return responder(500, { error: 'Falta la llave A (GITHUB_EJECUTOR) en los secretos de Supabase' });

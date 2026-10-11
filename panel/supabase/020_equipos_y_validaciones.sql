@@ -1261,5 +1261,12 @@ grant execute on function public.persona_puede(uuid, text, text) to service_role
 grant execute on function public.estado_validacion(bigint) to service_role;
 grant execute on function public.recuento_validacion(bigint) to service_role;
 grant execute on function public.mismo_contenido(bigint) to service_role;
+-- (para apuntar en el registro las invitaciones hechas desde MUNE Portal)
+grant insert on public.registro to service_role;
+
+-- Avisos por email de la Experiencia 3D (012 solo admitía planos, rechazado y publicada).
+alter table public.avisos_enviados drop constraint if exists avisos_enviados_tipo_check;
+alter table public.avisos_enviados add constraint avisos_enviados_tipo_check
+	check (tipo in ('planos', 'experiencia', 'rechazado', 'publicada'));
 
 select 'Listo: equipos, administración y validaciones' as resultado;

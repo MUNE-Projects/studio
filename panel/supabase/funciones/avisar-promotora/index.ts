@@ -123,8 +123,7 @@ Deno.serve(async (req) => {
 
 	if (tipo === 'planos' || tipo === 'experiencia' || tipo === 'publicada') {
 		if (!/^v[0-9]{1,5}$/.test(version)) return responder(400, { error: 'Versión no válida' });
-		// avisos_enviados solo admite planos, rechazado y publicada (012): la Experiencia 3D se guarda como «planos» con su prefijo
-		claveAviso = tipo === 'experiencia' ? `experiencia/${promocion}/${version}` : `${promocion}/${version}`;
+		claveAviso = `${promocion}/${version}`;
 	}
 	if (tipo === 'planos' || tipo === 'experiencia') {
 		const esPlanos = tipo === 'planos';
@@ -186,7 +185,7 @@ Deno.serve(async (req) => {
 	}
 
 	// ── Una sola vez por aviso ──
-	const tipoAviso = tipo === 'experiencia' ? 'planos' : tipo;
+	const tipoAviso = tipo;
 	const { error: eRepetido } = await servicio.from('avisos_enviados').insert({ tipo: tipoAviso, clave: claveAviso, promocion_id: promocion, destinatarios: para.length });
 	if (eRepetido) return responder(200, { ok: true, enviado: false, motivo: 'Este aviso ya se había enviado' });
 

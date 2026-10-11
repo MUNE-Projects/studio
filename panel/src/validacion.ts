@@ -244,6 +244,8 @@ async function editarAprobadores(form: HTMLFormElement, id: string, promotora: s
 
 /** Apunta las unidades de Experiencia 3D de la vista previa para que la promotora las valide. */
 async function enviarExperiencia(id: string, m: ManifiestoExperiencia): Promise<void> {
+	const mal = m.unidades.find((u) => !/^[0-9a-f]{64}$/.test(String(u.huella)) || !u.clave || !u.titulo);
+	if (mal) throw new Error(`La Experiencia 3D de la vista previa está incompleta («${mal.titulo ?? mal.clave ?? '?'}»). Hay que volver a preparar la versión: díselo a Claude.`);
 	const filas = m.unidades.map((u, i) => ({
 		promocion_id: id, version: m.version, tipo: 'experiencia', tipologia: u.clave,
 		nombre: `Experiencia 3D · ${u.titulo}`, ruta: `${id}/${m.version}/experiencia/${u.clave}`,

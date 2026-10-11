@@ -857,7 +857,7 @@ async function ultimoEmail( para ) {
 
 await caso( DEBE_FALLAR, '22. Una promotora intenta dar acceso a alguien (o llamar sin sesión)', async () => {
 
-	const r1 = await invitar( aprobA, { accion: 'invitar', promotora_id: pA.id, nombre: 'Intrusa', email: 'intrusa@prueba.local', cargo: 'x' } );
+	const r1 = await invitar( gestorA, { accion: 'invitar', promotora_id: pA.id, nombre: 'Intrusa', email: 'intrusa@prueba.local', cargo: 'x' } );
 	const r2 = await invitar( anonimo, { accion: 'invitar', promotora_id: pA.id, promocion_id: 'prueba-a', nombre: 'Intrusa', email: 'intrusa@prueba.local' } );
 	const cuenta = await servicio.rpc( 'cuenta_por_email', { p_email: 'intrusa@prueba.local' } );
 	if ( estadoHttp( r1 ) !== 403 || ! [ 401, 403 ].includes( estadoHttp( r2 ) ) ) throw new Error( `respuestas ${ estadoHttp( r1 ) } y ${ estadoHttp( r2 ) }` );

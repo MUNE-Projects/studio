@@ -182,7 +182,10 @@ Deno.serve(async (req) => {
 	if (!/^[0-9a-f-]{36}$/.test(userId)) return responder(400, { error: 'Persona no válida' });
 	const { data: filas } = await servicio.from('miembros').select('email, promocion_id, administra')
 		.eq('promotora_id', promotora).eq('user_id', userId).eq('activo', true);
-	const activas = (filas ?? []) as { email: string; promocion_id: string | null; administra: boolean }[];
+	// MUNE Portal indica también el acceso concreto (promocion_id, o null para «todas»): se mira solo ese.
+	const alcance = 'promocion_id' in cuerpo ? (cuerpo.promocion_id ? String(cuerpo.promocion_id) : null) : undefined;
+	const activas = ((filas ?? []) as { email: string; promocion_id: string | null; administra: boolean }[])
+		.filter((m) => alcance === undefined || m.promocion_id === alcance);
 	if (!activas.length) return responder(409, { error: 'Esa persona no tiene ningún acceso activo en esta promotora' });
 	let permitido = false;
 	for (const m of activas) if (!permitido) permitido = await puede(m.promocion_id, m.administra);

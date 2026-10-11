@@ -27,14 +27,14 @@ Bandeja con lo pendiente de todas las promociones:
 
 - versiones esperando revisión;
 - documentación nueva subida por promotoras;
-- planos validados o rechazados por la promotora;
+- versiones pendientes con el estado de su validación (planos comerciales y Experiencia 3D): *Enviar a validar*, *Sin aprobadores definidos*, *Esperando aprobaciones: 1 de 2*, *Cambios pedidos* o *Lista para publicar*;
 - peticiones a Claude terminadas;
 - avisos del sistema (Etapa 6, receta 19): llaves a punto de caducar, espacio casi lleno, vigilancia automática parada, invitaciones sin aceptar y accesos sin uso. Las copias llegan en la Etapa 7.
 
 ### 2. Promotoras
 
-- Lista, datos y contacto.
-- Personas con acceso: por promoción (su equipo) o a todas las promociones de la promotora, con su cargo. Sin roles: todas pueden hacer lo mismo. Dar y quitar acceso al instante (receta 14).
+- Lista, datos y contacto. **Alta de promotora** en un solo formulario (decisión 40): nombre, razón social, CIF, domicilio fiscal, persona de contacto y uno o varios *Administradores de la promotora* (nombre y correo), que reciben la invitación; al terminar se ve el resultado de cada persona.
+- Personas con acceso (`020_equipos_y_validaciones.sql`): a todas las promociones o a una, con insignia *Administrador de la promotora* / *Administrador de promoción* o con sus capacidades (Documentación, Planos comerciales, Compradores, Personalización, Materiales, Datos de la promoción). La promotora gestiona su propio equipo en MUNE Portal (Equipo); MUNE Studio lo ve todo y, como soporte, puede dar acceso (función `invitar`), *Cambiar acceso* (capacidades, administración, cargo), quitar y devolver (`cambiar_acceso`) (receta 14).
 - Datos fiscales de la promotora y de cada promoción (los suele rellenar la promotora en su portal).
 - *Exportar todo (ZIP)* con todas sus promociones. Activar o desactivar; si está desactivada, *Borrar definitivamente* con todas sus promociones (antes descarga la exportación y escribe su nombre).
 
@@ -42,8 +42,8 @@ Bandeja con lo pendiente de todas las promociones:
 
 | Pestaña | Contenido y acciones |
 |---|---|
-| **Resumen** | Estado, versión publicada, versión pendiente, enlaces a la visita y a la vista previa. Planos de la versión en revisión: *Enviar los planos a la promotora* y estado de su validación; *Publicar* solo se activa con todos aprobados (Etapa 4). *Exportar todo (ZIP)*. Desactivar o activar; si está desactivada, *Borrar definitivamente* (antes descarga la exportación y escribe su nombre) |
-| **Documentación** | Lista de lo que tiene que entregar la promotora, con lo recibido, versiones y estado (por revisar, vigente, rechazado con nota). Descargar, marcar como vigente o rechazar. Ajustar la lista. «Revisa lo nuevo de X» → Claude (receta 2) |
+| **Resumen** | Estado, versión publicada, versión pendiente, enlaces a la visita y a la vista previa. Bloque *Validación de vN*: planos comerciales («x de y aprobados ✓») y Experiencia 3D («x de y tipologías aprobadas»), lo pendiente, quién valida cada parte (con *Editar* como soporte) y el detalle de cada elemento por persona. *Enviar a validar a la promotora* envía los planos (`planos/planos.json`) y la Experiencia 3D (`experiencia/experiencia.json`) de la vista previa; *Publicar* solo se activa con las dos partes validadas (las versiones sin uno de esos archivos no necesitan esa parte). *Exportar todo (ZIP)*. Desactivar o activar; si está desactivada, *Borrar definitivamente* (antes descarga la exportación y escribe su nombre) |
+| **Documentación** | Lista de lo que tiene que entregar la promotora, con lo recibido, versiones y estado (por revisar, vigente, rechazado con nota). En los documentos de varios archivos, cada archivo con lo que contiene y su historial, y se revisa archivo a archivo. Descargar, marcar como vigente o rechazar. Ajustar la lista (también documentos que admiten varios archivos, con sus opciones de «¿Qué contiene?»). «Revisa lo nuevo de X» → Claude (receta 2) |
 | **Tipologías y viviendas** | Tipología → Variante → Unidad, superficies. Códigos de comprador: generar, regenerar y revocar (Fase 1, receta 24) |
 | **Mobiliario y acabados** | Por tipología y estancia, estilos y piezas del catálogo (por ejemplo «Nórdico claro» o «Contemporáneo»; sofá A o sofá B; suelo roble o gris) con vista previa automática, sin Claude (receta 21). **«Estilo a partir de una foto»**: se adjuntan fotos de referencia y llega a Claude como petición de interiorismo |
 | **Personalización** | Packs y alternativas del comprador, con fechas y precios. Selecciones registradas (recetas 6 y 12) |
@@ -51,6 +51,7 @@ Bandeja con lo pendiente de todas las promociones:
 | **Entregables** | Planos PDF/PNG, renders y PDF de muestra: descargar y regenerar (receta 7) |
 | **Validación de planos** | Qué ha aprobado o rechazado la promotora, con sus comentarios |
 | **Marca e información** | Logo, colores, contacto y textos legales de la promotora (receta 16) |
+| **Ficha y datos** | Ficha, datos fiscales de la promoción, formalización y *Textos legales* (planos comerciales, imágenes y renders, Experiencia 3D, personalización), que se aplican en la próxima versión que se prepare |
 | **Compradores** | Un código por vivienda: generar, cambiar (mismo comprador o comprador nuevo) y ver si ha entrado (receta 24). La promotora tiene la misma pestaña en su portal |
 | **Peticiones a Claude** | Las peticiones de esta promoción y su estado |
 
@@ -98,7 +99,7 @@ Panel (botón) → función «ejecutar» de Supabase → GitHub Actions «public
 
 | Pieza | Dónde | Qué comprueba o permite |
 |---|---|---|
-| Función `ejecutar` | `panel/supabase/funciones/ejecutar/index.ts`, en Supabase → Edge Functions | Que quien pulsa es administradora con doble verificación (`es_admin()`); valida la orden; anota en el registro |
+| Función `ejecutar` | `panel/supabase/funciones/ejecutar/index.ts`, en Supabase → Edge Functions | Que quien pulsa es administradora con doble verificación (`es_admin()`); valida la orden; para publicar exige `validacion_lista` = `listos` en planos comerciales y Experiencia 3D (salvo versiones sin esa parte en la vista previa); anota en el registro |
 | Llave A `GITHUB_EJECUTOR` | Secreto de Supabase (Edge Functions → Secrets) | Solo arrancar procesos del almacén `taller` (Actions: lectura y escritura). Caduca el 7/10/2027: aviso en Inicio y por email un mes antes (receta 19) |
 | Proceso `publicar.yml` | `.github/workflows/publicar.yml` | Ejecuta `herramientas/publicacion.mjs aprobar` o `volver`; uno detrás de otro, nunca dos a la vez |
 | Llave B `ESCAPARATE_TOKEN` | Secreto del almacén `taller` (Settings → Secrets → Actions) | Solo escribir en `escaparate` (Contents: lectura y escritura). Caduca el 7/10/2027: aviso en Inicio y por email un mes antes (receta 19) |
