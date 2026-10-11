@@ -1,16 +1,16 @@
-// Promotoras y promociones de MUNE Studio (el Panel) (receta 14 · Gestionar accesos).
+// Promotoras y promociones de MUNE Studio (receta 14 · Gestionar accesos).
 //
-// · Promotoras (#/promotoras): la lista y el alta.
+// · Promotoras (#/promotoras): la lista y el alta (datos de la empresa y sus
+//   administradores de la promotora, que reciben la invitación).
 // · Una promotora (#/promotora/<id>): sus promociones, quién tiene acceso a
 //   todas, sus datos y su actividad.
-// · Una promoción (#/promocion/<id>/<pestaña>): resumen y versiones, equipo,
-//   documentación, ficha y datos fiscales, peticiones de cambios y actividad.
+// · Una promoción (#/promocion/<id>/<pestaña>): resumen, validación y
+//   versiones, equipo, documentación, ficha y datos (con los textos legales),
+//   compradores, peticiones de cambios y actividad.
 //
-// Accesos al portal: por promoción (su equipo) o a todas las promociones de la
-// promotora. Sin roles: solo se apunta el cargo. Dar acceso envía el email de
-// invitación (función «invitar» de Supabase); quitar y devolver es inmediato.
-// Todo lo comprueban las reglas de la base de datos (005–008): solo la
-// administradora, con el código del móvil.
+// La promotora gestiona su propio equipo en MUNE Portal (Equipo); MUNE Studio
+// lo ve todo y lo cambia solo como soporte (equipo.ts, función «invitar»,
+// cambiar_acceso). Todo lo comprueban las reglas de la base de datos (005–020).
 
 import { textoFase } from './fase';
 import { datosFormalizacion, formFormalizacion, type Formalizacion } from './formalizacion';
@@ -21,6 +21,7 @@ import { exportarPromocion, exportarPromotora, type Resultado } from './exportar
 import { pintarPeticiones } from './peticiones';
 import { ESCAPARATE, REVISION, estadoVersiones, etiquetaVersiones, pintarVersiones } from './versiones';
 import { pintarCompradores } from './compradores';
+import { ADMIN_PROMOCION, ADMIN_PROMOTORA, TODAS_LAS_CAPACIDADES, conectarPersonas, formAcceso, insignias, invitar, leerAccesos, tablaPersonas } from './equipo';
 
 interface DatosFiscales { razon_social: string | null; cif: string | null; domicilio_fiscal: string | null }
 interface Promotora extends DatosFiscales { id: string; nombre: string; activa: boolean; contacto: string | null }
@@ -30,10 +31,6 @@ interface Ficha {
 	num_plantas: number | null; fecha_entrega: string | null; fase_proyecto?: string | null;
 }
 interface Promocion extends DatosFiscales, Ficha { id: string; nombre: string; ubicacion: string; estado: string; activa: boolean; promotora_id: string; formalizacion?: Formalizacion }
-interface Acceso {
-	id: number; user_id: string; promocion_id: string | null; nombre: string; email: string; cargo: string;
-	activo: boolean; aceptada: boolean; ultima_entrada: string | null;
-}
 
 const CAMPOS_PROMOCION = `id, nombre, ubicacion, estado, activa, promotora_id, razon_social, cif, domicilio_fiscal,
 	direccion, codigo_postal, municipio, provincia, referencia_catastral, tipo, num_viviendas, num_portales, num_plantas, fecha_entrega, fase_proyecto, formalizacion`;
@@ -61,15 +58,6 @@ const PESTANAS: [string, string][] = [
 function identificador(nombre: string): string {
 	return nombre.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 		.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
-}
-
-/** Error de la función «invitar», con su mensaje en español. */
-async function errorDeFuncion(error: unknown): Promise<Error> {
-	try {
-		const cuerpo = await (error as { context?: Response }).context?.json();
-		if (cuerpo?.error) return new Error(cuerpo.error);
-	} catch { /* sin detalle */ }
-	return error instanceof Error ? error : new Error(String(error));
 }
 
 function migas(partes: [string, string | null][]): string {
@@ -115,93 +103,6 @@ async function leerPromotora(id: string): Promise<Promotora | null> {
 	const { data, error } = await sb.from('promotoras').select('id, nombre, activa, razon_social, cif, domicilio_fiscal, contacto').eq('id', id).maybeSingle();
 	if (error) throw error;
 	return data as Promotora | null;
-}
-
-async function leerAccesos(promotora: string): Promise<Acceso[]> {
-	const { data, error } = await sb.rpc('accesos', { p_promotora: promotora });
-	if (error) throw error;
-	return (data ?? []) as Acceso[];
-}
-
-// ── Personas con acceso ───────────────────────────────────────────────────
-
-function tablaPersonas(lista: Acceso[]): string {
-	if (!lista.length) return '<p class="vacio">Nadie todavía.</p>';
-	const estado = (a: Acceso) => !a.activo ? ['Sin acceso', '']
-		: !a.aceptada ? ['Invitación enviada', 'pendiente']
-		: a.ultima_entrada ? [`Entró el ${fecha(a.ultima_entrada)}`, 'al-dia']
-		: ['Aún no ha entrado', 'al-dia'];
-	return `<div class="tabla"><table><thead><tr><th>Persona</th><th>Cargo</th><th>Estado</th><th></th></tr></thead><tbody>
-		${lista.map((a) => {
-			const [texto, clase] = estado(a);
-			return `<tr data-acceso="${a.id}">
-				<td>${esc(a.nombre)}<br><span class="promo-lugar">${esc(a.email)}</span></td>
-				<td>${esc(a.cargo || '—')}</td>
-				<td><span class="estado ${clase}">${esc(texto)}</span></td>
-				<td><div class="acciones">
-					${a.activo ? `<button class="boton secundario pequeno" type="button" data-reenviar>Reenviar email</button>
-						<button class="boton secundario pequeno" type="button" data-quitar>Quitar acceso</button>`
-						: '<button class="boton secundario pequeno" type="button" data-devolver>Devolver acceso</button>'}
-				</div></td>
-			</tr>`;
-		}).join('')}
-	</tbody></table></div>`;
-}
-
-/** Botón + formulario plegado para dar acceso (a una promoción, o a todas si clave = «todas»). */
-function formAcceso(clave: string, texto: string): string {
-	return `<div class="acciones"><button class="boton secundario pequeno" type="button" data-abrir="acceso">${esc(texto)}</button></div>
-		<form class="peticion-form" data-dar-acceso="${esc(clave)}" data-plegable="acceso" novalidate hidden>
-			<p class="ayuda">Recibirá un email para crear su contraseña y entrar en MUNE Portal, con acceso ${clave === 'todas' ? 'a todas las promociones de la promotora' : 'a esta promoción'}.</p>
-			<label>Nombre <input name="nombre" maxlength="120" required></label>
-			<label>Correo <input name="email" type="email" maxlength="200" required></label>
-			<label>Cargo (opcional) <input name="cargo" maxlength="120" placeholder="Por ejemplo: Dirección comercial"></label>
-			<p class="error" role="alert"></p>
-			<div class="acciones">
-				<button class="boton" type="submit">Dar acceso</button>
-				<button class="boton secundario" type="button" data-cerrar>Cancelar</button>
-			</div>
-		</form>`;
-}
-
-/** Botones de cada persona (quitar, devolver, reenviar) y el formulario de dar acceso. */
-function conectarPersonas(raiz: HTMLElement, accesos: Acceso[], promotora: string, recargar: () => Promise<void>): void {
-	const avisar = avisador(raiz);
-	raiz.querySelectorAll<HTMLTableRowElement>('tr[data-acceso]').forEach((fila) => {
-		const a = accesos.find((x) => x.id === Number(fila.dataset.acceso))!;
-		const cambiar = async (activo: boolean) => {
-			const { error } = await sb.from('miembros').update({ activo }).eq('id', a.id);
-			if (error) throw error;
-			await anotar(activo ? 'devuelve un acceso' : 'quita un acceso', { promotora, promocion: a.promocion_id ?? 'todas', email: a.email });
-		};
-		fila.querySelector('[data-quitar]')?.addEventListener('click', async () => {
-			if (!confirm(`¿Quitar el acceso a ${a.nombre}?\n\nDejará de poder entrar desde este momento. Puedes devolvérselo más tarde.`)) return;
-			try { await cambiar(false); await recargar(); } catch (e) { avisar(traducir(e), true); }
-		});
-		fila.querySelector('[data-devolver]')?.addEventListener('click', async () => {
-			try { await cambiar(true); await recargar(); } catch (e) { avisar(traducir(e), true); }
-		});
-		fila.querySelector<HTMLButtonElement>('[data-reenviar]')?.addEventListener('click', async (ev) => {
-			const b = ev.currentTarget as HTMLButtonElement;
-			b.disabled = true;
-			const { data: r, error } = await sb.functions.invoke('invitar', { body: { accion: 'reenviar', promotora_id: promotora, user_id: a.user_id } });
-			b.disabled = false;
-			if (error) avisar(traducir(await errorDeFuncion(error)), true);
-			else avisar(r.mensaje);
-		});
-	});
-	raiz.querySelectorAll<HTMLFormElement>('[data-dar-acceso]').forEach((form) => alEnviar(form, async (d) => {
-		const clave = form.dataset.darAcceso!;
-		const { data: r, error } = await sb.functions.invoke('invitar', {
-			body: {
-				accion: 'invitar', promotora_id: promotora, promocion_id: clave === 'todas' ? null : clave,
-				nombre: String(d.get('nombre')).trim(), email: String(d.get('email')).trim(), cargo: String(d.get('cargo')).trim(),
-			},
-		});
-		if (error) throw await errorDeFuncion(error);
-		await recargar();
-		avisador(raiz)(r.mensaje);
-	}));
 }
 
 // ── Formularios de datos ──────────────────────────────────────────────────
@@ -262,6 +163,17 @@ const camposFiscales = (d: FormData) => ({
 
 // ── #/promotoras ──────────────────────────────────────────────────────────
 
+/** Una fila de «Administrador de la promotora» del alta (nombre + correo). */
+function filaAdministrador(n: number): string {
+	return `<div class="fila-admin" data-fila-admin>
+		<label>Nombre <input name="admin_nombre" maxlength="120" ${n === 0 ? 'required' : ''} autocomplete="off"></label>
+		<label>Correo <input name="admin_email" type="email" maxlength="200" ${n === 0 ? 'required' : ''} autocomplete="off"></label>
+		${n > 0 ? '<button class="enlace" type="button" data-quitar-admin>Quitar</button>' : ''}
+	</div>`;
+}
+
+const CORREO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export async function pantallaPromotoras(destino: HTMLElement): Promise<void> {
 	const [pos, pcs] = await Promise.all([
 		sb.from('promotoras').select('id, nombre, activa').order('nombre'),
@@ -281,23 +193,70 @@ export async function pantallaPromotoras(destino: HTMLElement): Promise<void> {
 			</a>`).join('') || '<p class="vacio">Todavía no hay promotoras.</p>'}</div>
 			<div class="acciones"><button class="boton secundario" type="button" data-abrir="promotora">Nueva promotora</button></div>
 			<form class="peticion-form" data-plegable="promotora" data-nueva-promotora hidden novalidate>
+				<h3>Datos de la empresa</h3>
 				<label>Nombre de la promotora (marca) <input name="nombre" maxlength="120" required placeholder="Por ejemplo: Construcciones Ejemplo"></label>
-				<p class="ayuda">Los datos fiscales los rellenará la promotora en MUNE Portal (también puedes rellenarlos tú más tarde).</p>
+				<label>Razón social <input name="razon_social" maxlength="200"></label>
+				<label>CIF <input name="cif" maxlength="20"></label>
+				<label>Domicilio fiscal <input name="domicilio_fiscal" maxlength="300"></label>
+				<label>Persona de contacto (nombre, email o teléfono) <input name="contacto" maxlength="300"></label>
+				<h3>${ADMIN_PROMOTORA}</h3>
+				<p class="ayuda">Recibirán un email para crear su contraseña y entrar en MUNE Portal. Verán todas las promociones de la promotora
+					(también las futuras) y, desde ahí, gestionarán su propio equipo y quién valida. Si falta algún dato de la empresa, lo pueden completar ellos.</p>
+				<div data-admins>${filaAdministrador(0)}</div>
+				<div class="acciones"><button class="boton secundario pequeno" type="button" data-otro-admin>Añadir otro administrador</button></div>
 				<p class="error" role="alert"></p>
 				<div class="acciones">
-					<button class="boton" type="submit">Dar de alta</button>
+					<button class="boton" type="submit">Dar de alta e invitar</button>
 					<button class="boton secundario" type="button" data-cerrar>Cancelar</button>
 				</div>
 			</form>
+			<div data-resultado-alta hidden></div>
 		</section>`;
 	conectarPlegables(destino);
-	alEnviar(destino.querySelector<HTMLFormElement>('[data-nueva-promotora]')!, async (d) => {
+	const form = destino.querySelector<HTMLFormElement>('[data-nueva-promotora]')!;
+	const admins = form.querySelector<HTMLElement>('[data-admins]')!;
+	form.querySelector('[data-otro-admin]')!.addEventListener('click', () => {
+		admins.insertAdjacentHTML('beforeend', filaAdministrador(admins.children.length));
+		const nueva = admins.lastElementChild as HTMLElement;
+		nueva.querySelector<HTMLButtonElement>('[data-quitar-admin]')?.addEventListener('click', () => nueva.remove());
+		nueva.querySelector('input')?.focus();
+	});
+	alEnviar(form, async (d) => {
 		const nombre = String(d.get('nombre')).trim();
 		if (nombre.length < 2) throw new Error('Escribe el nombre de la promotora.');
+		const nombres = d.getAll('admin_nombre').map((x) => String(x).trim());
+		const correos = d.getAll('admin_email').map((x) => String(x).trim().toLowerCase());
+		const personas = nombres.map((n, i) => ({ nombre: n, email: correos[i] ?? '' })).filter((x) => x.nombre || x.email);
+		if (!personas.length) throw new Error('Indica al menos un administrador de la promotora (nombre y correo).');
+		for (const x of personas) {
+			if (x.nombre.length < 2) throw new Error(`Escribe el nombre de quien tiene el correo ${x.email || '(sin correo)'}.`);
+			if (!CORREO.test(x.email)) throw new Error(`El correo de ${x.nombre} no es válido. Revísalo.`);
+		}
+		if (new Set(personas.map((x) => x.email)).size !== personas.length) throw new Error('Hay un correo repetido en los administradores.');
+
 		const { data, error } = await sb.from('promotoras').insert({ nombre }).select('id').single();
 		if (error) throw error;
-		await anotar('da de alta una promotora', { promotora: data.id, nombre });
-		location.hash = `#/promotora/${data.id}`;
+		const id = data.id as string;
+		await anotar('da de alta una promotora', { promotora: id, nombre });
+		const resultado = destino.querySelector<HTMLElement>('[data-resultado-alta]')!;
+		const filas: string[] = [];
+		const { error: eDatos } = await sb.rpc('guardar_datos_promotora', {
+			p_promotora: id, ...camposFiscales(d), p_contacto: String(d.get('contacto') ?? ''),
+		});
+		if (eDatos) filas.push(`<li class="error">${esc(fallo('La promotora está creada, pero no se han podido guardar sus datos de empresa', eDatos))} Puedes completarlos en su página.</li>`);
+		for (const x of personas) {
+			try {
+				const mensaje = await invitar({ promotora_id: id, promocion_id: null, nombre: x.nombre, email: x.email, cargo: '', administra: true, capacidades: TODAS_LAS_CAPACIDADES });
+				filas.push(`<li>✓ <strong>${esc(x.nombre)}</strong>: ${esc(mensaje)}</li>`);
+			} catch (e) {
+				filas.push(`<li class="error"><strong>${esc(x.nombre)}</strong>: ${esc(fallo(`No se ha podido invitar a ${x.email}`, e))} Puedes volver a intentarlo desde la página de la promotora.</li>`);
+			}
+		}
+		form.hidden = true;
+		resultado.hidden = false;
+		resultado.innerHTML = `<p class="aviso" role="status">${esc(nombre)} está dada de alta.</p>
+			<ul class="resultados">${filas.join('')}</ul>
+			<div class="acciones"><a class="boton" href="#/promotora/${esc(id)}">Ir a ${esc(nombre)}</a></div>`;
 	});
 }
 
@@ -343,7 +302,10 @@ export async function pantallaPromotora(destino: HTMLElement, id: string): Promi
 
 		<section class="tarjeta">
 			<h2>Acceso a todas las promociones</h2>
-			<p class="ayuda">Personas que ven todas las promociones de ${esc(po.nombre)}, también las que se den de alta más adelante. El equipo de cada promoción se gestiona dentro de ella.</p>
+			<p class="ayuda">Personas que ven todas las promociones de ${esc(po.nombre)}, también las que se den de alta más adelante.
+				El equipo de cada promoción se ve dentro de ella. La promotora gestiona su equipo en MUNE Portal (Equipo); aquí lo ves todo y puedes cambiarlo como soporte.</p>
+			${accesos.some((a) => a.promocion_id === null && a.administra && a.activo) ? ''
+				: `<p class="aviso">${esc(po.nombre)} no tiene ningún ${ADMIN_PROMOTORA.toLowerCase()} activo: nadie de la promotora puede gestionar su equipo. Da acceso a alguien marcando «${ADMIN_PROMOTORA}».</p>`}
 			${tablaPersonas(accesos.filter((a) => a.promocion_id === null))}
 			${po.activa ? formAcceso('todas', 'Dar acceso a todas las promociones') : ''}
 		</section>
@@ -376,7 +338,7 @@ export async function pantallaPromotora(destino: HTMLElement, id: string): Promi
 		</section>`;
 
 	conectarPlegables(destino);
-	conectarPersonas(destino, accesos, id, recargar);
+	conectarPersonas(destino, accesos, id, recargar, avisador(destino));
 	conectarExportar(destino, destino.querySelector<HTMLButtonElement>('[data-exportar]')!, (progreso) => exportarPromotora(id, progreso));
 	const zonaBorrar = destino.querySelector<HTMLElement>('[data-borrar]');
 	if (zonaBorrar) void pintarBorradoPromotora(zonaBorrar, po, promociones, accesos.length);
@@ -642,14 +604,16 @@ export async function pantallaPromocion(destino: HTMLElement, id: string, pestan
 		const todas = accesos.filter((a) => a.promocion_id === null && a.activo);
 		caja.innerHTML = `
 			<h2>Equipo de la promoción</h2>
+			<p class="ayuda">La promotora gestiona su equipo en MUNE Portal (Equipo): quien la administra da accesos, capacidades y decide quién valida. Aquí lo ves todo y puedes cambiarlo como soporte; queda registrado.</p>
 			${tablaPersonas(accesos.filter((a) => a.promocion_id === id))}
 			${po?.activa ? formAcceso(id, 'Añadir persona al equipo') : '<p class="vacio">La promotora está desactivada: actívala para dar accesos.</p>'}
 			<h2 class="separado">También la ven</h2>
-			${todas.length ? `<p>${todas.map((a) => `${esc(a.nombre)}${a.cargo ? ` (${esc(a.cargo)})` : ''}`).join(' · ')}</p>
+			${todas.length ? `<ul class="lista-simple">${todas.map((a) => `<li>${esc(a.nombre)}${a.cargo ? ` (${esc(a.cargo)})` : ''} ${insignias(a)}</li>`).join('')}</ul>
 				<p class="ayuda">Tienen acceso a todas las promociones de ${esc(po?.nombre ?? '')}. Se gestiona en <a href="#/promotora/${esc(p.promotora_id)}">la página de la promotora</a>.</p>`
-				: '<p class="vacio">Nadie más.</p>'}`;
+				: '<p class="vacio">Nadie más.</p>'}
+			<p class="ayuda">${ADMIN_PROMOCION}: tiene todas las capacidades en esta promoción y gestiona a sus personas.</p>`;
 		conectarPlegables(caja);
-		conectarPersonas(caja, accesos, p.promotora_id, recargar);
+		conectarPersonas(caja, accesos, p.promotora_id, recargar, avisador(destino));
 	}
 
 	if (actual === 'documentacion') await pintarDocumentacion(caja, p);
