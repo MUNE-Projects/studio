@@ -24,7 +24,7 @@
 //
 // Se pega en Supabase → Edge Functions con el nombre «avisar-promotora».
 
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? 'https://iowtdenlkxjqzlpwizgb.supabase.co';
 const CLAVE_PUBLICA = Deno.env.get('CLAVE_PUBLICA') ?? 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR';
@@ -81,7 +81,8 @@ Deno.serve(async (req) => {
 	const [{ data: esAdmin }, { data: esRobot }] = await Promise.all([sb.rpc('es_admin'), sb.rpc('es_robot')]);
 	if (esAdmin !== true && !(tipo === 'rechazado' && esRobot === true)) return responder(403, { error: 'Sin permiso' });
 
-	let servicio: ReturnType<typeof createClient> | null = null;
+	// deno-lint-ignore no-explicit-any
+	let servicio: SupabaseClient<any> | null = null;
 	for (const clave of clavesServicio()) {
 		const prueba = createClient(SUPABASE_URL, clave, { auth: sinSesion });
 		const { error } = await prueba.from('avisos_enviados').select('id').limit(1);
@@ -138,7 +139,6 @@ Deno.serve(async (req) => {
 		const aprobadores = new Set(((requeridos ?? []) as { user_id: string }[]).map((r) => r.user_id));
 		const k = aprobadores.size;
 		const que = esPlanos ? 'los planos comerciales' : 'la Experiencia 3D';
-		// (con la sesión de quien llama no se puede: aprobadores_requeridos solo la usa esta cuenta interna)
 		const cuantos = esPlanos
 			? (count === 1 ? 'Tienes 1 plano para revisar' : `Tienes ${count} planos para revisar`)
 			: (count === 1 ? 'Tienes 1 tipología para revisar' : `Tienes ${count} tipologías o variantes para revisar`);

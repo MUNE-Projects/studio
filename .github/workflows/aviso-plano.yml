@@ -1,10 +1,13 @@
-# Aviso «planos»: cada vez que la promotora aprueba un plano o pide cambios en
-# su portal, la función «aviso-subida» de Supabase lanza este proceso. Escribe
-# en el aviso de esa promoción y versión (o abre uno nuevo), y GitHub envía el
-# email a quien vigila el almacén. Cuando están todos aprobados, lo dice.
+# Aviso de validación: cada vez que alguien de la promotora aprueba o pide
+# cambios en un plano comercial o en una tipología de la Experiencia 3D, en
+# MUNE Portal, la función «aviso-subida» de Supabase lanza este proceso.
+# Escribe en el aviso de esa promoción, parte y versión (o abre uno nuevo), y
+# GitHub envía el email a quien vigila el almacén. Dice el avance de cada
+# elemento («1 de 2 aprobaciones») y, cuando la versión está validada entera
+# (planos comerciales y Experiencia 3D), que ya se puede publicar.
 
-name: Aviso de validación de planos
-run-name: planos ${{ inputs.promocion }} ${{ inputs.version }}
+name: Aviso de validación
+run-name: ${{ inputs.tipo || 'planos' }} ${{ inputs.promocion }} ${{ inputs.version }}
 
 on:
   workflow_dispatch:
@@ -36,6 +39,26 @@ on:
         required: false
         type: string
         default: 'no'
+      tipo:
+        required: false
+        type: string
+        default: 'planos'
+      zona:
+        required: false
+        type: string
+        default: ''
+      avance:
+        required: false
+        type: string
+        default: ''
+      completo:
+        required: false
+        type: string
+        default: ''
+      parte:
+        required: false
+        type: string
+        default: ''
 
 permissions:
   issues: write
@@ -59,38 +82,63 @@ jobs:
       COMENTARIO: ${{ inputs.comentario }}
       PERSONA: ${{ inputs.persona }}
       TODOS: ${{ inputs.todos }}
+      TIPO: ${{ inputs.tipo }}
+      ZONA: ${{ inputs.zona }}
+      AVANCE: ${{ inputs.avance }}
+      COMPLETO: ${{ inputs.completo }}
+      PARTE: ${{ inputs.parte }}
     steps:
       - name: Escribir el aviso
         run: |
           [[ "$PROMOCION" =~ ^[a-z0-9-]{1,60}$ ]] || { echo "::error::Promoción no válida"; exit 1; }
           [[ "$VERSION" =~ ^v[0-9]{1,5}$ ]] || { echo "::error::Versión no válida"; exit 1; }
           [[ "$DECISION" == aprobado || "$DECISION" == rechazado ]] || { echo "::error::Decisión no válida"; exit 1; }
-          for v in "$NOMBRE" "$PERSONA"; do [[ ${#v} -le 120 ]] || { echo "::error::Texto demasiado largo"; exit 1; }; done
-          [[ ${#PLANO} -le 160 && ${#COMENTARIO} -le 500 ]] || { echo "::error::Texto demasiado largo"; exit 1; }
+          [[ "$TIPO" == planos || "$TIPO" == experiencia ]] || { echo "::error::Tipo no válido"; exit 1; }
+          for v in "$NOMBRE" "$PERSONA" "$ZONA"; do [[ ${#v} -le 120 ]] || { echo "::error::Texto demasiado largo"; exit 1; }; done
+          [[ ${#PLANO} -le 160 && ${#COMENTARIO} -le 500 && ${#AVANCE} -le 60 ]] || { echo "::error::Texto demasiado largo"; exit 1; }
           # El texto viene del portal: sin saltos de línea ni comillas de código, y
           # las @ desactivadas para que nadie pueda mencionar a usuarios de GitHub.
           limpio() { printf '%s' "$1" | tr -d '`\r\n' | sed 's/@/(arroba)/g'; }
-          titulo="$(limpio "$NOMBRE") · planos $VERSION"
-          if [[ "$DECISION" == aprobado ]]; then
-            linea="- ✅ **$(limpio "${PERSONA:-Alguien}")** ha aprobado **$(limpio "$PLANO")**"
+          if [[ "$TIPO" == experiencia ]]; then
+            titulo="$(limpio "$NOMBRE") · Experiencia 3D $VERSION"
+            elemento="Experiencia 3D · $(limpio "$PLANO")"
+            parte="Experiencia 3D"; etiqueta=experiencia; icono="🧊"
           else
-            linea="- ✏️ **$(limpio "${PERSONA:-Alguien}")** pide cambios en **$(limpio "$PLANO")**: «$(limpio "$COMENTARIO")»"
+            titulo="$(limpio "$NOMBRE") · planos $VERSION"
+            elemento="$(limpio "$PLANO")"
+            parte="planos comerciales"; etiqueta=planos; icono="📐"
+          fi
+          if [[ "$DECISION" == aprobado ]]; then
+            linea="- ✅ **$(limpio "${PERSONA:-Alguien}")** ha aprobado **$elemento**"
+            [[ -n "$AVANCE" ]] && linea="$linea ($(limpio "$AVANCE"))"
+            [[ "$COMPLETO" == si ]] && linea="$linea. **Validado.**"
+          else
+            linea="- ✏️ **$(limpio "${PERSONA:-Alguien}")** pide cambios en **$elemento**"
+            [[ -n "$ZONA" ]] && linea="$linea · $(limpio "$ZONA")"
+            linea="$linea: «$(limpio "$COMENTARIO")»"
+          fi
+          if [[ "$PARTE" == si || ( -z "$PARTE" && "$TODOS" == si ) ]]; then
+            if [[ "$TIPO" == experiencia ]]; then
+              linea="$linea"$'\n\n'"**Todas las tipologías de la Experiencia 3D de $VERSION están aprobadas.**"
+            else
+              linea="$linea"$'\n\n'"**Todos los planos comerciales de $VERSION están aprobados.**"
+            fi
           fi
           if [[ "$TODOS" == si ]]; then
-            linea="$linea"$'\n\n'"**Todos los planos de $VERSION están aprobados.** Ya puedes publicar $VERSION desde MUNE Studio: https://panel.mune-projects.workers.dev/#/promocion/$PROMOCION/resumen"
+            linea="$linea Ya puedes publicar $VERSION desde MUNE Studio: https://panel.mune-projects.workers.dev/#/promocion/$PROMOCION/resumen"
           fi
-          gh label create planos --repo "$REPO" --color 2F5D50 \
-            --description "Validación de planos por una promotora" 2>/dev/null || true
+          gh label create "$etiqueta" --repo "$REPO" --color 2F5D50 \
+            --description "Validación de $parte por una promotora" 2>/dev/null || true
           export TITULO="$titulo"
-          abierto=$(gh issue list --repo "$REPO" --label planos --state open --limit 100 --json number,title \
+          abierto=$(gh issue list --repo "$REPO" --label "$etiqueta" --state open --limit 100 --json number,title \
             --jq '.[] | select(.title == $ENV.TITULO) | .number' | head -n1)
           if [[ -n "$abierto" ]]; then
             gh issue comment "$abierto" --repo "$REPO" --body "$linea"
           else
             cuerpo=$(printf '%s\n' \
-              "## 📐 Validación de planos · $(limpio "$NOMBRE") $VERSION" "" \
+              "## $icono Validación de $parte · $(limpio "$NOMBRE") $VERSION" "" \
               "$linea" "" \
               "**Míralo en MUNE Studio:** https://panel.mune-projects.workers.dev/#/promocion/$PROMOCION/resumen" "" \
               "_Las próximas validaciones de esta versión se añadirán aquí como comentarios._")
-            gh issue create --repo "$REPO" --label planos --title "$titulo" --body "$cuerpo"
+            gh issue create --repo "$REPO" --label "$etiqueta" --title "$titulo" --body "$cuerpo"
           fi

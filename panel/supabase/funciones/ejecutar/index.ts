@@ -8,9 +8,10 @@
 //    procesos del taller). La llave nunca sale de aquí.
 // 4. Lo anota en el registro de actividad.
 //
-// Publicar exige que la promotora haya aprobado todos los planos de esa versión
-// (011_planos.sql). Las versiones preparadas antes de existir los planos (sin
-// planos.json en la vista previa) se pueden publicar como hasta ahora.
+// Publicar exige que la promotora haya validado esa versión entera (020): todos
+// los planos comerciales y todas las tipologías de la Experiencia 3D. Las
+// versiones preparadas antes de existir una de esas partes (sin planos.json o
+// sin experiencia/experiencia.json en la vista previa) no la necesitan.
 //
 // Se pega en Supabase → Edge Functions con el nombre «ejecutar».
 
@@ -21,10 +22,15 @@ const SUPABASE_CLAVE_PUBLICA = 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR';
 const ORIGENES = ['https://panel.mune-projects.workers.dev', 'https://revision-panel.mune-projects.workers.dev'];
 const PROCESO = 'https://api.github.com/repos/MUNE-Projects/taller/actions/workflows/publicar.yml/dispatches';
 const REVISION = Deno.env.get('REVISION_ESCAPARATE') ?? 'https://revision-escaparate.mune-projects.workers.dev';
-const NO_LISTOS: Record<string, string> = {
-	sin_enviar: 'Primero envía los planos a la promotora para que los valide.',
-	pendientes: 'Faltan planos por aprobar por la promotora.',
-	cambios: 'La promotora ha pedido cambios en algún plano.',
+const PARTES = {
+	planos: { que: 'los planos comerciales', archivo: 'planos/planos.json' },
+	experiencia: { que: 'la Experiencia 3D', archivo: 'experiencia/experiencia.json' },
+} as const;
+const NO_LISTOS: Record<string, (que: string) => string> = {
+	sin_enviar: (que) => `primero envía a validar ${que} a la promotora.`,
+	sin_aprobadores: (que) => `la promotora todavía no ha definido quién valida ${que} (lo hace quien la administra, en MUNE Portal).`,
+	pendientes: (que) => `faltan aprobaciones de ${que}.`,
+	cambios: (que) => `la promotora ha pedido cambios en ${que}: hay que corregirlo y preparar una versión nueva.`,
 };
 
 Deno.serve(async (req) => {
@@ -74,12 +80,15 @@ Deno.serve(async (req) => {
 	const { data: promo } = await sb.from('promociones').select('id').eq('id', promocion).maybeSingle();
 	if (!promo) return responder(404, { error: 'No existe esa promoción' });
 	if (accion === 'aprobar') {
-		const { data: listos, error: eListos } = await sb.rpc('planos_listos', { p_promocion: promocion, p_version: version });
-		if (eListos) return responder(500, { error: 'No se ha podido comprobar los planos' });
-		if (listos !== 'listos') {
-			// sin planos enviados: solo se permite si la versión no generó planos (preparada antes de la Etapa 4)
-			const r = listos === 'sin_enviar' ? await fetch(`${REVISION}/${promocion}/planos/planos.json`, { cache: 'no-store' }).catch(() => null) : null;
-			if (r?.status !== 404) return responder(409, { error: `No se puede publicar ${version}: ${NO_LISTOS[listos] ?? 'los planos no están aprobados.'}` });
+		for (const [tipo, parte] of Object.entries(PARTES)) {
+			const { data: lista, error: eLista } = await sb.rpc('validacion_lista', { p_promocion: promocion, p_version: version, p_tipo: tipo });
+			if (eLista) return responder(500, { error: `No se ha podido comprobar la validación de ${parte.que}. Vuelve a probar en un momento.` });
+			if (lista === 'listos') continue;
+			// sin enviar: solo se permite si la versión no tiene esa parte (preparada antes de existir)
+			const r = lista === 'sin_enviar' ? await fetch(`${REVISION}/${promocion}/${parte.archivo}`, { cache: 'no-store' }).catch(() => null) : null;
+			if (r?.status === 404) continue;
+			const motivo = NO_LISTOS[String(lista)]?.(parte.que) ?? `falta validar ${parte.que}.`;
+			return responder(409, { error: `No se puede publicar ${version}: ${motivo}` });
 		}
 	}
 	const { data: admin } = await sb.from('administradores').select('nombre').maybeSingle();
