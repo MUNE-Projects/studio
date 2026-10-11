@@ -201,11 +201,18 @@ function asegurarCabeceras( esc ) {
 	const cabeceras = join( esc, PUBLICO, '_headers' );
 	let texto = existsSync( cabeceras ) ? readFileSync( cabeceras, 'utf8' ).trimEnd() : '';
 	const reglas = [
-		[ '/*/planos/*', 'Planos comerciales de cada versión: el Panel los copia para enviarlos a la promotora.' ],
-		[ '/*/experiencia/*', 'Unidades de la Experiencia 3D de cada versión: el Panel y el portal las usan para validarla.' ],
+		[ '/:promocion/planos/*', 'Planos comerciales de cada versión: el Panel los copia para enviarlos a la promotora.' ],
+		[ '/:promocion/experiencia/*', 'Unidades de la Experiencia 3D de cada versión: el Panel y el portal las usan para validarla.' ],
 		[ '/*/viviendas.json', 'Lista de viviendas (sin datos privados): la usan el Panel y el portal para los códigos de comprador.' ],
 	];
 	let cambia = false;
+	// Cloudflare solo admite un «*» por regla: las reglas antiguas con dos no se aplicaban.
+	for ( const vieja of [ '/*/planos/*', '/*/experiencia/*' ] ) {
+
+		const bloque = new RegExp( `\\n*# [^\\n]*\\n${ vieja.replace( /[*/]/g, '\\$&' ) }\\n(  [^\\n]*\\n?)*`, 'g' );
+		if ( bloque.test( texto ) ) { texto = texto.replace( bloque, '\n' ).trimEnd(); cambia = true; }
+
+	}
 	for ( const [ ruta, motivo ] of reglas ) {
 
 		if ( texto.includes( `\n${ ruta }\n` ) || texto.startsWith( `${ ruta }\n` ) ) continue;
