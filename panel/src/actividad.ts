@@ -2,6 +2,7 @@
 // promociones) o completo (Sistema). Solo admite añadir apuntes; aquí solo se lee.
 
 import { esc, sb, traducir } from './comun';
+import { nombreCapacidad } from './equipo';
 
 interface Apunte { momento: string; accion: string; user_id: string; detalle: Record<string, unknown> }
 
@@ -15,8 +16,17 @@ const ACCIONES: Record<string, string> = {
 	documento_vigente: 'acepta un documento',
 	documento_rechazado: 'rechaza un documento',
 	documento_pendiente: 'vuelve a poner un documento en revisión',
-	plano_aprobado: 'aprueba un plano',
-	plano_rechazado: 'rechaza un plano',
+	plano_aprobado: 'aprueba un plano comercial',
+	plano_rechazado: 'pide cambios en un plano comercial',
+	experiencia_aprobado: 'aprueba una tipología de la Experiencia 3D',
+	experiencia_rechazado: 'pide cambios en la Experiencia 3D',
+	aprobadores: 'cambia quién valida',
+	textos_legales: 'guarda los textos legales',
+	fase_proyecto: 'cambia la fase del proyecto',
+	acceso_dado: 'da un acceso',
+	acceso_cambiado: 'cambia un acceso',
+	'da acceso al portal': 'da acceso a MUNE Portal',
+	'reenvía acceso al portal': 'reenvía el acceso a MUNE Portal',
 	datos_promotora: 'guarda los datos de la promotora',
 	datos_promocion: 'guarda los datos fiscales de la promoción',
 	ficha_promocion: 'guarda la ficha de la promoción',
@@ -59,18 +69,34 @@ export async function pintarActividad(destino: HTMLElement, filtro: FiltroActivi
 		destino.innerHTML = `<p class="error">${esc(traducir(error))}</p>`;
 		return;
 	}
-	// Los accesos los anota también la propia base de datos (acceso_dado y
-	// acceso_cambiado), como garantía; aquí basta con el apunte del Panel, que
-	// trae más detalle, para no ver cada cosa dos veces.
-	const apuntes = ((data ?? []) as Apunte[]).filter((a) => a.accion !== 'acceso_dado' && a.accion !== 'acceso_cambiado');
+	// Los accesos los anota la propia base de datos (acceso_dado, acceso_cambiado),
+	// los dé MUNE Studio o la promotora desde MUNE Portal. Cuando la función
+	// «invitar» ya ha dejado su apunte («da acceso al portal», con el correo)
+	// en el mismo momento, el de la base de datos sobra.
+	const todos = (data ?? []) as Apunte[];
+	const invitaciones = todos.filter((a) => a.accion === 'da acceso al portal').map((a) => [a.user_id, Date.parse(a.momento)] as const);
+	const apuntes = todos.filter((a) => a.accion !== 'acceso_dado'
+		|| !invitaciones.some(([u, t]) => u === a.user_id && Math.abs(t - Date.parse(a.momento)) < 60_000));
 	if (!apuntes.length) {
 		destino.innerHTML = '<p class="vacio">Todavía no hay actividad.</p>';
 		return;
 	}
 	const detalle = (a: Apunte) => {
 		const d = a.detalle ?? {};
+		const acceso = a.accion.startsWith('acceso_');
 		const partes = [
+			acceso && typeof d.persona === 'string' ? quien.get(d.persona) ?? null : null,
+			acceso && d.promocion === 'todas' ? 'todas las promociones' : null,
 			!filtro.promocion && typeof d.promocion === 'string' && d.promocion !== 'todas' ? d.promocion : null,
+			acceso && d.activo === false ? 'sin acceso' : null,
+			acceso && d.administra === true ? (d.promocion === 'todas' ? 'administrador de la promotora' : 'administrador de promoción') : null,
+			acceso && d.administra !== true && Array.isArray(d.capacidades)
+				? (d.capacidades.length ? (d.capacidades as string[]).map(nombreCapacidad).join(', ') : 'sin capacidades') : null,
+			a.accion === 'aprobadores' && typeof d.tipo === 'string' ? (d.tipo === 'planos' ? 'planos comerciales' : 'Experiencia 3D') : null,
+			a.accion === 'aprobadores' && Array.isArray(d.personas)
+				? (d.personas.length ? (d.personas as string[]).map((u) => quien.get(u) ?? '—').join(', ') : 'nadie') : null,
+			typeof d.zona === 'string' ? `zona: ${d.zona}` : null,
+			typeof d.contenido === 'string' ? d.contenido : null,
 			typeof d.email === 'string' ? d.email : null,
 			typeof d.nombre === 'string' ? d.nombre : null,
 			typeof d.version === 'string' ? d.version : null,

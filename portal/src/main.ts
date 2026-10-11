@@ -1,12 +1,18 @@
 // MUNE Portal (espacio de trabajo de las promotoras): pantallas (entrar, inicio, cada promoción).
-// Lo común (sesión de Supabase, utilidades) está en comun.ts; la validación de
-// planos, en planos.ts.
+// Lo común (sesión de Supabase, utilidades) está en comun.ts; quién puede qué, en
+// permisos.ts; cada pestaña con lógica propia, en su archivo (documentos.ts,
+// planos.ts, experiencia.ts, equipo.ts, compradores.ts).
 
-import { FASES, conectarFase, htmlFase, leerHistorialFases, textoFase } from './fase';
+import { textoFase } from './fase';
 import { datosFormalizacion, formFormalizacion, type Formalizacion } from './formalizacion';
-import { ESCAPARATE, REVISION, INACTIVIDAD_MAX, MAX_TAM, MIN_CLAVE, CABECERA, alEnviar, app, errorEnlace, esc, fecha, pintar, sb, tipoEnlace, traducir } from './comun';
+import { ESCAPARATE, REVISION, INACTIVIDAD_MAX, MIN_CLAVE, CABECERA, alEnviar, app, errorEnlace, esc, fecha, pintar, sb, tipoEnlace, traducir } from './comun';
 import { pintarCompradores } from './compradores';
+import { COLUMNAS_DOCUMENTO, COLUMNAS_REQUISITO, type Documento, type Requisito, pintarDocumentacion, resumenDocumentos } from './documentos';
+import { pintarEquipo } from './equipo';
+import { pintarExperiencia, versionesConExperiencia } from './experiencia';
+import { type Miembro, type Permisos, permisosDe } from './permisos';
 import { htmlLista, leerPlanos, pintarDetalle, versionesConPlanos } from './planos';
+import { type Contexto, type Elemento, leerValidacion, numVersion, tituloUnidad } from './validacion';
 
 // ── Decide qué pantalla toca ──────────────────────────────────────────────
 
@@ -90,14 +96,31 @@ function pantallaClave(tipo: 'invite' | 'recovery'): void {
 
 interface DatosFiscales { razon_social: string | null; cif: string | null; domicilio_fiscal: string | null }
 interface Promotora extends DatosFiscales { id: string; nombre: string; contacto: string | null }
-interface Acceso { nombre: string; cargo: string; promotoras: Promotora | null }
+interface Acceso { yo: string; nombre: string; cargo: string; promotora: Promotora | null; filas: Miembro[] }
 let acceso: Acceso | null = null;
 
-async function navegar(): Promise<void> {
+/** Lee los accesos de la sesión (uno por «todas las promociones» y/o uno por promoción). */
+async function leerAcceso(): Promise<Acceso | null> {
+	const { data: { session } } = await sb.auth.getSession();
+	if (!session) return null;
 	const { data, error } = await sb.from('miembros')
-		.select('nombre, cargo, promotoras(id, nombre, razon_social, cif, domicilio_fiscal, contacto)').limit(1).maybeSingle();
+		.select('id, promotora_id, promocion_id, nombre, cargo, administra, capacidades, promotoras(id, nombre, razon_social, cif, domicilio_fiscal, contacto)')
+		.eq('user_id', session.user.id).order('promocion_id', { ascending: true, nullsFirst: true });
 	if (error) throw error;
-	if (!data) {
+	const filas = (data ?? []) as unknown as (Miembro & { promotoras: Promotora | null })[];
+	if (!filas.length) return null;
+	const primera = filas[0];
+	const mias = filas.filter((f) => f.promotora_id === primera.promotora_id);
+	return {
+		yo: session.user.id, nombre: primera.nombre, cargo: mias.find((f) => f.cargo)?.cargo ?? '',
+		promotora: primera.promotoras, filas: mias,
+	};
+}
+
+async function navegar(): Promise<void> {
+	const leido = await leerAcceso();
+	if (!leido) {
+		acceso = null;
 		await sb.auth.signOut();
 		pintar(`<div class="caja">${CABECERA}<h1>Sin acceso</h1>
 			<p>Esta cuenta no tiene acceso a MUNE Portal ahora mismo. Si crees que es un error, escribe al equipo de MUNE.</p>
@@ -105,17 +128,25 @@ async function navegar(): Promise<void> {
 		app.querySelector('[data-volver]')!.addEventListener('click', () => pantallaEntrada());
 		return;
 	}
-	acceso = data as unknown as Acceso;
+	acceso = leido;
 	const ruta = location.hash.match(/^#\/promocion\/([a-z0-9-]{1,60})(?:\/([a-z]{1,20})(?:\/([a-z0-9]{1,12}))?)?$/);
 	return ruta ? pantallaPromocion(ruta[1], ruta[2], ruta[3] ?? '') : pantallaInicio();
 }
 
 addEventListener('hashchange', () => { if (acceso) void navegar().catch(fallo); });
 
-function cabeceraSesion(): string {
+/** Permisos de la sesión: en general (sin promoción) o en una promoción. */
+const permisos = (promocion: string | null): Permisos =>
+	permisosDe(acceso?.filas ?? [], acceso?.promotora?.id ?? '', promocion);
+
+function cabeceraSesion(enPromocion?: Permisos): string {
+	const general = permisos(null);
+	const rol = general.esAdminPromotora ? 'Administración de la promotora'
+		: enPromocion?.administraPromocion ? 'Administración de esta promoción' : '';
 	return `<div class="cabecera">
-		<div>${CABECERA}<h1>${esc(acceso?.promotoras?.nombre ?? '')}</h1>
-			<p class="rol">${esc(acceso?.nombre ?? '')}${acceso?.cargo ? ` · ${esc(acceso.cargo)}` : ''}</p></div>
+		<div>${CABECERA}<h1>${esc(acceso?.promotora?.nombre ?? '')}</h1>
+			<p class="rol">${esc(acceso?.nombre ?? '')}${acceso?.cargo ? ` · ${esc(acceso.cargo)}` : ''}</p>
+			${rol ? `<p class="rol rol-admin">${rol}</p>` : ''}</div>
 		<button class="boton secundario" type="button" data-salir>Salir</button>
 	</div>`;
 }
@@ -169,13 +200,30 @@ function datosFicha(promocion: string, d: FormData): Record<string, unknown> {
 	};
 }
 
+interface TextosLegales { planos?: string; renders?: string; experiencia?: string; personalizacion?: string }
+
+function formTextosLegales(t: TextosLegales | null | undefined): string {
+	const campo = (k: keyof TextosLegales, titulo: string) =>
+		`<label>${titulo} <textarea name="${k}" rows="3" maxlength="1000">${esc(t?.[k] ?? '')}</textarea></label>`;
+	return `<form class="peticion-form" data-textos-legales novalidate>
+		${campo('planos', 'Planos comerciales')}
+		${campo('renders', 'Imágenes y renders')}
+		${campo('experiencia', 'Experiencia 3D (aparece en pequeño mientras se navega)')}
+		${campo('personalizacion', 'Personalización (configurador y documento de selección)')}
+		<p class="error" role="alert"></p>
+		<div class="acciones"><button class="boton" type="submit">Guardar textos legales</button></div>
+		<p class="ok" data-guardado role="status"></p>
+	</form>`;
+}
+
 /** Conecta un formulario de datos a la función que los guarda y muestra «Guardado». */
-function conectarFormulario(selector: string, guardar: (d: FormData) => PromiseLike<{ error: unknown }>): HTMLFormElement {
+function conectarFormulario(selector: string, guardar: (d: FormData) => PromiseLike<{ error: unknown }>, texto = 'Datos guardados.'): HTMLFormElement {
 	const form = app.querySelector<HTMLFormElement>(selector)!;
 	alEnviar(form, async (d) => {
+		form.querySelector<HTMLElement>('[data-guardado]')!.textContent = '';
 		const { error } = await guardar(d);
 		if (error) throw error;
-		form.querySelector<HTMLElement>('[data-guardado]')!.textContent = 'Datos guardados.';
+		form.querySelector<HTMLElement>('[data-guardado]')!.textContent = texto;
 		form.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled = false;
 	});
 	return form;
@@ -185,7 +233,7 @@ function conectarFormulario(selector: string, guardar: (d: FormData) => PromiseL
 function conectarFiscal(guardar: (d: FormData) => PromiseLike<{ error: unknown }>): void {
 	const form = conectarFormulario('[data-fiscal]', guardar);
 	form.querySelector('[data-copiar]')?.addEventListener('click', () => {
-		const po = acceso?.promotoras;
+		const po = acceso?.promotora;
 		if (!po) return;
 		for (const campo of ['razon_social', 'cif', 'domicilio_fiscal'] as const) {
 			form.querySelector<HTMLInputElement>(`input[name=${campo}]`)!.value = po[campo] ?? '';
@@ -198,7 +246,7 @@ function conectarFiscal(guardar: (d: FormData) => PromiseLike<{ error: unknown }
 const ESTADOS_PROMO: Record<string, [string, string]> = {
 	documentacion: ['Recogiendo documentación', 'pendiente'],
 	en_produccion: ['En producción', 'pendiente'],
-	en_validacion: ['Planos comerciales por validar', 'pendiente'],
+	en_validacion: ['En validación', 'pendiente'],
 	publicada: ['Publicada', 'al-dia'],
 };
 
@@ -206,6 +254,8 @@ async function pantallaInicio(): Promise<void> {
 	const { data, error } = await sb.from('promociones').select('id, nombre, ubicacion, estado').order('nombre');
 	if (error) throw error;
 	const lista = data ?? [];
+	// Los datos de la empresa solo los gestiona quien administra la promotora.
+	const adminPromotora = permisos(null).esAdminPromotora;
 	pintar(`<div class="escritorio">
 		${cabeceraSesion()}
 		<section class="tarjeta">
@@ -218,78 +268,95 @@ async function pantallaInicio(): Promise<void> {
 				</a>`;
 			}).join('')}</div>` : '<p class="vacio">Todavía no hay promociones. Cuando el equipo de MUNE dé de alta la primera, aparecerá aquí.</p>'}
 		</section>
-		<section class="tarjeta">
-			<h2>Datos de ${esc(acceso?.promotoras?.nombre ?? 'la promotora')}</h2>
+		${adminPromotora ? `<section class="tarjeta">
+			<h2>Datos de ${esc(acceso?.promotora?.nombre ?? 'la promotora')}</h2>
 			<p class="ayuda">Los datos generales de la promotora. Cada promoción puede tener además los suyos, por si la lleva otra sociedad.</p>
-			${formFiscal(acceso?.promotoras ?? { razon_social: null, cif: null, domicilio_fiscal: null }, true, false)}
-		</section>
+			${formFiscal(acceso?.promotora ?? { razon_social: null, cif: null, domicilio_fiscal: null }, true, false)}
+		</section>` : ''}
 	</div>`);
 	app.querySelector('[data-salir]')!.addEventListener('click', () => void salir());
-	conectarFiscal((d) => sb.rpc('guardar_datos_promotora', {
-		p_promotora: acceso!.promotoras!.id, p_razon_social: String(d.get('razon_social')), p_cif: String(d.get('cif')),
+	if (adminPromotora) conectarFiscal((d) => sb.rpc('guardar_datos_promotora', {
+		p_promotora: acceso!.promotora!.id, p_razon_social: String(d.get('razon_social')), p_cif: String(d.get('cif')),
 		p_domicilio_fiscal: String(d.get('domicilio_fiscal')), p_contacto: String(d.get('contacto')),
 	}).then(async (r) => {
 		// Para que «Copiar los datos de la promotora» use los datos recién guardados.
-		if (!r.error) await navegarSinPintar();
+		if (!r.error) acceso = (await leerAcceso()) ?? acceso;
 		return r;
 	}));
 }
 
-/** Vuelve a leer los datos de la sesión (promotora) sin cambiar de pantalla. */
-async function navegarSinPintar(): Promise<void> {
-	const { data } = await sb.from('miembros')
-		.select('nombre, cargo, promotoras(id, nombre, razon_social, cif, domicilio_fiscal, contacto)').limit(1).maybeSingle();
-	if (data) acceso = data as unknown as Acceso;
-}
-
 // ── Una promoción, por pestañas: #/promocion/<id>/<pestaña>[/<plano o versión>] ─
 
-interface Requisito { id: number; bloque: string; elemento: string; descripcion: string; obligatorio: boolean; orden: number; plantilla: string | null }
 interface Ficha {
 	direccion: string | null; codigo_postal: string | null; municipio: string | null; provincia: string | null;
 	referencia_catastral: string | null; tipo: string | null; num_viviendas: number | null; num_portales: number | null;
 	num_plantas: number | null; fecha_entrega: string | null; fase_proyecto?: string | null;
 }
-interface Documento { id: number; requisito_id: number; nombre: string; ruta: string; version: number; estado: string; nota: string | null; subido_en: string; fase?: string | null }
 interface Entregable { id: number; version: string; tipo: string; tipologia: string | null; nombre: string; ruta: string }
 
 const TIPOS_ENTREGABLE: Record<string, string> = { infografia: 'Infografía', pdf: 'PDF' };
-const PESTANAS: [string, string][] = [['resumen', 'Resumen'], ['documentacion', 'Documentación'], ['planos', 'Planos comerciales'], ['compradores', 'Compradores'], ['datos', 'Ficha y datos']];
+/** Pestañas: clave, título y la capacidad que hace falta (null: todo el equipo; 'administra': quien administra). */
+const PESTANAS: [string, string, string | null][] = [
+	['resumen', 'Resumen', null],
+	['documentacion', 'Documentación', 'documentacion'],
+	['planos', 'Planos comerciales', 'planos'],
+	['experiencia', 'Experiencia 3D', null],
+	['compradores', 'Compradores', 'compradores'],
+	['personalizacion', 'Personalización', 'personalizacion'],
+	['datos', 'Ficha y datos', 'datos'],
+	['equipo', 'Equipo', 'administra'],
+];
+
+/** Elementos pendientes de mi aprobación (para el contador de la pestaña). */
+const pendientesMios = (elementos: Elemento[], yo: string) =>
+	elementos.filter((e) => e.estado !== 'aprobado' && e.personas.some((x) => x.user_id === yo && x.decision === null)).length;
 
 async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', mensaje = ''): Promise<void> {
-	const [promo, reqs, docs, versiones] = await Promise.all([
-		sb.from('promociones').select(`id, nombre, ubicacion, estado, promotora_id, razon_social, cif, domicilio_fiscal, direccion, codigo_postal,
-			municipio, provincia, referencia_catastral, tipo, num_viviendas, num_portales, num_plantas, fecha_entrega, fase_proyecto, formalizacion`).eq('id', id).maybeSingle(),
-		sb.from('requisitos').select('id, bloque, elemento, descripcion, obligatorio, orden, plantilla').eq('promocion_id', id).order('orden').order('id'),
-		sb.from('documentos').select('id, requisito_id, nombre, ruta, version, estado, nota, subido_en, fase').eq('promocion_id', id).order('version', { ascending: false }),
-		versionesConPlanos(id),
-	]);
-	for (const r of [promo, reqs, docs]) if (r.error) throw r.error;
+	const promo = await sb.from('promociones').select(`id, nombre, ubicacion, estado, promotora_id, razon_social, cif, domicilio_fiscal, direccion, codigo_postal,
+		municipio, provincia, referencia_catastral, tipo, num_viviendas, num_portales, num_plantas, fecha_entrega, fase_proyecto, formalizacion, textos_legales`).eq('id', id).maybeSingle();
+	if (promo.error) throw promo.error;
 	if (!promo.data) {
 		location.hash = '#/';
 		return;
 	}
 	const p = promo.data;
-	const actual = PESTANAS.some(([k]) => k === pestana) ? pestana : 'resumen';
-	const requisitos = (reqs.data ?? []) as Requisito[];
-	const documentos = (docs.data ?? []) as Documento[];
-	const planosActuales = versiones.length ? await leerPlanos(id, versiones[0]) : [];
-	const porValidar = planosActuales.filter((x) => !x.decision).length;
-	const aprobados = planosActuales.filter((x) => x.decision === 'aprobado').length;
-	const faltan = requisitos.filter((r) => r.obligatorio && !documentos.some((d) => d.requisito_id === r.id)).length;
-	const rechazados = requisitos.filter((r) => documentos.find((d) => d.requisito_id === r.id)?.estado === 'rechazado').length;
+	const yo = acceso!.yo;
+	const per = permisosDe(acceso!.filas, p.promotora_id, id);
+	const ctx: Contexto = { yo, administraPromocion: per.administraPromocion };
+	const visibles = PESTANAS.filter(([, , c]) => c === null || (c === 'administra' ? per.administraPromocion : per.puede(c)));
+	const actual = visibles.some(([k]) => k === pestana) ? pestana : 'resumen';
+
+	const [reqs, docs, versionesPlanos, versionesExp] = await Promise.all([
+		per.puede('documentacion') ? sb.from('requisitos').select(COLUMNAS_REQUISITO).eq('promocion_id', id).order('orden').order('id') : null,
+		per.puede('documentacion') ? sb.from('documentos').select(COLUMNAS_DOCUMENTO).eq('promocion_id', id).order('version', { ascending: false }) : null,
+		per.puede('planos') ? versionesConPlanos(id) : Promise.resolve([] as string[]),
+		versionesConExperiencia(id),
+	]);
+	for (const r of [reqs, docs]) if (r?.error) throw r.error;
+	const requisitos = (reqs?.data ?? []) as Requisito[];
+	const documentos = (docs?.data ?? []) as Documento[];
+	// La versión en curso: la más reciente que se ha enviado a validar.
+	const enCurso = [versionesPlanos[0], versionesExp[0]].filter(Boolean).sort((a, b) => numVersion(b) - numVersion(a))[0] as string | undefined;
+	const [planosCurso, expCurso] = await Promise.all([
+		enCurso && versionesPlanos.includes(enCurso) ? leerPlanos(id, enCurso) : Promise.resolve([] as Elemento[]),
+		enCurso && versionesExp.includes(enCurso) ? leerValidacion(id, enCurso, 'experiencia') : Promise.resolve([] as Elemento[]),
+	]);
+	const { faltan, rechazados } = resumenDocumentos(requisitos, documentos);
+	const misPlanos = pendientesMios(planosCurso, yo);
+	const miExperiencia = pendientesMios(expCurso, yo);
 	const contador: Record<string, string> = {
 		documentacion: faltan + rechazados ? `${faltan + rechazados} pendiente${faltan + rechazados === 1 ? '' : 's'}` : '',
-		planos: porValidar ? `${porValidar} por validar` : '',
+		planos: misPlanos ? `${misPlanos} por validar` : '',
+		experiencia: miExperiencia ? `${miExperiencia} por validar` : '',
 	};
 
 	pintar(`<div class="escritorio">
-		${cabeceraSesion()}
+		${cabeceraSesion(per)}
 		<a class="enlace volver" href="#/">← Tus promociones</a>
 		<section class="tarjeta">
 			<h2>${esc(p.nombre)}</h2>
 			<p class="promo-lugar">${esc(p.ubicacion)}${p.ubicacion ? ' · ' : ''}${esc(textoFase((p as unknown as Ficha).fase_proyecto))}</p>
-			<nav class="pestanas" aria-label="Secciones de la promoción">${PESTANAS.map(([k, t]) =>
+			<nav class="pestanas" aria-label="Secciones de la promoción">${visibles.map(([k, t]) =>
 				`<a href="#/promocion/${esc(id)}/${k}" ${k === actual ? 'aria-current="page"' : ''}>${esc(t)}${contador[k] ? `<b class="contador">${esc(contador[k])}</b>` : ''}</a>`).join('')}</nav>
 		</section>
 		${mensaje ? `<p class="aviso" role="status">${esc(mensaje)}</p>` : ''}
@@ -303,80 +370,34 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 		caja.innerHTML = `
 			<div class="promo-cabeza"><h2>Resumen</h2><span class="estado ${clase}">${esc(etiqueta)}</span></div>
 			<p class="promo-versiones" data-publicada>Comprobando la versión publicada…</p>
+			${htmlValidacionEnCurso(id, enCurso, per.puede('planos') ? planosCurso : null, expCurso)}
 			<div class="lista-promos separado">
-				<a class="promo-enlace" href="#/promocion/${esc(id)}/documentacion"><span><strong>Documentación</strong><br>
+				${per.puede('documentacion') ? `<a class="promo-enlace" href="#/promocion/${esc(id)}/documentacion"><span><strong>Documentación</strong><br>
 					<span class="promo-lugar">${faltan ? `${faltan === 1 ? 'Falta 1 documento obligatorio' : `Faltan ${faltan} documentos obligatorios`}` : 'Todos los documentos obligatorios entregados'}${rechazados ? ` · ${rechazados} por corregir` : ''}</span></span>
-					<span class="estado ${faltan + rechazados ? 'pendiente' : 'al-dia'}">${faltan + rechazados ? 'Pendiente' : 'Al día'}</span></a>
-				<a class="promo-enlace" href="#/promocion/${esc(id)}/planos"><span><strong>Planos comerciales</strong><br>
-					<span class="promo-lugar">${versiones.length ? `${esc(versiones[0])}: ${aprobados} de ${planosActuales.length} aprobados` : 'Todavía no hay planos para validar'}</span></span>
-					${versiones.length ? `<span class="estado ${porValidar ? 'pendiente' : 'al-dia'}">${porValidar ? `${porValidar} por validar` : aprobados === planosActuales.length ? 'Aprobados' : 'Cambios pedidos'}</span>` : ''}</a>
-				<a class="promo-enlace" href="#/promocion/${esc(id)}/datos"><span><strong>Ficha y datos</strong><br>
-					<span class="promo-lugar">Dirección, tipo, viviendas, sociedad y formalización de la personalización</span></span></a>
+					<span class="estado ${faltan + rechazados ? 'pendiente' : 'al-dia'}">${faltan + rechazados ? 'Pendiente' : 'Al día'}</span></a>` : ''}
+				${per.puede('datos') ? `<a class="promo-enlace" href="#/promocion/${esc(id)}/datos"><span><strong>Ficha y datos</strong><br>
+					<span class="promo-lugar">Dirección, tipo, viviendas, sociedad y textos legales</span></span></a>` : ''}
+				${per.puede('personalizacion') ? `<a class="promo-enlace" href="#/promocion/${esc(id)}/personalizacion"><span><strong>Personalización</strong><br>
+					<span class="promo-lugar">A quién envía el comprador su documento de selección y los datos para la transferencia</span></span></a>` : ''}
 			</div>`;
 		void pintarPublicada(p.id);
 	}
 
 	if (actual === 'documentacion') {
-		// Documentación agrupada por bloque, en el orden de la lista.
-		const bloques = new Map<string, Requisito[]>();
-		for (const r of requisitos) bloques.set(r.bloque, [...(bloques.get(r.bloque) ?? []), r]);
-		const htmlDocs = [...bloques].map(([bloque, rs]) => `<div class="bloque"><h3>${esc(bloque)}</h3>${rs.map((r) => {
-			const anteriores = documentos.filter((d) => d.requisito_id === r.id);
-			const ultimo = anteriores[0];
-			const estado = !ultimo ? (r.obligatorio ? ['Falta por entregar', 'pendiente'] : ['Opcional', ''])
-				: ultimo.estado === 'vigente' ? ['Aceptado', 'al-dia']
-				: ultimo.estado === 'rechazado' ? ['Rechazado', 'rechazado']
-				: ['En revisión', ''];
-			return `<article class="requisito">
-				<div class="requisito-cabeza">
-					<span class="requisito-nombre">${esc(r.elemento)}</span>
-					<span class="estado ${estado[1]}">${esc(estado[0])}</span>
-				</div>
-				${r.descripcion ? `<p class="requisito-desc">${esc(r.descripcion)}</p>` : ''}
-				${r.plantilla ? `<a class="enlace" href="${esc(r.plantilla)}" download>Descargar la plantilla</a>` : ''}
-				${ultimo?.estado === 'rechazado' ? `<p class="requisito-nota">${ultimo.nota ? `${esc(ultimo.nota)} ` : ''}Sube una versión nueva con lo corregido.</p>` : ''}
-				${anteriores.length ? `<div class="historial">${anteriores.map((d) => `<div class="historial-fila">
-					<span>v${d.version} · ${esc(d.nombre)} · ${esc(fecha(d.subido_en))}${d.fase ? ` · ${FASES[d.fase] ?? ''}` : ''}</span>
-					<button class="enlace" type="button" data-bajar="documentos" data-ruta="${esc(d.ruta)}" data-nombre="${esc(d.nombre)}">Descargar</button>
-				</div>`).join('')}</div>` : ''}
-				<div class="acciones">
-					<label class="boton secundario pequeno subir">${anteriores.length ? 'Subir versión nueva' : 'Subir archivo'}
-						<input type="file" data-subir="${r.id}">
-					</label>
-				</div>
-				<p class="aviso" data-progreso="${r.id}" role="status" hidden></p>
-			</article>`;
-		}).join('')}</div>`).join('');
-		const fase = (p as unknown as Ficha).fase_proyecto ?? null;
-		const historial = await leerHistorialFases(sb, p.id);
-		caja.innerHTML = `
-			<h2>Documentación</h2>
-			${htmlFase(fase, historial, 'promotora')}
-			<p class="ayuda">Lo que necesitamos para preparar la promoción. Puedes subir archivos de hasta 50 MB. Si necesitas sustituir un archivo, sube una versión nueva. Las anteriores se conservan.</p>
-			${htmlDocs || '<p class="vacio">El equipo de MUNE aún no ha preparado la lista de documentos de esta promoción.</p>'}`;
-		conectarFase(caja, sb, p.id, fase, () => pantallaPromocion(id, 'documentacion', '', 'Fase del proyecto guardada.'), (e) => traducir(e, 'cambiar la fase'));
-		// sin fase indicada no se sube nada: cada documento tiene que llevar su fase
-		if (!fase) app.querySelectorAll<HTMLInputElement>('[data-subir]').forEach((input) => {
-			input.disabled = true;
-			input.closest('label')?.classList.add('desactivado');
-		});
-		app.querySelectorAll<HTMLInputElement>('[data-subir]').forEach((input) => input.addEventListener('change', () => {
-			const archivo = input.files?.[0];
-			if (archivo) void subir(p.id, p.promotora_id, Number(input.dataset.subir), archivo, input);
-		}));
+		await pintarDocumentacion(caja, p, requisitos, documentos, (m) => pantallaPromocion(id, 'documentacion', '', m ?? ''));
 	}
 
 	if (actual === 'planos') {
 		const alValidar = (m: string) => void pantallaPromocion(id, 'planos', '', m).catch(fallo);
 		if (/^[0-9]{1,12}$/.test(extra)) {
-			await pintarDetalle(caja, id, Number(extra), versiones, alValidar);
+			await pintarDetalle(caja, id, Number(extra), versionesPlanos, ctx, alValidar);
 		} else {
-			const version = versiones.includes(extra) ? extra : versiones[0];
+			const version = versionesPlanos.includes(extra) ? extra : versionesPlanos[0];
 			const { data: otros } = await sb.from('entregables').select('id, version, tipo, tipologia, nombre, ruta')
-				.eq('promocion_id', id).neq('tipo', 'plano').order('creado_en', { ascending: false });
+				.eq('promocion_id', id).not('tipo', 'in', '(plano,experiencia)').order('creado_en', { ascending: false });
 			const extras = (otros ?? []) as Entregable[];
-			caja.innerHTML = `${version ? await htmlLista(id, version, versiones)
-				: '<h2>Planos comerciales</h2><p class="vacio">Todavía no hay planos comerciales para validar. Cuando MUNE los prepare a partir de tu documentación, aparecerán aquí.</p>'}
+			caja.innerHTML = `${version ? await htmlLista(id, version, versionesPlanos, ctx)
+				: '<h2>Planos comerciales</h2><p class="vacio">Todavía no hay planos comerciales para validar. Cuando el equipo de MUNE los prepare a partir de tu documentación, aparecerán aquí.</p>'}
 				${extras.length ? `<h2 class="separado">Otros entregables</h2>${extras.map((e) => `<div class="entregable">
 					<span>${esc(TIPOS_ENTREGABLE[e.tipo] ?? e.tipo)} · ${esc(e.version)}<br><span class="promo-lugar">${esc(e.nombre)}</span></span>
 					<button class="boton secundario pequeno" type="button" data-bajar="entregables" data-ruta="${esc(e.ruta)}" data-nombre="${esc(e.nombre)}">Descargar</button>
@@ -384,8 +405,20 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 		}
 	}
 
+	if (actual === 'experiencia') {
+		await pintarExperiencia(caja, id, extra, ctx, (m, v) => void pantallaPromocion(id, 'experiencia', v, m).catch(fallo));
+	}
+
 	if (actual === 'compradores') {
 		await pintarCompradores(caja, { sb, esc, fecha, traducir, escaparate: ESCAPARATE, revision: REVISION, modo: 'promotora' }, p);
+	}
+
+	if (actual === 'personalizacion') {
+		caja.innerHTML = `
+			<h2>Formalización de la personalización</h2>
+			<p class="ayuda">Cuando un comprador termina su personalización, descarga el documento de selección y lo firma. Indica aquí a quién debe enviarlo y, si las mejoras se pagan por transferencia, los datos de la cuenta. Solo lo ven los compradores que entran con su código.</p>
+			${formFormalizacion((p as unknown as { formalizacion: Formalizacion }).formalizacion)}`;
+		conectarFormulario('[data-formalizacion]', (d) => sb.rpc('guardar_formalizacion', datosFormalizacion(p.id, d)));
 	}
 
 	if (actual === 'datos') {
@@ -396,17 +429,54 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 			<h2 class="separado">Datos fiscales de la promoción</h2>
 			<p class="ayuda">La sociedad que lleva esta promoción. Si es la misma que la de la promotora, pulsa «Copiar los datos de la promotora».</p>
 			${formFiscal(p, false, true)}
-			<h2 class="separado">Formalización de la personalización</h2>
-			<p class="ayuda">Cuando un comprador termina su personalización, descarga el documento de selección y lo firma. Indica aquí a quién debe enviarlo y, si las mejoras se pagan por transferencia, los datos de la cuenta. Solo lo ven los compradores que entran con su código.</p>
-			${formFormalizacion((p as unknown as { formalizacion: Formalizacion }).formalizacion)}`;
+			<h2 class="separado">Textos legales</h2>
+			<p class="ayuda">Tus textos legales para cada parte de la promoción, de hasta 1000 caracteres cada uno. Se aplican en la próxima versión que prepare el equipo de MUNE: la revisarás en la vista previa antes de publicarla.</p>
+			${formTextosLegales((p as unknown as { textos_legales: TextosLegales | null }).textos_legales)}`;
 		conectarFormulario('[data-ficha]', (d) => sb.rpc('guardar_ficha_promocion', datosFicha(p.id, d)));
-		conectarFormulario('[data-formalizacion]', (d) => sb.rpc('guardar_formalizacion', datosFormalizacion(p.id, d)));
 		conectarFiscal((d) => sb.rpc('guardar_datos_promocion', {
 			p_promocion: p.id, p_razon_social: String(d.get('razon_social')), p_cif: String(d.get('cif')), p_domicilio_fiscal: String(d.get('domicilio_fiscal')),
 		}));
+		conectarFormulario('[data-textos-legales]', (d) => sb.rpc('guardar_textos_legales', {
+			p_promocion: p.id, p_planos: String(d.get('planos') ?? ''), p_renders: String(d.get('renders') ?? ''),
+			p_experiencia: String(d.get('experiencia') ?? ''), p_personalizacion: String(d.get('personalizacion') ?? ''),
+		}), 'Textos legales guardados. Se aplicarán en la próxima versión.');
+	}
+
+	if (actual === 'equipo') {
+		await pintarEquipo(caja, p, per, (m) => pantallaPromocion(id, 'equipo', '', m ?? ''));
+		if (extra === 'validan') caja.querySelector('#quien-valida')?.scrollIntoView();
 	}
 
 	app.querySelectorAll<HTMLButtonElement>('[data-bajar]').forEach((b) => b.addEventListener('click', () => void descargar(b)));
+}
+
+/** Bloque del Resumen: cómo va la validación de la versión en curso. */
+function htmlValidacionEnCurso(id: string, version: string | undefined, planos: Elemento[] | null, experiencia: Elemento[]): string {
+	if (!version) return '';
+	const linea = (titulo: string, href: string, elementos: Elemento[], cuenta: (a: number, t: number) => string) => {
+		if (!elementos.length) return `<a class="promo-enlace" href="${href}"><span><strong>${titulo}</strong><br>
+			<span class="promo-lugar">Todavía no hay nada que validar en esta versión</span></span></a>`;
+		const aprobados = elementos.filter((e) => e.estado === 'aprobado').length;
+		const todo = aprobados === elementos.length;
+		const sinAprobadores = elementos.some((e) => e.estado === 'sin_aprobadores');
+		const cambios = elementos.some((e) => e.estado === 'cambios');
+		const pendientes = elementos.filter((e) => e.estado !== 'aprobado').map(tituloUnidad);
+		const [chip, clase] = todo ? ['Aprobado', 'al-dia'] : sinAprobadores ? ['Falta elegir quién valida', ''] : cambios ? ['Cambios pedidos', 'rechazado'] : ['Pendiente', 'pendiente'];
+		return `<a class="promo-enlace" href="${href}"><span><strong>${titulo}</strong><br>
+			<span class="promo-lugar">${cuenta(aprobados, elementos.length)}${todo ? ' ✓' : ''}</span>
+			${pendientes.length ? `<br><span class="promo-lugar">Pendiente: ${esc(pendientes.join(', '))}</span>` : ''}</span>
+			<span class="estado ${clase}">${chip}</span></a>`;
+	};
+	const listas = [planos, experiencia].filter((x): x is Elemento[] => !!x);
+	const lista = listas.every((x) => x.length && x.every((e) => e.estado === 'aprobado'));
+	return `<div class="bloque separado">
+		<h3>Validación de la versión en curso · ${esc(version)}</h3>
+		<div class="lista-promos">
+			${planos ? linea('Planos comerciales', `#/promocion/${esc(id)}/planos`, planos, (a, t) => `${a} de ${t} aprobado${t === 1 ? '' : 's'}`) : ''}
+			${linea('Experiencia 3D', `#/promocion/${esc(id)}/experiencia`, experiencia, (a, t) => `${a} de ${t} tipología${t === 1 ? '' : 's'} aprobada${t === 1 ? '' : 's'}`)}
+		</div>
+		${lista && planos ? `<p class="ok separado">Lista para publicar: todo está validado.</p>` : ''}
+	</div>`;
 }
 
 async function pintarPublicada(id: string): Promise<void> {
@@ -437,53 +507,6 @@ async function descargar(b: HTMLButtonElement): Promise<void> {
 		alert(traducir(e, 'descargar el archivo'));
 	} finally {
 		b.disabled = false;
-	}
-}
-
-async function huella(archivo: File): Promise<string> {
-	const h = await crypto.subtle.digest('SHA-256', await archivo.arrayBuffer());
-	return [...new Uint8Array(h)].map((x) => x.toString(16).padStart(2, '0')).join('');
-}
-
-/** Nombre seguro para el almacén: sin tildes, espacios ni símbolos raros. */
-function nombreSeguro(nombre: string): string {
-	return nombre.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9._-]+/g, '-')
-		.replace(/-+/g, '-').replace(/^-|-$/g, '').slice(-100) || 'archivo';
-}
-
-async function subir(promocion: string, promotora: string, requisito: number, archivo: File, input: HTMLInputElement): Promise<void> {
-	const aviso = app.querySelector<HTMLElement>(`[data-progreso="${requisito}"]`)!;
-	aviso.hidden = false;
-	aviso.classList.remove('error');
-	input.disabled = true;
-	try {
-		if (archivo.size > MAX_TAM) throw new Error('El archivo pesa más de 50 MB y no se ha podido subir. Si necesitas enviar uno más grande, escribe al equipo de MUNE.');
-		if (archivo.size === 0) throw new Error('El archivo está vacío. Comprueba que es el correcto y vuelve a subirlo.');
-		aviso.textContent = `Subiendo «${archivo.name}»… Con archivos grandes puede tardar un poco; no cierres la página.`;
-		const ruta = `${promotora}/${promocion}/${requisito}/${Date.now()}-${nombreSeguro(archivo.name)}`;
-		const tipo = archivo.type || 'application/octet-stream';
-		const [firma, subida] = await Promise.all([
-			huella(archivo),
-			sb.storage.from('documentos').upload(ruta, archivo, { contentType: tipo, upsert: false }),
-		]);
-		if (subida.error) throw subida.error;
-		const { data: subido, error } = await sb.from('documentos').insert({
-			promocion_id: promocion, requisito_id: requisito, nombre: archivo.name.slice(0, 200), ruta, tipo: tipo.slice(0, 120), tamano: archivo.size, huella: firma,
-		}).select('id').single();
-		if (error) throw error;
-		// Aviso por email al equipo de MUNE (si falla, el documento ya está subido igualmente).
-		void sb.functions.invoke('aviso-subida', { body: { documento_id: subido.id } }).catch(() => undefined);
-		await pantallaPromocion(promocion, 'documentacion');
-		const nuevo = app.querySelector<HTMLElement>(`[data-progreso="${requisito}"]`);
-		if (nuevo) {
-			nuevo.hidden = false;
-			nuevo.textContent = `Hemos recibido «${archivo.name}». Lo revisaremos y verás aquí su estado.`;
-		}
-	} catch (e) {
-		aviso.classList.add('error');
-		aviso.textContent = traducir(e, 'subir el archivo');
-		input.disabled = false;
-		input.value = '';
 	}
 }
 

@@ -30,15 +30,16 @@ interface Ficha {
 	referencia_catastral: string | null; tipo: string | null; num_viviendas: number | null; num_portales: number | null;
 	num_plantas: number | null; fecha_entrega: string | null; fase_proyecto?: string | null;
 }
-interface Promocion extends DatosFiscales, Ficha { id: string; nombre: string; ubicacion: string; estado: string; activa: boolean; promotora_id: string; formalizacion?: Formalizacion }
+interface Promocion extends DatosFiscales, Ficha { id: string; nombre: string; ubicacion: string; estado: string; activa: boolean; promotora_id: string; formalizacion?: Formalizacion; textos_legales?: TextosLegales | null }
+interface TextosLegales { planos?: string; renders?: string; experiencia?: string; personalizacion?: string }
 
 const CAMPOS_PROMOCION = `id, nombre, ubicacion, estado, activa, promotora_id, razon_social, cif, domicilio_fiscal,
-	direccion, codigo_postal, municipio, provincia, referencia_catastral, tipo, num_viviendas, num_portales, num_plantas, fecha_entrega, fase_proyecto, formalizacion`;
+	direccion, codigo_postal, municipio, provincia, referencia_catastral, tipo, num_viviendas, num_portales, num_plantas, fecha_entrega, fase_proyecto, formalizacion, textos_legales`;
 
 const ESTADOS: Record<string, string> = {
 	documentacion: 'Recogiendo documentación',
 	en_produccion: 'En producción',
-	en_validacion: 'Planos comerciales por validar',
+	en_validacion: 'En validación',
 	publicada: 'Publicada',
 };
 
@@ -138,6 +139,23 @@ function formFicha(p: Ficha): string {
 		<label>Fecha prevista de entrega (opcional) <input name="fecha_entrega" type="date" value="${esc(p.fecha_entrega ?? '')}"></label>
 		<p class="error" role="alert"></p>
 		<div class="acciones"><button class="boton" type="submit">Guardar ficha</button></div>
+		<p class="ok" data-guardado role="status"></p>
+	</form>`;
+}
+
+const TEXTOS_LEGALES: [keyof TextosLegales, string, string][] = [
+	['planos', 'Planos comerciales', 'Al pie de cada plano comercial (PDF y PNG).'],
+	['renders', 'Imágenes y renders', 'En cada imagen o render.'],
+	['experiencia', 'Experiencia 3D', 'En pequeño, siempre visible mientras se navega por la Experiencia 3D.'],
+	['personalizacion', 'Personalización', 'En el configurador del comprador y en el documento de su selección (PDF).'],
+];
+
+function formTextosLegales(t: TextosLegales): string {
+	return `<form class="peticion-form" data-legales novalidate>
+		${TEXTOS_LEGALES.map(([k, titulo, donde]) => `<label>${esc(titulo)} <span class="promo-lugar">${esc(donde)}</span>
+			<textarea name="${k}" rows="3" maxlength="1000">${esc(t[k] ?? '')}</textarea></label>`).join('')}
+		<p class="error" role="alert"></p>
+		<div class="acciones"><button class="boton" type="submit">Guardar textos legales</button></div>
 		<p class="ok" data-guardado role="status"></p>
 	</form>`;
 }
@@ -629,13 +647,26 @@ export async function pantallaPromocion(destino: HTMLElement, id: string, pestan
 			<p class="ok" data-guardado-fiscal role="status"></p>
 			<h2 class="separado">Formalización de la personalización</h2>
 			<p class="ayuda">A quién envía el comprador su documento firmado y los datos para la transferencia. Normalmente lo rellena la promotora en MUNE Portal; solo lo ven los compradores con código.</p>
-			${formFormalizacion(p.formalizacion)}`;
+			${formFormalizacion(p.formalizacion)}
+			<h2 class="separado">Textos legales</h2>
+			<p class="ayuda">Los escribe la promotora en MUNE Portal. Se aplican en la próxima versión que prepares: se revisan en la vista previa y se publican con ella.</p>
+			${formTextosLegales(p.textos_legales ?? {})}`;
 		const form = caja.querySelector<HTMLFormElement>('[data-formalizacion]')!;
 		alEnviar(form, async (d) => {
 			const { error: e } = await sb.rpc('guardar_formalizacion', datosFormalizacion(id, d));
 			if (e) throw e;
 			form.querySelector<HTMLElement>('[data-guardado]')!.textContent = '✓ Guardado.';
 			form.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled = false;
+		});
+		const legales = caja.querySelector<HTMLFormElement>('[data-legales]')!;
+		alEnviar(legales, async (d) => {
+			const texto = (k: string) => String(d.get(k) ?? '').trim();
+			const { error: e } = await sb.rpc('guardar_textos_legales', {
+				p_promocion: id, p_planos: texto('planos'), p_renders: texto('renders'), p_experiencia: texto('experiencia'), p_personalizacion: texto('personalizacion'),
+			});
+			if (e) throw e;
+			legales.querySelector<HTMLElement>('[data-guardado]')!.textContent = '✓ Textos legales guardados. Se aplicarán en la próxima versión que prepares.';
+			legales.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled = false;
 		});
 		const ficha = caja.querySelector<HTMLFormElement>('[data-ficha]')!;
 		alEnviar(ficha, async (d) => {
