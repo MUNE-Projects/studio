@@ -6,7 +6,7 @@
 
 import { alEnviar, anotar, esc, fallo, fecha, sb } from './comun';
 import { avisarPromotora } from './avisos';
-import { MOTIVO_NO_PUBLICAR, estadoPlanos, leerManifiesto, pintarPlanos, resumenListos } from './planos';
+import { leerValidacion, listaParaPublicar, motivoNoPublicar, pintarValidacion, type Validacion } from './validacion';
 
 export const ESCAPARATE: string = import.meta.env.VITE_ESCAPARATE ?? 'https://escaparate.mune-projects.workers.dev';
 export const REVISION: string = import.meta.env.VITE_REVISION ?? 'https://revision-escaparate.mune-projects.workers.dev';
@@ -100,17 +100,24 @@ async function ejecutar(aviso: HTMLElement, id: string, orden: Record<string, st
 }
 
 /** Bloque de versiones de una promoción: ver, publicar y volver a una anterior. */
-export async function pintarVersiones(destino: HTMLElement, p: { id: string; nombre: string }): Promise<void> {
+export async function pintarVersiones(destino: HTMLElement, p: { id: string; nombre: string; promotora_id: string }): Promise<void> {
 	destino.innerHTML = '<p class="vacio">Comprobando las versiones…</p>';
 	const e = await estadoVersiones(p.id);
 	const { pub, rev, pendiente } = e;
 	const id = p.id;
 	const volver = pub ? anteriores(pub.version) : [];
-	// planos de la versión en revisión: sin todos aprobados no se publica
-	const manifiesto = pendiente ? await leerManifiesto(REVISION, id, rev!.version) : null;
-	const planos = pendiente ? await estadoPlanos(id, rev!.version).catch(() => []) : [];
-	const listos = resumenListos(planos, !!manifiesto);
-	const bloqueo = listos === 'listos' || listos === 'sin_planos' ? '' : MOTIVO_NO_PUBLICAR[listos];
+	// validación de la versión en revisión (planos comerciales y Experiencia 3D): sin todo aprobado no se publica
+	let validacion: Validacion | null = null;
+	let bloqueo = '';
+	if (pendiente) {
+		try {
+			validacion = await leerValidacion(REVISION, id, rev!.version);
+			bloqueo = listaParaPublicar(validacion) ? '' : motivoNoPublicar(validacion);
+		} catch (err) {
+			console.error('[MUNE Studio]', err);
+			bloqueo = 'No se ha podido comprobar la validación de la promotora. Recarga la página en un momento.';
+		}
+	}
 	destino.innerHTML = `
 		<div class="promo-cabeza">
 			<p class="promo-versiones">${pub ? `Publicada: <strong>${esc(pub.version)}</strong> · ${esc(fecha(pub.fecha))}` : e.sinComprobar ? 'No se ha podido comprobar la versión publicada. Recarga la página en un momento.' : 'Todavía sin publicar'}
@@ -125,7 +132,7 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 		</div>
 		${bloqueo ? `<p class="ayuda">${esc(bloqueo)}</p>` : ''}
 		<p class="aviso" data-progreso role="status" hidden></p>
-		<div data-planos></div>
+		<div data-validacion></div>
 		${volver.length ? `<form class="peticion-form" data-volver hidden novalidate>
 			<label>Volver la experiencia publicada de ${esc(p.nombre)} a la
 				<select name="version">${volver.reverse().map((v) => `<option>${v}</option>`).join('')}</select>
@@ -143,7 +150,7 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 	const aviso = destino.querySelector<HTMLElement>('[data-progreso]')!;
 	const repintar = () => void pintarVersiones(destino, p);
 	anotarEnlaces(destino);
-	if (pendiente) pintarPlanos(destino.querySelector<HTMLElement>('[data-planos]')!, REVISION, id, rev!.version, manifiesto, planos, repintar);
+	if (validacion) void pintarValidacion(destino.querySelector<HTMLElement>('[data-validacion]')!, REVISION, p, validacion, repintar);
 
 	destino.querySelector<HTMLButtonElement>('[data-publicar]')?.addEventListener('click', async (ev) => {
 		const b = ev.currentTarget as HTMLButtonElement;

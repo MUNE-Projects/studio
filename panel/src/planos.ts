@@ -1,4 +1,4 @@
-// Planos comerciales de cada versión y su validación por la promotora (Etapa 4).
+// Planos comerciales de cada versión: enviarlos a validar (Etapa 4).
 //
 // Al preparar una versión, sus planos (uno por tipología y variante, o por
 // vivienda) se generan y van a la vista previa con una lista, planos.json.
@@ -6,24 +6,16 @@
 // promotora» los copia al almacén privado «entregables» (comprobando su huella)
 // y los apunta en la base de datos: desde ese momento el equipo de la promotora
 // los ve en su portal y los aprueba o pide cambios. La versión solo se puede
-// publicar con todos sus planos aprobados (011_planos.sql, función «ejecutar»).
+// publicar con todos sus planos aprobados (020, función «ejecutar»). El bloque
+// «Validación de vN» (planos y Experiencia 3D) está en validacion.ts.
 
-import { avisarPromotora } from './avisos';
-import { anotar, esc, fallo, fecha, sb, traducir } from './comun';
+import { anotar, sb } from './comun';
 
 export interface PlanoManifiesto {
 	clave: string; titulo: string; detalle: string; viviendas: string; orden: number;
 	pdf: string; miniatura: string; huella: string; huellaDatos: string;
 }
-interface Manifiesto { promocion: string; version: string; planos: PlanoManifiesto[] }
-
-export interface PlanoEstado {
-	id: number; clave: string; titulo: string; detalle: string | null; viviendas: string | null;
-	ruta: string; miniatura: string | null; decision: 'aprobado' | 'rechazado' | null;
-	comentario: string | null; momento: string | null; persona: string | null; heredada_de: string | null;
-}
-
-export type Listos = 'sin_planos' | 'sin_enviar' | 'pendientes' | 'cambios' | 'listos';
+export interface Manifiesto { promocion: string; version: string; planos: PlanoManifiesto[] }
 
 /** Lista de planos de la vista previa (null si la versión no tiene planos generados). */
 export async function leerManifiesto(revision: string, id: string, version: string): Promise<Manifiesto | null> {
@@ -37,31 +29,12 @@ export async function leerManifiesto(revision: string, id: string, version: stri
 	}
 }
 
-export async function estadoPlanos(id: string, version: string): Promise<PlanoEstado[]> {
-	const { data, error } = await sb.rpc('planos_de_version', { p_promocion: id, p_version: version });
-	if (error) throw error;
-	return (data ?? []) as PlanoEstado[];
-}
-
-export function resumenListos(planos: PlanoEstado[], hayManifiesto: boolean): Listos {
-	if (!planos.length) return hayManifiesto ? 'sin_enviar' : 'sin_planos';
-	if (planos.some((x) => x.decision === 'rechazado')) return 'cambios';
-	if (planos.some((x) => !x.decision)) return 'pendientes';
-	return 'listos';
-}
-
-export const MOTIVO_NO_PUBLICAR: Record<Exclude<Listos, 'listos' | 'sin_planos'>, string> = {
-	sin_enviar: 'Primero envía los planos a la promotora para que los valide.',
-	pendientes: 'Faltan planos por aprobar: podrás publicar cuando la promotora los apruebe todos.',
-	cambios: 'La promotora ha pedido cambios en algún plano. Para publicar, hay que corregirlo y preparar una versión nueva: díselo a Claude.',
-};
-
 async function huella(datos: ArrayBuffer): Promise<string> {
 	return [...new Uint8Array(await crypto.subtle.digest('SHA-256', datos))].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /** Copia los planos de la vista previa al almacén «entregables» y los apunta para la promotora. */
-async function enviar(revision: string, id: string, m: Manifiesto, progreso: (t: string) => void): Promise<void> {
+export async function enviarPlanos(revision: string, id: string, m: Manifiesto, progreso: (t: string) => void): Promise<void> {
 	const filas = [];
 	for (const [i, p] of m.planos.entries()) {
 		progreso(`Preparando ${p.titulo} (${i + 1} de ${m.planos.length})…`);
@@ -90,72 +63,4 @@ async function enviar(revision: string, id: string, m: Manifiesto, progreso: (t:
 	// la promoción pasa a «Planos comerciales por validar» en MUNE Portal
 	await sb.from('promociones').update({ estado: 'en_validacion' }).eq('id', id);
 	await anotar('envía los planos a la promotora', { promocion: id, version: m.version, planos: filas.length });
-}
-
-function chip(p: PlanoEstado): string {
-	if (p.decision === 'aprobado') return `<span class="estado al-dia">${p.heredada_de ? `Aprobado en la ${esc(p.heredada_de)}` : 'Aprobado'}</span>`;
-	if (p.decision === 'rechazado') return '<span class="estado rechazado">Cambios pedidos</span>';
-	return '<span class="estado pendiente">Pendiente de validar</span>';
-}
-
-/**
- * Bloque «Planos de vN» dentro de Versiones: enviar a la promotora o ver cómo
- * va la validación. Llama a alCambiar cuando cambia algo (para repintar).
- */
-/** Frase que se muestra una vez, al repintar tras enviar los planos. */
-let trasEnviar = '';
-
-export function pintarPlanos(caja: HTMLElement, revision: string, id: string, version: string, m: Manifiesto | null, planos: PlanoEstado[], alCambiar: () => void): void {
-	if (!m && !planos.length) {
-		caja.innerHTML = '';
-		return;
-	}
-	if (!planos.length && m) {
-		caja.innerHTML = `
-			<h3 class="subtitulo">Planos de ${esc(version)} para la promotora</h3>
-			<p class="ayuda">MUNE ha preparado ${m.planos.length === 1 ? 'un plano' : `${m.planos.length} planos`}: ${m.planos.map((p) => esc(p.titulo)).join(', ')}.
-				Revisa la vista previa y, si todo está bien, envíaselos a la promotora para que los valide en MUNE Portal. Hasta entonces no los verá.</p>
-			<div class="acciones"><button class="boton" type="button" data-enviar-planos>Enviar los planos a la promotora</button></div>
-			<p class="aviso" data-progreso-planos role="status" hidden></p>`;
-		const b = caja.querySelector<HTMLButtonElement>('[data-enviar-planos]')!;
-		const aviso = caja.querySelector<HTMLElement>('[data-progreso-planos]')!;
-		b.addEventListener('click', async () => {
-			if (!confirm(`¿Enviar ${m.planos.length === 1 ? 'el plano' : `los ${m.planos.length} planos`} de la ${version} a la promotora?\n\nHazlo después de revisar la vista previa: la promotora los verá en MUNE Portal para aprobarlos o pedir cambios.`)) return;
-			b.disabled = true;
-			aviso.hidden = false;
-			aviso.classList.remove('error');
-			try {
-				await enviar(revision, id, m, (t) => { aviso.textContent = t; });
-				aviso.textContent = 'Avisando a la promotora por email…';
-				trasEnviar = `✓ Planos enviados. ${await avisarPromotora({ tipo: 'planos', promocion: id, version })}`;
-				alCambiar();
-			} catch (e) {
-				aviso.classList.add('error');
-				aviso.textContent = fallo('No se han podido enviar los planos', e);
-				b.disabled = false;
-			}
-		});
-		return;
-	}
-
-	const mensaje = trasEnviar;
-	trasEnviar = '';
-	const aprobados = planos.filter((p) => p.decision === 'aprobado').length;
-	caja.innerHTML = `
-		<h3 class="subtitulo">Planos de ${esc(version)} · ${aprobados} de ${planos.length} aprobados</h3>
-		${mensaje ? `<p class="aviso" role="status">${esc(mensaje)}</p>` : ''}
-		<div class="lista-planos">${planos.map((p) => `
-			<div class="fila-plano">
-				<span><strong>${esc(p.titulo)}</strong><br><span class="promo-lugar">${esc(p.detalle ?? '')}${p.viviendas ? ` · ${esc(p.viviendas)}` : ''}</span>
-					${p.decision ? `<br><span class="promo-lugar">${p.decision === 'aprobado' ? 'Aprobado' : 'Cambios pedidos'} por ${esc(p.persona ?? '—')} el ${esc(fecha(p.momento!))}${p.heredada_de ? ` (en la ${esc(p.heredada_de)}; no ha cambiado)` : ''}</span>` : ''}
-					${p.decision === 'rechazado' && p.comentario ? `<span class="nota-plano">«${esc(p.comentario)}»</span>` : ''}</span>
-				<span class="acciones">${chip(p)}<button class="enlace" type="button" data-ver-plano="${esc(p.ruta)}">Ver PDF</button></span>
-			</div>`).join('')}</div>`;
-	caja.querySelectorAll<HTMLButtonElement>('[data-ver-plano]').forEach((b) => b.addEventListener('click', async () => {
-		const ventana = window.open('about:blank', '_blank');
-		if (ventana) ventana.opener = null;
-		const { data, error } = await sb.storage.from('entregables').createSignedUrl(b.dataset.verPlano!, 300);
-		if (error || !data) { ventana?.close(); alert(traducir(error)); return; }
-		if (ventana) ventana.location.href = data.signedUrl;
-	}));
 }

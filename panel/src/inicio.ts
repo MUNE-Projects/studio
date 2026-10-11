@@ -1,22 +1,13 @@
 // Inicio de MUNE Studio: lo que necesita tu atención, con enlace a cada sitio.
 // Arriba, los avisos del sistema (015_sistema.sql); después, las versiones
-// pendientes con el estado de sus planos, la documentación por revisar y las
-// peticiones abiertas.
+// pendientes con el estado de su validación (planos comerciales y Experiencia
+// 3D), la documentación por revisar y las peticiones abiertas.
 
 import { esc, fecha, sb, traducir } from './comun';
 import { ESTADOS_PETICION, peticionesAbiertas } from './peticiones';
-import { estadoPlanos, leerManifiesto, resumenListos, type Listos } from './planos';
 import { avisosSistema, pintarAvisos } from './sistema';
+import { leerValidacion, pasoInicio } from './validacion';
 import { REVISION, estadoVersiones } from './versiones';
-
-/** Qué toca hacer con una versión pendiente, según sus planos. */
-const PASO: Record<Listos, [string, string, string]> = {
-	sin_planos: ['Revisar y publicar', 'pendiente', 'Revisa la vista previa y publícala si está bien.'],
-	sin_enviar: ['Enviar los planos', 'pendiente', 'Revisa la vista previa y envía los planos a la promotora.'],
-	pendientes: ['Esperando a la promotora', '', 'La promotora está revisando los planos.'],
-	cambios: ['Cambios pedidos', 'rechazado', 'La promotora ha pedido cambios en algún plano. Mira cuáles en la promoción.'],
-	listos: ['Lista para publicar', 'al-dia', 'La promotora ha aprobado todos los planos.'],
-};
 
 export async function pantallaInicio(destino: HTMLElement): Promise<void> {
 	destino.innerHTML = `
@@ -60,19 +51,23 @@ export async function pantallaInicio(destino: HTMLElement): Promise<void> {
 		const e = await estadoVersiones(p.id);
 		if (!e.pendiente) return null;
 		const version = e.rev!.version;
-		const [m, planos] = await Promise.all([leerManifiesto(REVISION, p.id, version), estadoPlanos(p.id, version).catch(() => [])]);
-		return { p, version, fechaV: e.rev!.fecha, listos: resumenListos(planos, !!m), aprobados: planos.filter((x) => x.decision === 'aprobado').length, total: planos.length };
+		let paso: [string, string, string, number];
+		try {
+			paso = pasoInicio(await leerValidacion(REVISION, p.id, version));
+		} catch (err) {
+			console.error('[MUNE Studio]', err);
+			paso = ['Sin comprobar', '', 'No se ha podido comprobar la validación. Ábrela para verla.', 6];
+		}
+		return { p, version, fechaV: e.rev!.fecha, paso };
 	})).then((lista) => {
-		// Primero lo que depende de ti (publicar, enviar planos, corregir); al final lo que espera a la promotora
-		const orden: Listos[] = ['listos', 'cambios', 'sin_enviar', 'sin_planos', 'pendientes'];
-		const pendientes = lista.filter((x) => x !== null).sort((a, b) => orden.indexOf(a.listos) - orden.indexOf(b.listos));
+		// Primero lo que depende de ti (publicar, corregir, enviar); al final lo que espera a la promotora
+		const pendientes = lista.filter((x) => x !== null).sort((a, b) => a.paso[3] - b.paso[3]);
 		const caja = destino.querySelector<HTMLElement>('[data-versiones]');
 		if (!caja) return;
 		caja.innerHTML = pendientes.length ? `<div class="lista-enlaces">${pendientes.map((x) => {
-			const [etiqueta, clase, texto] = PASO[x.listos];
-			const cuenta = x.total && x.listos !== 'listos' ? ` (${x.aprobados} de ${x.total} planos aprobados)` : '';
+			const [etiqueta, clase, texto] = x.paso;
 			return `<a class="fila-enlace" href="#/promocion/${esc(x.p.id)}/resumen">
-				<span><strong>${esc(x.p.nombre)} · ${esc(x.version)}</strong><br><span class="promo-lugar">${esc(x.p.promotoras?.nombre ?? '')} · preparada el ${esc(fecha(x.fechaV))}. ${esc(texto)}${esc(cuenta)}</span></span>
+				<span><strong>${esc(x.p.nombre)} · ${esc(x.version)}</strong><br><span class="promo-lugar">${esc(x.p.promotoras?.nombre ?? '')} · preparada el ${esc(fecha(x.fechaV))}. ${esc(texto)}</span></span>
 				<span class="estado ${clase}">${esc(etiqueta)}</span>
 			</a>`;
 		}).join('')}</div>` : '<p class="vacio">Nada pendiente: todas las promociones están al día.</p>';

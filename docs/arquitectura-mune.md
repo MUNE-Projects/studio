@@ -230,7 +230,7 @@ La promotora configura las listas de aprobadores. No las decide MUNE Projects.
 
 ### Reglas comunes
 
-- **Sin aprobadores no se valida.** Si no hay aprobadores definidos, el Portal muestra «Define quién debe validar los planos comerciales antes de iniciar la revisión.» (o el equivalente de la Experiencia 3D) y no permite cerrar la validación. **No existe** la regla de «basta una persona».
+- **Sin aprobadores no se valida.** Si no hay aprobadores definidos, el Portal muestra «Para poder publicar, alguien tiene que validar los planos comerciales, y todavía no hay nadie designado.» (o el equivalente de la Experiencia 3D) y no permite cerrar la validación. **No existe** la regla de «basta una persona».
 - **Validado:** cuando **todos** los aprobadores requeridos han aprobado. Se muestra el avance como «{n} de {total} aprobaciones».
 - **Pedir cambios:** el comentario es obligatorio.
   - En la Experiencia 3D, además, se puede indicar la vista o zona (opcional). Por ejemplo: «Tipología A · Dormitorio principal · La ventana debe llegar hasta…».
@@ -308,41 +308,23 @@ La promotora escribe sus propios textos legales en MUNE Portal (*Ficha y datos*,
 - Entran en la siguiente versión que se prepare, como cualquier otro cambio: se revisan en la vista previa y se publican con la versión.
 - Se implementan en el **paso 2**. Su uso en la Experience, los planos y los renders llega con la siguiente versión preparada.
 
-## 5. Exportar personalizaciones
+## 5. Selecciones de personalización y su exportación (11/10/2026)
 
-En MUNE Portal, en el área de personalización, el botón **«Exportar personalizaciones»**.
+Nadie registra nada a mano: ni la promotora ni el comprador hacen ningún paso más.
 
-- **Quién puede usarlo:** los administradores (dentro de su alcance) y quien tenga `personalizacion`.
-- **Qué contiene:** solo las **personalizaciones formalizadas**.
-- **El importe:** siempre «**importe formalizado**». Nunca «cobrado», «ingresado» ni «pagado»: MUNE no comprueba la recepción del dinero.
-- **No incluye:**
-  - costes internos, márgenes ni costes de constructora;
-  - nombre, DNI o NIE, email ni teléfono del comprador;
-  - justificantes ni IBAN.
+- **Al descargar el PDF** de su selección, la experiencia guarda sola en MUNE la selección del comprador (opciones, importe y fecha) para su vivienda y ese pack. Si descarga varias veces, cuenta la última.
+- **Mientras el pack está abierto**, la selección está **«Seleccionada»**. **Al terminar el periodo del pack**, la última selección descargada pasa sola a **«Cerrada»**, queda bloqueada para el comprador y es su histórico al volver con el código. Si no descargó nada, se queda con lo incluido de serie.
+- **Cada pack por separado**: lo cerrado de un pack no cambia cuando se abre el siguiente.
+- **Los importes los calcula MUNE** con el catálogo guardado en Supabase, nunca el navegador del comprador. Por eso se construye junto con los datos privados (bloque C, paso 5).
 
-El Excel tiene dos hojas:
+**Exportar personalizaciones** (MUNE Portal, *Personalización*; administradores dentro de su alcance y quien tenga `personalizacion`): Excel con
 
-1. **Resumen.** Una fila por vivienda:
-   - vivienda;
-   - tipología;
-   - número de packs con selección formalizada;
-   - fecha de la última formalización;
-   - importe total formalizado.
+1. **Resumen**: una fila por vivienda con tipología, número de packs con selección cerrada, fecha de la última, **importe de la selección cerrada** de la vivienda y, al final, el importe total de la promoción (y un resumen por pack).
+2. **Detalle**: una fila por opción (vivienda, tipología, pack, estado *Seleccionada* o *Cerrada*, fecha, categoría, opción, detalle, importe; las incluidas con 0 €).
 
-   Al final, el **importe total formalizado de la promoción**, y un resumen por pack.
-2. **Detalle.** Una fila por opción formalizada:
-   - vivienda;
-   - tipología;
-   - pack;
-   - fecha de formalización;
-   - categoría;
-   - opción;
-   - detalle;
-   - importe.
+Nunca «formalizado», «cobrado», «ingresado» ni «pagado»: MUNE no comprueba la firma ni el pago. Sin datos personales (ni nombre, DNI/NIE, email, teléfono, justificantes ni IBAN) ni costes internos.
 
-   Las opciones incluidas aparecen con 0 € si forman parte de la selección.
-
----
+**Fechas de los packs desde MUNE Portal**: se hará en la **Fase 2**, junto con la gestión del catálogo, las opciones, los precios y los packs desde el Portal, para que esté todo junto (decisión del 11/10/2026). Hasta entonces, las fechas las prepara MUNE con cada versión.
 
 ## 6. Datos privados (bloque C)
 
@@ -389,6 +371,7 @@ La evolución hacia fases o grupos configurables se revisará aparte. Hasta ento
 
 - **Remitente de los emails:** `hello.muneprojects@gmail.com` debe sustituirse por una dirección con dominio propio de MUNE. Es una decisión con coste, que se consultará antes.
 - Las demás decisiones del primer cliente siguen en `docs/arquitectura.md`. Por ejemplo, Supabase Pro.
+- **Partes activables por promoción (pedido el 11/10/2026, pendiente de propuesta):** al dar de alta una promoción, la administradora pregunta antes a la promotora (fase del proyecto, si tiene personalizaciones por vivienda…). En MUNE Studio podrá activar o desactivar partes de cada promoción (por ejemplo Personalización o Compradores); lo desactivado no aparece en MUNE Portal ni en la experiencia pública. La fase del proyecto la puede indicar ella al dar de alta o la promotora, y cambiarse después (ya hecho).
 
 ---
 
@@ -424,7 +407,7 @@ Se implementa dentro del **paso 2**.
 | **0** | Revisión de marca y textos, con todos los cambios editoriales de esta decisión. Después del merge: los pasos de Supabase (`016`, `017`, la función `avisar-promotora` y los 2 emails) |
 | **1** | Nombres y estructura: `taller` → `studio`, `escaparate` → `experience`, Panel → Studio, Workers, carpetas, 2FA, documentación y Supabase visible |
 | **2** | Equipos, administración y validaciones: alta de promotora con datos y administradores, administradores, capacidades, separación entre `compradores` y `personalizacion`, Equipo en el Portal, validación de planos comerciales y de Experiencia 3D, varios aprobadores, trazabilidad, emails, varios archivos por documento (con nombre) y textos legales |
-| **3** | Exportar personalizaciones formalizadas. Si es pequeño y limpio, se añade al final del paso 2 |
+| **3** | Selecciones guardadas al descargar el PDF, fechas de packs desde el Portal y exportación: van con el paso 5 (datos privados) |
 | **4** | Experience integrada en el Portal: modo profesional, previsualización de la personalización, Render HD, materiales y fin del acceso profesional público |
 | **5** | Datos privados fuera de lo público |
 

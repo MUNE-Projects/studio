@@ -10,8 +10,14 @@
 // Cada plano lleva dos huellas: la del archivo (lo que se aprueba) y la de sus
 // datos (geometría, superficies, marca…). Si en una versión nueva los datos no
 // cambian, el plano es el mismo dibujo y su aprobación anterior sigue valiendo.
+//
+// También lista las unidades de validación de la Experiencia 3D
+// (generarUnidadesExperiencia → experiencia.json): una por tipología y variante
+// (o por vivienda en las unifamiliares). Las distribuciones alternativas son
+// elecciones del comprador y van dentro de la unidad de su tipología.
 
-import { PROMOCION, cargarModelo } from '../promocion/promocion';
+import { CATALOGO, PROMOCION, cargarModelo, claveUnidad } from '../promocion/promocion';
+import { activoPara, BIBLIOTECA } from '../biblioteca/biblioteca';
 import { aplicarAlternativa } from '../configurador/alternativas';
 import { planoPDF, planoPNG, type DatosPlano } from './plano';
 import type { Alternativa, ViviendaPromocion } from '../modelo/tipos';
@@ -132,4 +138,84 @@ export async function generarLote( avisar: ( t: string ) => void = () => {} ): P
 
 }
 
-( window as unknown as { generarLote: typeof generarLote } ).generarLote = generarLote;
+// ---------------------------------------------------------------- Experiencia 3D
+
+export interface UnidadExperiencia {
+	clave: string;
+	titulo: string;
+	detalle: string;
+	viviendas: string;
+	orden: number;
+	/** sha256 de todo lo que define el 3D de la unidad (si no cambia, su validación sigue valiendo). */
+	huella: string;
+	/** Vistas guiadas de la tipología (selector opcional «Vista / zona» al pedir cambios). */
+	vistas: { id: string; nombre: string }[];
+}
+
+/** JSON con las claves ordenadas: el mismo texto para los mismos datos, en cualquier ejecución. */
+const canonico = ( x: unknown ): string => {
+
+	if ( Array.isArray( x ) ) return `[${ x.map( canonico ).join( ',' ) }]`;
+	if ( x && typeof x === 'object' ) {
+
+		return `{${ Object.keys( x ).filter( ( k ) => ( x as Record<string, unknown> )[ k ] !== undefined ).sort()
+			.map( ( k ) => `${ JSON.stringify( k ) }:${ canonico( ( x as Record<string, unknown> )[ k ] ) }` ).join( ',' ) }}`;
+
+	}
+	return JSON.stringify( x ) ?? 'null';
+
+};
+
+/** Unidades de validación de la Experiencia 3D, en el orden de la promoción. */
+export async function generarUnidadesExperiencia(): Promise<UnidadExperiencia[]> {
+
+	const unifamiliar = PROMOCION.promocion.tipo === 'unifamiliar';
+	const grupos = new Map<string, ViviendaPromocion[]>();
+	for ( const v of PROMOCION.viviendas ) grupos.set( claveUnidad( v ), [ ...( grupos.get( claveUnidad( v ) ) ?? [] ), v ] );
+
+	const salida: UnidadExperiencia[] = [];
+	for ( const [ clave, vs ] of grupos ) {
+
+		const v0 = vs[ 0 ];
+		const modelo = cargarModelo( v0.tipologia, v0.espejo );
+		const t = modelo.tipologia;
+		const permitidas = PROMOCION.tipologias.find( ( x ) => x.id === v0.tipologia )?.opciones ?? {};
+		const alternativas = permitidas.distribucion?.some( ( d ) => d !== 'base' ) ? modelo.alternativas : [];
+
+		// catálogo que admite la tipología (con los parámetros de cada opción; sin
+		// precios, que no cambian el 3D) y las restricciones de cada vivienda
+		const catalogo = CATALOGO.categorias.map( ( c ) => ( {
+			...c, opciones: c.opciones.filter( ( o ) => ( permitidas[ c.id ] ?? [] ).includes( o.id ) ).map( ( { precio: _precio, ...o } ) => o ),
+		} ) ).filter( ( c ) => c.opciones.length );
+		const restricciones = Object.fromEntries( vs.filter( ( v ) => v.opciones ).map( ( v ) => [ v.ref, v.opciones ] ) );
+
+		// activos de la biblioteca que aparecen: mobiliario del plano (también el de
+		// las alternativas) y decoración de la ambientación
+		const equipos = [ ...modelo.vivienda.equipamiento, ...alternativas.flatMap( ( a ) => a.equipamiento.anadir ) ];
+		const ids = new Set( [
+			...equipos.map( ( e ) => activoPara( e.id, e.tipo, modelo.ambientacion )?.id ),
+			...( modelo.ambientacion?.decoracion ?? [] ).map( ( d ) => d.activo ),
+		].filter( ( x ): x is string => !! x ) );
+		const activos = BIBLIOTECA.activos.filter( ( a ) => ids.has( a.id ) );
+
+		const huella = await sha256( canonico( {
+			tipologia: t, vivienda: modelo.vivienda, alternativas, ambientacion: modelo.ambientacion,
+			catalogo, restricciones, activos, ficha: unifamiliar ? v0 : null,
+		} ) );
+		const dormitorios = `${ t.dormitorios } dormitorio${ t.dormitorios === 1 ? '' : 's' } · ${ t.banos } baño${ t.banos === 1 ? '' : 's' }`;
+		salida.push( {
+			clave,
+			titulo: unifamiliar ? `Vivienda ${ v0.ref }` : `${ t.nombre }${ v0.espejo ? ' · espejo' : '' }`,
+			detalle: `${ dormitorios }${ alternativas.length ? ` · con ${ alternativas.length === 1 ? 'la distribución alternativa' : 'las distribuciones alternativas' } ${ alternativas.map( ( a ) => `«${ a.nombre }»` ).join( ', ' ) }` : '' }`,
+			viviendas: vs.map( ( v ) => v.ref ).join( ', ' ),
+			orden: salida.length,
+			huella,
+			vistas: t.guiadas.filter( ( k ) => t.vistas[ k ] ).map( ( k ) => ( { id: k, nombre: t.vistas[ k ].nombre } ) ),
+		} );
+
+	}
+	return salida;
+
+}
+
+Object.assign( window as unknown as Record<string, unknown>, { generarLote, generarUnidadesExperiencia } );

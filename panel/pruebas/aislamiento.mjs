@@ -136,12 +136,16 @@ const personas = [
 	[ 'aprobadora.a@prueba.local', pA.id, null, 'Directora' ],
 	[ 'aprobadora.b@prueba.local', pB.id, 'prueba-b', 'Técnica' ],
 ];
+// (quien tiene acceso a todas administra la promotora: 020_equipos_y_validaciones.sql)
+const idDe = {};
 for ( const [ email, promotora, promocion, cargo ] of personas ) {
 
-	const id = await crearUsuario( email );
-	await exigir( admin.from( 'miembros' ).insert( { user_id: id, promotora_id: promotora, promocion_id: promocion, nombre: email, email, cargo } ), `acceso ${ email }` );
+	const id = idDe[ email ] = await crearUsuario( email );
+	await exigir( admin.from( 'miembros' ).insert( { user_id: id, promotora_id: promotora, promocion_id: promocion, nombre: email, email, cargo, administra: promocion === null } ), `acceso ${ email }` );
 
 }
+const gestorAId = idDe[ 'gestor.a@prueba.local' ];
+const aprobAId = idDe[ 'aprobadora.a@prueba.local' ];
 const gestorA = await entrar( 'gestor.a@prueba.local' );
 const aprobA = await entrar( 'aprobadora.a@prueba.local' );
 const aprobB = await entrar( 'aprobadora.b@prueba.local' );
@@ -403,15 +407,16 @@ await caso( DEBE_FUNCIONAR, 'Quien tiene acceso a todas ve todas las promociones
 
 } );
 
-await caso( DEBE_FUNCIONAR, 'Cualquier persona del equipo rellena los datos fiscales de su promoción y de su promotora (y nada más)', async () => {
+await caso( DEBE_FUNCIONAR, 'El equipo rellena los datos fiscales de su promoción; los de la promotora, solo quien la administra (y nada más)', async () => {
 
 	await exigir( gestorA.rpc( 'guardar_datos_promocion', { p_promocion: 'prueba-a', p_razon_social: 'Las Eras Promociones S.L.', p_cif: 'b11111111', p_domicilio_fiscal: 'Calle Mayor 1' } ), 'datos promoción' );
-	await exigir( gestorA.rpc( 'guardar_datos_promotora', { p_promotora: pA.id, p_razon_social: 'Grupo A S.A.', p_cif: 'a22222222', p_domicilio_fiscal: 'Calle Real 2', p_contacto: 'info@a.local' } ), 'datos promotora' );
+	const sinAdministrar = await gestorA.rpc( 'guardar_datos_promotora', { p_promotora: pA.id, p_razon_social: 'x', p_cif: 'x', p_domicilio_fiscal: 'x', p_contacto: 'x' } );
+	await exigir( aprobA.rpc( 'guardar_datos_promotora', { p_promotora: pA.id, p_razon_social: 'Grupo A S.A.', p_cif: 'a22222222', p_domicilio_fiscal: 'Calle Real 2', p_contacto: 'info@a.local' } ), 'datos promotora' );
 	const p = await filaDe( 'promociones', 'prueba-a' );
 	const po = ( await servicio.from( 'promotoras' ).select( 'cif' ).eq( 'id', pA.id ).single() ).data;
-	const ajena = await gestorA.rpc( 'guardar_datos_promotora', { p_promotora: pB.id, p_razon_social: 'x', p_cif: 'x', p_domicilio_fiscal: 'x', p_contacto: 'x' } );
+	const ajena = await aprobA.rpc( 'guardar_datos_promotora', { p_promotora: pB.id, p_razon_social: 'x', p_cif: 'x', p_domicilio_fiscal: 'x', p_contacto: 'x' } );
 	const directa = await gestorA.from( 'promociones' ).update( { cif: 'X' } ).eq( 'id', 'prueba-a' );
-	return p.cif === 'B11111111' && p.estado === 'documentacion' && po.cif === 'A22222222' && falla( ajena ) && falla( directa );
+	return p.cif === 'B11111111' && p.estado === 'documentacion' && po.cif === 'A22222222' && falla( ajena ) && falla( directa ) && falla( sinAdministrar );
 
 } );
 
@@ -467,6 +472,9 @@ await caso( DEBE_FUNCIONAR, 'A descarga su documento y sus entregables', async (
 	! falla( await gestorA.storage.from( 'documentos' ).download( docA.ruta ) )
 	&& ! falla( await gestorA.storage.from( 'entregables' ).download( planoA.ruta ) )
 	&& ! falla( await gestorA.storage.from( 'entregables' ).createSignedUrl( planoA.ruta, 60 ) ) );
+
+// Quien administra la promoción elige quién valida los planos comerciales.
+await exigir( aprobA.rpc( 'guardar_aprobadores', { p_promocion: 'prueba-a', p_tipo: 'planos', p_personas: [ aprobAId ] } ), 'aprobadores prueba-a' );
 
 await caso( DEBE_FUNCIONAR, 'La aprobadora de A aprueba su plano: queda la huella del archivo exacto', async () => {
 
@@ -529,6 +537,7 @@ const [ reqBorrar ] = await exigir( admin.from( 'requisitos' ).insert( { promoci
 req[ 'prueba-borrar' ] = reqBorrar.id;
 const docBorrar = await subirDocumento( aprobA, pA.id, 'prueba-borrar', 'documento que se borra' );
 const planoBorrar = await entregable( 'prueba-borrar', 'plano que se borra' );
+await exigir( admin.rpc( 'guardar_aprobadores', { p_promocion: 'prueba-borrar', p_tipo: 'planos', p_personas: [ aprobAId ] } ), 'aprobadores prueba-borrar' );
 await exigir( aprobA.from( 'validaciones' ).insert( { entregable_id: planoBorrar.id, decision: 'aprobado', confirmado: true } ), 'validar plano prueba-borrar' );
 const idEquipoBorrar = await crearUsuario( 'equipo.borrar@prueba.local' );
 await exigir( admin.from( 'miembros' ).insert( { user_id: idEquipoBorrar, promotora_id: pA.id, promocion_id: 'prueba-borrar', nombre: 'Equipo', email: 'equipo.borrar@prueba.local' } ), 'acceso prueba-borrar' );
@@ -659,8 +668,11 @@ await caso( DEBE_FUNCIONAR, 'Planos: la promotora valida, se publica solo con to
 
 	const listos = async ( v ) => ( await exigir( admin.rpc( 'planos_listos', { p_promocion: 'prueba-a', p_version: v } ), 'planos_listos' ) );
 	const antes = await listos( 'v2' ); // a aprobado, b pendiente
+	// dos aprobadores desde ahora: «a» ya estaba validado y lo sigue estando
+	await exigir( aprobA.rpc( 'guardar_aprobadores', { p_promocion: 'prueba-a', p_tipo: 'planos', p_personas: [ aprobAId, gestorAId ] } ), 'dos aprobadores' );
 	const { data: rech } = await exigir( gestorA.from( 'validaciones' ).insert( { entregable_id: plano( v2, 'b' ), decision: 'rechazado', comentario: 'La terraza mide 24 m²' } ).select( 'id' ), 'pedir cambios b' ).then( ( d ) => ( { data: d } ) );
 	const cambios = await listos( 'v2' );
+	const deVersion = async ( v, clave ) => ( await exigir( gestorA.rpc( 'validacion_de_version', { p_promocion: 'prueba-a', p_version: v, p_tipo: 'planos' } ), 'validación' ) ).find( ( x ) => x.clave === clave );
 	// aviso por email: solo quien validó, y una vez
 	const ajeno = await aprobA.rpc( 'marcar_aviso_validacion', { p_validacion: rech[ 0 ].id } );
 	const primero = await gestorA.rpc( 'marcar_aviso_validacion', { p_validacion: rech[ 0 ].id } );
@@ -670,10 +682,16 @@ await caso( DEBE_FUNCIONAR, 'Planos: la promotora valida, se publica solo con to
 	const enV3 = await exigir( gestorA.rpc( 'planos_de_version', { p_promocion: 'prueba-a', p_version: 'v3' } ), 'planos v3 del equipo' );
 	const pendiente = await listos( 'v3' );
 	await exigir( gestorA.from( 'validaciones' ).insert( { entregable_id: plano( v3, 'b' ), decision: 'aprobado', confirmado: true } ), 'aprobar b v3' );
+	const parcial = await deVersion( 'v3', 'b' );
+	const aMitad = await listos( 'v3' );
+	await exigir( aprobA.from( 'validaciones' ).insert( { entregable_id: plano( v3, 'b' ), decision: 'aprobado', confirmado: true } ), 'aprobar b v3 (2)' );
 	const final = await listos( 'v3' );
+	const completo = await deVersion( 'v3', 'b' );
 	const a3 = enV3.find( ( x ) => x.clave === 'a' );
 	return antes === 'pendientes' && cambios === 'cambios' && ajeno.data === false && primero.data === true && segundo.data === false
 		&& a3.decision === 'aprobado' && a3.heredada_de === 'v2' && pendiente === 'pendientes' && final === 'listos'
+		&& parcial.estado === 'parcial' && parcial.aprobados === 1 && parcial.requeridos === 2 && aMitad === 'pendientes'
+		&& completo.estado === 'aprobado' && completo.personas.length === 2
 		&& ( await listos( 'v7' ) ) === 'sin_enviar';
 
 } );
@@ -839,7 +857,7 @@ async function ultimoEmail( para ) {
 
 await caso( DEBE_FALLAR, '22. Una promotora intenta dar acceso a alguien (o llamar sin sesión)', async () => {
 
-	const r1 = await invitar( aprobA, { accion: 'invitar', promotora_id: pA.id, nombre: 'Intrusa', email: 'intrusa@prueba.local', cargo: 'x' } );
+	const r1 = await invitar( gestorA, { accion: 'invitar', promotora_id: pA.id, nombre: 'Intrusa', email: 'intrusa@prueba.local', cargo: 'x' } );
 	const r2 = await invitar( anonimo, { accion: 'invitar', promotora_id: pA.id, promocion_id: 'prueba-a', nombre: 'Intrusa', email: 'intrusa@prueba.local' } );
 	const cuenta = await servicio.rpc( 'cuenta_por_email', { p_email: 'intrusa@prueba.local' } );
 	if ( estadoHttp( r1 ) !== 403 || ! [ 401, 403 ].includes( estadoHttp( r2 ) ) ) throw new Error( `respuestas ${ estadoHttp( r1 ) } y ${ estadoHttp( r2 ) }` );
@@ -941,6 +959,174 @@ await caso( DEBE_FUNCIONAR, 'La vigilancia da señales sin sesión (solo recibe 
 	const despues = await exigir( admin.rpc( 'avisos_sistema' ), 'avisos después' );
 	const pasada = await admin.rpc( 'renovar_llave', { p_id: 'llave-a', p_caduca: '2020-01-01' } );
 	return ! despues.some( ( x ) => x.clave === 'llave:llave-a' ) && falla( pasada );
+
+} );
+
+// ─── Equipos, administración y validaciones (020) ───────────────────────────
+
+// Personas de A con capacidades parciales y un administrador de promoción.
+const altaEquipo = async ( email, promocion, capacidades, administra = false ) => {
+
+	const id = await crearUsuario( email );
+	await exigir( admin.from( 'miembros' ).insert( { user_id: id, promotora_id: pA.id, promocion_id: promocion, nombre: email, email, capacidades, administra } ), `acceso ${ email }` );
+	return { id, sb: await entrar( email ) };
+
+};
+const soloCompradores = await altaEquipo( 'compradores.a@prueba.local', 'prueba-a', [ 'compradores' ] );
+const soloPersonalizacion = await altaEquipo( 'personalizacion.a@prueba.local', 'prueba-a', [ 'personalizacion' ] );
+const adminPromA = await altaEquipo( 'admin.promocion.a@prueba.local', 'prueba-a', [], true );
+const nuevaPersona = await crearUsuario( 'equipo.nuevo.a@prueba.local' );
+
+await caso( DEBE_FALLAR, '34. Capacidades: sin la capacidad no se ve ni se cambia esa parte (documentación, selecciones, ficha, formalización, códigos)', async () => {
+
+	const c = soloCompradores.sb;
+	const r = {
+		requisitos: ( await c.from( 'requisitos' ).select( 'id' ).eq( 'promocion_id', 'prueba-a' ) ).data?.length === 0,
+		documentos: ( await c.from( 'documentos' ).select( 'id' ).eq( 'promocion_id', 'prueba-a' ) ).data?.length === 0,
+		subir: falla( await subirDocumento( c, pA.id, 'prueba-a', 'sin capacidad' ) ),
+		selecciones: ( await c.from( 'selecciones_comprador' ).select( 'id' ).eq( 'promocion_id', 'prueba-a' ) ).data?.length === 0,
+		ficha: falla( await c.rpc( 'guardar_datos_promocion', { p_promocion: 'prueba-a', p_razon_social: 'x', p_cif: 'x', p_domicilio_fiscal: 'x' } ) ),
+		formalizacion: falla( await c.rpc( 'guardar_formalizacion', { p_promocion: 'prueba-a', p_contacto_nombre: '', p_contacto_email: 'a@b.es', p_contacto_telefono: '', p_titular: '', p_banco: '', p_iban: '', p_bic: '', p_concepto: '', p_plazo_dias: null, p_instrucciones: '' } ) ),
+		legales: falla( await c.rpc( 'guardar_textos_legales', { p_promocion: 'prueba-a', p_planos: 'x', p_renders: '', p_experiencia: '', p_personalizacion: '' } ) ),
+		codigosDePersonalizacion: falla( await soloPersonalizacion.sb.rpc( 'codigos_de_promocion', { p_promocion: 'prueba-a' } ) ),
+		fase: falla( await c.rpc( 'cambiar_fase_proyecto', { p_promocion: 'prueba-a', p_fase: 'basico' } ) ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! r[ k ] );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Capacidades: con «compradores» se gestionan los códigos; con «personalizacion», las selecciones y los textos de formalización', async () => {
+
+	const codigos = await soloCompradores.sb.rpc( 'codigos_de_promocion', { p_promocion: 'prueba-a' } );
+	const selecciones = await soloPersonalizacion.sb.from( 'selecciones_comprador' ).select( 'id' ).eq( 'promocion_id', 'prueba-a' );
+	const formalizacion = await soloPersonalizacion.sb.rpc( 'guardar_formalizacion', { p_promocion: 'prueba-a', p_contacto_nombre: '', p_contacto_email: 'ventas@a.local', p_contacto_telefono: '', p_titular: '', p_banco: '', p_iban: '', p_bic: '', p_concepto: '', p_plazo_dias: null, p_instrucciones: '' } );
+	return ! codigos.error && ! selecciones.error && ! formalizacion.error;
+
+} );
+
+await caso( DEBE_FALLAR, '35. Equipo: quien no administra da accesos; otra promotora ve el equipo; quien administra una promoción se sale de ella, nombra administradores o toca a quien administra la promotora; nadie se cambia a sí mismo ni deja la promotora sin administrar', async () => {
+
+	const filaAprobA = ( await servicio.from( 'miembros' ).select( 'id' ).eq( 'user_id', aprobAId ).single() ).data;
+	const filaAdminProm = ( await servicio.from( 'miembros' ).select( 'id' ).eq( 'user_id', adminPromA.id ).single() ).data;
+	const dar = ( sb, promocion, administra = false ) => sb.rpc( 'dar_acceso', { p_user: nuevaPersona, p_promotora: pA.id, p_promocion: promocion, p_nombre: 'Nueva', p_cargo: '', p_administra: administra, p_capacidades: [ 'documentacion' ] } );
+	const r = {
+		gestorDa: dar( gestorA, 'prueba-a' ),
+		otraPromotoraVe: aprobB.rpc( 'equipo_de_promotora', { p_promotora: pA.id } ),
+		otraPromotoraDa: dar( aprobB, 'prueba-a' ),
+		adminPromFuera: dar( adminPromA.sb, 'prueba-a2' ),
+		adminPromATodas: dar( adminPromA.sb, null ),
+		adminPromNombraAdmin: dar( adminPromA.sb, 'prueba-a', true ),
+		adminPromTocaDirectora: adminPromA.sb.rpc( 'cambiar_acceso', { p_id: filaAprobA.id, p_activo: false, p_administra: null, p_capacidades: null } ),
+		seCambiaASiMismo: adminPromA.sb.rpc( 'cambiar_acceso', { p_id: filaAdminProm.id, p_activo: null, p_administra: null, p_capacidades: [ 'documentacion' ] } ),
+		ultimaAdministradora: admin.rpc( 'cambiar_acceso', { p_id: filaAprobA.id, p_activo: false, p_administra: null, p_capacidades: null } ),
+		cuentaInterna: aprobA.rpc( 'dar_acceso', { p_user: robotId, p_promotora: pA.id, p_promocion: 'prueba-a', p_nombre: 'Robot', p_cargo: '', p_administra: false, p_capacidades: [] } ),
+		capacidadInventada: dar( aprobA, 'prueba-a' ).then( () => aprobA.rpc( 'dar_acceso', { p_user: nuevaPersona, p_promotora: pA.id, p_promocion: 'prueba-a', p_nombre: 'Nueva', p_cargo: '', p_administra: false, p_capacidades: [ 'todo' ] } ) ),
+	};
+	for ( const k of Object.keys( r ) ) r[ k ] = await r[ k ];
+	const noFallan = Object.keys( r ).filter( ( k ) => ! falla( r[ k ] ) );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Equipo: quien administra la promotora da accesos con capacidades y ve a todo su equipo; quien administra una promoción gestiona a las personas de esa promoción; el resto del equipo lo ve sin poder cambiarlo', async () => {
+
+	const idA2 = await exigir( aprobA.rpc( 'dar_acceso', { p_user: nuevaPersona, p_promotora: pA.id, p_promocion: 'prueba-a2', p_nombre: 'Nueva', p_cargo: 'Técnica', p_administra: false, p_capacidades: [ 'planos' ] } ), 'dar acceso a2' );
+	const equipo = await exigir( aprobA.rpc( 'equipo_de_promotora', { p_promotora: pA.id } ), 'equipo' );
+	const filaNueva = equipo.find( ( m ) => m.id === idA2 );
+	// el administrador de prueba-a ve su promoción (y quién tiene acceso a todas), no prueba-a2
+	const suEquipo = await exigir( adminPromA.sb.rpc( 'equipo_de_promotora', { p_promotora: pA.id } ), 'equipo de la promoción' );
+	const idGestor = ( await servicio.from( 'miembros' ).select( 'id' ).eq( 'user_id', gestorAId ).single() ).data.id;
+	await exigir( adminPromA.sb.rpc( 'cambiar_acceso', { p_id: idGestor, p_activo: null, p_administra: null, p_capacidades: [ 'documentacion', 'planos', 'compradores', 'personalizacion', 'materiales', 'datos' ], p_cargo: 'Comercial' } ), 'cambiar capacidades' );
+	const registro = ( await admin.from( 'registro' ).select( 'detalle' ).eq( 'accion', 'acceso_cambiado' ) ).data;
+	// quien no administra ve a su equipo de prueba-a, sin cambios ni datos de entrada, y no ve prueba-a2
+	const loVeGestor = await exigir( gestorA.rpc( 'equipo_de_promotora', { p_promotora: pA.id } ), 'equipo visto por el gestor' );
+	return loVeGestor.length > 1 && loVeGestor.every( ( m ) => m.activo && ! m.editable && m.aceptada === null && m.ultima_entrada === null
+		&& ( m.promocion_id === null || m.promocion_id === 'prueba-a' ) )
+		&& loVeGestor.some( ( m ) => m.user_id === aprobAId )
+		&& filaNueva?.promocion_id === 'prueba-a2' && filaNueva.capacidades.join() === 'planos' && filaNueva.editable
+		&& suEquipo.every( ( m ) => m.promocion_id === null || m.promocion_id === 'prueba-a' )
+		&& suEquipo.some( ( m ) => m.user_id === gestorAId && m.editable ) && suEquipo.some( ( m ) => m.user_id === aprobAId && ! m.editable )
+		&& registro.some( ( r ) => r.detalle.capacidades );
+
+} );
+
+await caso( DEBE_FALLAR, '36. Aprobadores: quien no administra los cambia, o se nombra a alguien sin acceso o sin la capacidad de planos', async () => {
+
+	const r = {
+		gestor: await gestorA.rpc( 'guardar_aprobadores', { p_promocion: 'prueba-a', p_tipo: 'planos', p_personas: [ gestorAId ] } ),
+		otraPromotora: await aprobB.rpc( 'guardar_aprobadores', { p_promocion: 'prueba-a', p_tipo: 'planos', p_personas: [] } ),
+		sinPlanos: await aprobA.rpc( 'guardar_aprobadores', { p_promocion: 'prueba-a', p_tipo: 'planos', p_personas: [ soloCompradores.id ] } ),
+		sinAcceso: await aprobA.rpc( 'guardar_aprobadores', { p_promocion: 'prueba-a', p_tipo: 'experiencia', p_personas: [ idDe[ 'aprobadora.b@prueba.local' ] ] } ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! falla( r[ k ] ) );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+// Experiencia 3D: una unidad por tipología o variante (sin archivo).
+const enviarExperiencia = ( version, unidades ) => admin.from( 'entregables' ).insert( unidades.map( ( [ clave, datos ], orden ) => ( {
+	promocion_id: 'prueba-a', version, tipo: 'experiencia', tipologia: clave, nombre: `Experiencia 3D · ${ clave }`,
+	ruta: `prueba-a/${ version }/experiencia/${ clave }`, huella: h( datos ), huella_datos: h( datos ), clave,
+	titulo: `Tipología ${ clave.toUpperCase() }`, orden, vistas: [ { id: 'cocina', nombre: 'Cocina' } ],
+} ) ) ).select( 'id, clave' );
+
+await caso( DEBE_FUNCIONAR, 'Experiencia 3D: sin aprobadores no se valida; con ellos, se aprueba por tipología, se piden cambios por zona y lo que no cambia conserva su aprobación', async () => {
+
+	const e5 = await exigir( enviarExperiencia( 'v5', [ [ 'a', '3d-a' ], [ 'b', '3d-b' ] ] ), 'experiencia v5' );
+	const sinAprobadores = await gestorA.from( 'validaciones' ).insert( { entregable_id: plano( e5, 'a' ), decision: 'aprobado', confirmado: true } );
+	const lista = async ( v ) => exigir( admin.rpc( 'validacion_lista', { p_promocion: 'prueba-a', p_version: v, p_tipo: 'experiencia' } ), 'validación lista' );
+	const antes = await lista( 'v5' );
+	await exigir( adminPromA.sb.rpc( 'guardar_aprobadores', { p_promocion: 'prueba-a', p_tipo: 'experiencia', p_personas: [ gestorAId, soloCompradores.id ] } ), 'aprobadores experiencia' );
+	const ajeno = await aprobA.from( 'validaciones' ).insert( { entregable_id: plano( e5, 'a' ), decision: 'aprobado', confirmado: true } );
+	await exigir( gestorA.from( 'validaciones' ).insert( { entregable_id: plano( e5, 'a' ), decision: 'aprobado', confirmado: true } ), 'aprobar a' );
+	await exigir( soloCompradores.sb.from( 'validaciones' ).insert( { entregable_id: plano( e5, 'a' ), decision: 'aprobado', confirmado: true } ), 'aprobar a (2)' );
+	await exigir( gestorA.from( 'validaciones' ).insert( { entregable_id: plano( e5, 'b' ), decision: 'rechazado', comentario: 'La encimera no es la de la memoria', zona: 'Cocina' } ), 'cambios b' );
+	const enCambios = await lista( 'v5' );
+	const vista = await exigir( soloCompradores.sb.rpc( 'validacion_de_version', { p_promocion: 'prueba-a', p_version: 'v5', p_tipo: 'experiencia' } ), 'ver experiencia' );
+	const e6 = await exigir( enviarExperiencia( 'v6', [ [ 'a', '3d-a' ], [ 'b', '3d-b-corregida' ] ] ), 'experiencia v6' );
+	const pendienteV6 = await lista( 'v6' );
+	for ( const sb of [ gestorA, soloCompradores.sb ] ) await exigir( sb.from( 'validaciones' ).insert( { entregable_id: plano( e6, 'b' ), decision: 'aprobado', confirmado: true } ), 'aprobar b v6' );
+	const v6 = await exigir( admin.rpc( 'validacion_de_version', { p_promocion: 'prueba-a', p_version: 'v6', p_tipo: 'experiencia' } ), 'v6' );
+	const ajenoVe = await aprobB.rpc( 'validacion_de_version', { p_promocion: 'prueba-a', p_version: 'v6', p_tipo: 'experiencia' } );
+	const b5 = vista.find( ( x ) => x.clave === 'b' );
+	return falla( sinAprobadores ) && /nadie designado para validar/.test( sinAprobadores.error.message ) && antes === 'sin_aprobadores'
+		&& falla( ajeno ) && enCambios === 'cambios' && b5.estado === 'cambios' && b5.personas.some( ( x ) => x.zona === 'Cocina' )
+		&& pendienteV6 === 'pendientes' && ( await lista( 'v6' ) ) === 'listos'
+		&& v6.find( ( x ) => x.clave === 'a' ).heredada_de === 'v5' && falla( ajenoVe );
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Documentos de varios archivos: cada archivo con lo que contiene y su propia versión; sustituir solo la más reciente', async () => {
+
+	const [ rv ] = await exigir( admin.from( 'requisitos' ).insert( { promocion_id: 'prueba-a', bloque: 'Calidades', elemento: 'Memoria de calidades técnica', varios: true, contenidos: [ 'Memoria técnica', 'Cuadro de carpinterías' ] } ).select( 'id' ), 'requisito varios' );
+	const subir = async ( extra, texto ) => {
+
+		const contenido = pdf( texto );
+		const ruta = `${ pA.id }/prueba-a/${ rv.id }/${ Date.now() }-${ texto.replace( /\W/g, '' ) }.pdf`;
+		await exigir( gestorA.storage.from( 'documentos' ).upload( ruta, contenido, { contentType: 'application/pdf' } ), 'subir archivo' );
+		return gestorA.from( 'documentos' ).insert( { promocion_id: 'prueba-a', requisito_id: rv.id, nombre: `${ texto }.pdf`, ruta, tipo: 'application/pdf', tamano: contenido.length, huella: huella( contenido ), ...extra } ).select( 'id, version, reemplaza_a, contenido, detalle' ).single();
+
+	};
+	const sinContenido = await subir( {}, 'sin contenido' );
+	const memoria = await exigir( subir( { contenido: 'Memoria técnica' }, 'memoria' ), 'memoria' );
+	const carpinterias = await exigir( subir( { contenido: 'Cuadro de carpinterías', detalle: 'Ventanas fachada sur' }, 'carpinterias' ), 'carpinterías' );
+	const memoria2 = await exigir( subir( { reemplaza_a: memoria.id }, 'memoria v2' ), 'sustituir memoria' );
+	const otraVez = await subir( { reemplaza_a: memoria.id }, 'memoria v2 bis' );
+	return falla( sinContenido ) && memoria.version === 1 && carpinterias.version === 1 && carpinterias.detalle === 'Ventanas fachada sur'
+		&& memoria2.version === 2 && memoria2.reemplaza_a === memoria.id && memoria2.contenido === 'Memoria técnica' && falla( otraVez );
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Textos legales: el equipo con «datos» los guarda; el robot los lee para preparar la versión', async () => {
+
+	await exigir( gestorA.rpc( 'guardar_textos_legales', { p_promocion: 'prueba-a', p_planos: 'Superficies orientativas.', p_renders: 'Imágenes no contractuales.', p_experiencia: 'Infografía orientativa.', p_personalizacion: '' } ), 'textos legales' );
+	const ajeno = await aprobB.rpc( 'guardar_textos_legales', { p_promocion: 'prueba-a', p_planos: 'x', p_renders: '', p_experiencia: '', p_personalizacion: '' } );
+	const leidos = ( await robot.from( 'promociones' ).select( 'textos_legales' ).eq( 'id', 'prueba-a' ).single() ).data;
+	return falla( ajeno ) && leidos.textos_legales.renders === 'Imágenes no contractuales.' && ! ( 'personalizacion' in leidos.textos_legales );
 
 } );
 

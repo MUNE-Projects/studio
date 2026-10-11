@@ -233,3 +233,26 @@ form.renovar label { margin: 0; }
 .historial-fases { margin-top: 8px; font-size: 0.92em; }
 .historial-fases ul { margin: 6px 0 0; padding-left: 18px; }
 label.desactivado { opacity: 0.45; pointer-events: none; }
+
+/* Equipos, administración y validaciones (020) */
+.estado.admin { background: #e6ecf4; color: #2a4466; }
+.estado.fase { background: #e9e4f5; color: #4a3878; }
+.estado.sin-fase { background: #f6ead6; color: #7a4d10; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--linea); color: var(--tinta-2); white-space: nowrap; }
+fieldset.capacidades { border: 1px solid var(--linea); border-radius: 8px; padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; }
+fieldset.capacidades legend { font-size: 13px; color: var(--tinta-2); padding: 0 4px; }
+fieldset.capacidades:disabled { opacity: 0.55; }
+.fila-admin { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; }
+@media (max-width: 640px) { .fila-admin { grid-template-columns: 1fr; } }
+.resultados { margin: 8px 0; padding-left: 20px; display: grid; gap: 4px; }
+.lista-simple { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.resumen-validacion { width: auto; margin: 4px 0 8px; }
+.resumen-validacion th { text-align: left; padding-right: 24px; font-weight: 600; }
+.personas-validacion { list-style: none; margin: 6px 0 0; padding-left: 0; font-size: 13px; display: grid; gap: 2px; }
+.aprobadores { margin: 10px 0; }
+.aprobadores p { margin: 4px 0; }
+p.ok { color: var(--acento); }
+.archivo-doc { display: grid; gap: 6px; margin: 8px 0; padding: 8px 0 0 10px; border-top: 1px dashed var(--linea); }
+.resumen-validacion th { text-transform: none; letter-spacing: normal; font-size: 14px; color: var(--tinta); vertical-align: top; }
+.resumen-validacion td { vertical-align: top; }

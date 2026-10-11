@@ -108,6 +108,20 @@ export function catalogoPara( v: ViviendaPromocion ): Configuracion {
 /** Vivienda que se enseña en la parte pública: la primera, sin espejar. */
 export const viviendaPublica = () => PROMOCION.viviendas.find( ( v ) => ! v.espejo ) ?? PROMOCION.viviendas[ 0 ];
 
+const limpio = ( s: string ) => s.toLowerCase().normalize( 'NFD' ).replace( /[^a-z0-9]+/g, '-' ).replace( /^-|-$/g, '' );
+
+/**
+ * Unidad de validación de la Experiencia 3D a la que pertenece una vivienda:
+ * plurifamiliar, por tipología y variante («a», «a-espejo»); unifamiliar, por
+ * vivienda («vivienda-bajo-a»). Las mismas claves que los planos sin alternativa.
+ */
+export const claveUnidad = ( v: ViviendaPromocion ) => PROMOCION.promocion.tipo === 'unifamiliar'
+	? limpio( `vivienda-${ v.ref }` )
+	: limpio( `${ v.tipologia }${ v.espejo ? '-espejo' : '' }` );
+
+/** Primera vivienda de una unidad (para revisarla desde MUNE Portal con ?ver=<clave>); null si no existe. */
+export const viviendaDeUnidad = ( clave: string | null ) => ( clave && PROMOCION.viviendas.find( ( v ) => claveUnidad( v ) === clave ) ) || null;
+
 async function sha256( texto: string ) {
 
 	const h = await crypto.subtle.digest( 'SHA-256', new TextEncoder().encode( texto ) );

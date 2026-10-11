@@ -1,6 +1,9 @@
 // Función «aviso-subida» de Supabase: aviso por email a la administradora cada
-// vez que una promotora sube un documento (Etapa 3) o valida un plano (Etapa 4:
-// aprueba o pide cambios; con { validacion_id } en lugar de { documento_id }).
+// vez que una promotora sube un documento (Etapa 3) o valida un plano
+// comercial o una tipología de la Experiencia 3D (aprueba o pide cambios; con
+// { validacion_id } en lugar de { documento_id }). El aviso de validación dice
+// el avance («1 de 2 aprobaciones»), la zona si la indicó, y si ya se puede
+// publicar (planos comerciales y Experiencia 3D validados).
 //
 // 1. La llama el portal justo después de subir el documento, con la sesión de
 //    quien lo ha subido.
@@ -76,22 +79,38 @@ Deno.serve(async (req) => {
 		});
 	};
 
-	// Validación de un plano (aprobado o cambios pedidos)
+	// Validación de un plano comercial o de la Experiencia 3D (aprobado o cambios pedidos)
 	if (Number.isInteger(validacion) && validacion > 0) {
 		const { data: toca, error: eMarca } = await sb.rpc('marcar_aviso_validacion', { p_validacion: validacion });
 		if (eMarca) return responder(403, { error: 'Sin permiso' });
 		if (toca !== true) return responder(200, { ok: true, avisado: false });
 		const { data: v } = await sb.from('validaciones')
-			.select('promocion_id, version, decision, comentario, entregables(titulo, nombre), promociones(nombre)')
+			.select('entregable_id, promocion_id, version, decision, comentario, zona, entregables(tipo, titulo, nombre), promociones(nombre)')
 			.eq('id', validacion).maybeSingle();
 		if (!v) return responder(404, { error: 'No se encuentra la validación' });
 		const fv = v as unknown as {
-			promocion_id: string; version: string; decision: string; comentario: string | null;
-			entregables: { titulo: string | null; nombre: string } | null; promociones: { nombre: string } | null;
+			entregable_id: number; promocion_id: string; version: string; decision: string; comentario: string | null; zona: string | null;
+			entregables: { tipo: string; titulo: string | null; nombre: string } | null; promociones: { nombre: string } | null;
 		};
+		const tipo = fv.entregables?.tipo === 'experiencia' ? 'experiencia' : 'planos';
 		const { data: { user } } = await sb.auth.getUser();
 		const { data: persona } = await sb.from('miembros').select('nombre').eq('user_id', user?.id ?? '').limit(1).maybeSingle();
-		const { data: listos } = await sb.rpc('planos_listos', { p_promocion: fv.promocion_id, p_version: fv.version });
+
+		// Avance de este elemento (con la sesión de quien valida: es aprobador, así que lo puede ver).
+		const { data: filas } = await sb.rpc('validacion_de_version', { p_promocion: fv.promocion_id, p_version: fv.version, p_tipo: tipo });
+		const fila = ((filas ?? []) as { id: number; estado: string; requeridos: number; aprobados: number }[]).find((x) => x.id === fv.entregable_id);
+		const avance = fila && fila.requeridos > 0
+			? `${fila.aprobados} de ${fila.requeridos} ${fila.requeridos === 1 ? 'aprobación' : 'aprobaciones'}` : '';
+
+		// ¿Ya se puede publicar? Las dos partes validadas (o la otra sin enviar: versión sin esa parte).
+		const lista = async (t: string) => {
+			const { data, error } = await sb.rpc('validacion_lista', { p_promocion: fv.promocion_id, p_version: fv.version, p_tipo: t });
+			return error ? null : String(data);
+		};
+		const [estaParte, otraParte] = await Promise.all([lista(tipo), lista(tipo === 'planos' ? 'experiencia' : 'planos')]);
+		const parteLista = estaParte === 'listos';
+		const todos = parteLista && (otraParte === 'listos' || otraParte === 'sin_enviar');
+
 		const r = await llamarGitHub(PROCESO_PLANO, {
 			promocion: fv.promocion_id,
 			nombre: corto(fv.promociones?.nombre, 120),
@@ -100,7 +119,12 @@ Deno.serve(async (req) => {
 			decision: fv.decision,
 			comentario: corto(fv.comentario, 500),
 			persona: corto(persona?.nombre, 120),
-			todos: listos === 'listos' ? 'si' : 'no',
+			todos: todos ? 'si' : 'no',
+			tipo,
+			zona: corto(fv.zona, 120),
+			avance,
+			completo: fila?.estado === 'aprobado' ? 'si' : 'no',
+			parte: parteLista ? 'si' : 'no',
 		});
 		if (!r) return responder(500, { error: 'Falta la llave A (GITHUB_EJECUTOR) en los secretos de Supabase' });
 		if (!r.ok) return responder(502, { error: `GitHub no ha aceptado el aviso (${r.status})` });

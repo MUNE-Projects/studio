@@ -351,6 +351,24 @@ body[data-modo="personalizar"] .aviso { left: calc((100% - var(--cajon) - 16px) 
 /* ------------------------------------------------ pie */
 .pie { position: fixed; right: 24px; bottom: 26px; font-size: 11px; color: var(--tinta-3); pointer-events: none; }
 body[data-modo="personalizar"] .pie { display: none; }
+/* aviso legal de la promotora durante la visita: pequeño, discreto, máx. 2 líneas (se despliega al tocarlo) */
+.legal-experiencia {
+	position: fixed; left: 24px; bottom: 26px;
+	max-width: min(340px, calc(50vw - 300px));
+	margin: 0;
+	font-size: 10.5px; line-height: 1.35; color: var(--tinta-3);
+	padding: 3px 7px;
+	border-radius: 6px;
+	background: rgb(252 251 249 / 0.72);
+	backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+	display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+	pointer-events: auto; cursor: default;
+}
+.legal-experiencia:hover, .legal-experiencia:active { -webkit-line-clamp: unset; line-clamp: unset; }
+.legal-experiencia[hidden] { display: none; }
+/* aviso legal de los precios, al pie de la personalización */
+.legal-precios { margin: 2px 0 0; font-size: 10.5px; line-height: 1.35; color: var(--tinta-3); }
+.legal-precios[hidden] { display: none; }
 
 /* ------------------------------------------------ etiquetas de estancias */
 .etiqueta {
@@ -463,6 +481,9 @@ body.listo #carga { opacity: 0; visibility: hidden; }
 	.aviso, body[data-modo="personalizar"] .aviso { left: 50%; top: 12px; bottom: auto; }
 	.pie { right: 12px; bottom: 136px; }
 	body[data-modo="personalizar"] .pie { display: none; }
+	/* encima de los botones de abajo, a la izquierda del acceso profesional */
+	.legal-experiencia { left: 12px; bottom: 136px; max-width: calc(100% - 196px); font-size: 10px; }
+	.legal-precios { font-size: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

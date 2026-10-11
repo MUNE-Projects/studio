@@ -30,7 +30,7 @@ import { aplicarAlternativa, fmtM2 } from './configurador/alternativas';
 import { Configurador, fmtEuros, fmtPrecio, type Seleccion } from './configurador/configurador';
 import { Panel } from './configurador/panel';
 import { packsDeVivienda } from './configurador/packs';
-import { CATALOGO, PROMOCION, accesoProfesional, cargarModelo, catalogoPara, extraerCodigo, resolverAcceso, viviendaPublica, type Modelo } from './promocion/promocion';
+import { CATALOGO, PROMOCION, accesoProfesional, cargarModelo, catalogoPara, extraerCodigo, resolverAcceso, viviendaDeUnidad, viviendaPublica, type Modelo } from './promocion/promocion';
 import { aplicarMarca } from './promocion/marca';
 import { generarPDF } from './documento/pdf';
 import { planoPDF, planoPNG, type DatosPlano } from './documento/plano';
@@ -135,7 +135,11 @@ async function iniciar() {
 	let comprador: ViviendaPromocion | null = typeof accesoInicial === 'object' ? accesoInicial : null;
 	// código que ya no vale: se olvida (si no se pudo comprobar, se conserva para la próxima vez)
 	if ( accesoInicial === null && codigoInicial ) guardar( CLAVE_ACCESO, null );
-	let fichaVivienda: ViviendaPromocion = comprador ?? viviendaPublica();
+	// ?ver=<unidad> (p. ej. «a-espejo»): el equipo de la promotora revisa desde MUNE
+	// Portal una tipología y variante concreta. Solo cambia la vivienda que se
+	// enseña: no abre la personalización ni nada más. Con código, manda el comprador.
+	const viviendaSinCodigo = () => viviendaDeUnidad( new URLSearchParams( location.search ).get( 'ver' ) ) ?? viviendaPublica();
+	let fichaVivienda: ViviendaPromocion = comprador ?? viviendaSinCodigo();
 
 	// ---------------------------------------------------------------- modelo
 	// Contenedores persistentes: cambiar de distribución o de vivienda solo
@@ -870,7 +874,7 @@ async function iniciar() {
 		comprador = null;
 		guardar( CLAVE_ACCESO, null );
 		if ( location.hash ) history.replaceState( null, '', location.pathname + location.search );
-		cargarVivienda( viviendaPublica() );
+		cargarVivienda( viviendaSinCodigo() );
 		irModo( 'vivienda' );
 
 	} );
@@ -1184,7 +1188,7 @@ async function iniciar() {
 				try {
 
 					pr( 'Generando la imagen…' );
-					const blob = await hd.generar( { ancho, alto, muestras: muestrasHD || muestras, progreso: progresoRender( pr ) } );
+					const blob = await hd.generar( { ancho, alto, muestras: muestrasHD || muestras, progreso: progresoRender( pr ), aviso: PROMOCION.marca.legal.imagenes } );
 					await descargar( `render-${ nombreArchivo( cam.actual || 'vista' ) }-${ ancho }x${ alto }.jpg`, blob );
 
 				} finally {
