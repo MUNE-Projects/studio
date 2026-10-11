@@ -141,8 +141,8 @@ const permisos = (promocion: string | null): Permisos =>
 
 function cabeceraSesion(enPromocion?: Permisos): string {
 	const general = permisos(null);
-	const rol = general.esAdminPromotora ? 'Administración de la promotora'
-		: enPromocion?.administraPromocion ? 'Administración de esta promoción' : '';
+	const rol = general.esAdminPromotora ? 'Administrador de la promotora'
+		: enPromocion?.administraPromocion ? 'Administrador de esta promoción' : '';
 	return `<div class="cabecera">
 		<div>${CABECERA}<h1>${esc(acceso?.promotora?.nombre ?? '')}</h1>
 			<p class="rol">${esc(acceso?.nombre ?? '')}${acceso?.cargo ? ` · ${esc(acceso.cargo)}` : ''}</p>
@@ -401,7 +401,7 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 				.eq('promocion_id', id).not('tipo', 'in', '(plano,experiencia)').order('creado_en', { ascending: false });
 			const extras = (otros ?? []) as Entregable[];
 			caja.innerHTML = `${version ? await htmlLista(id, version, versionesPlanos, ctx)
-				: '<h2>Planos comerciales</h2><p class="vacio">Todavía no hay planos comerciales. El equipo de MUNE los prepara a partir de los planos acotados de tu documentación. Cuando estén, los tendrás siempre aquí para consultarlos y descargarlos, y para validarlos cuando haga falta.</p>'}
+				: '<h2>Planos comerciales</h2><p class="vacio">Todavía no hay planos comerciales. El equipo de MUNE los prepara a partir de la documentación que aportas. Cuando estén, los tendrás siempre aquí para consultarlos y descargarlos, y para validarlos cuando haga falta.</p>'}
 				${extras.length ? `<h2 class="separado">Otros entregables</h2>${extras.map((e) => `<div class="entregable">
 					<span>${esc(TIPOS_ENTREGABLE[e.tipo] ?? e.tipo)} · ${esc(e.version)}<br><span class="promo-lugar">${esc(e.nombre)}</span></span>
 					<button class="boton secundario pequeno" type="button" data-bajar="entregables" data-ruta="${esc(e.ruta)}" data-nombre="${esc(e.nombre)}">Descargar</button>

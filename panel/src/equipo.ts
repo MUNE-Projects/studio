@@ -17,12 +17,12 @@ export interface Acceso {
 
 /** Capacidades de trabajo que se pueden dar («marca» queda reservada para la Fase 2). */
 export const CAPACIDADES: [string, string][] = [
-	['documentacion', 'Documentación'],
-	['planos', 'Planos comerciales'],
-	['compradores', 'Compradores'],
-	['personalizacion', 'Personalización'],
-	['materiales', 'Materiales'],
-	['datos', 'Datos de la promoción'],
+	['documentacion', 'Subir documentación'],
+	['planos', 'Ver y descargar planos comerciales'],
+	['compradores', 'Gestionar compradores'],
+	['personalizacion', 'Gestionar personalizaciones'],
+	['materiales', 'Crear y descargar renders e imágenes del 3D'],
+	['datos', 'Modificar datos de la promoción'],
 ];
 export const TODAS_LAS_CAPACIDADES = CAPACIDADES.map(([k]) => k);
 const NOMBRE_CAPACIDAD = new Map<string, string>([...CAPACIDADES, ['marca', 'Marca']]);

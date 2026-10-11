@@ -7,12 +7,12 @@
 // de datos.
 
 export const CAPACIDADES: [string, string][] = [
-	['documentacion', 'Documentación'],
-	['planos', 'Planos comerciales'],
-	['compradores', 'Compradores'],
-	['personalizacion', 'Personalización'],
-	['materiales', 'Materiales'],
-	['datos', 'Datos de la promoción'],
+	['documentacion', 'Subir documentación'],
+	['planos', 'Ver y descargar planos comerciales'],
+	['compradores', 'Gestionar compradores'],
+	['personalizacion', 'Gestionar personalizaciones'],
+	['materiales', 'Crear y descargar renders e imágenes del 3D'],
+	['datos', 'Modificar datos de la promoción'],
 ];
 export const NOMBRE_CAPACIDAD: Record<string, string> = Object.fromEntries(CAPACIDADES);
 

@@ -371,6 +371,7 @@ La evolución hacia fases o grupos configurables se revisará aparte. Hasta ento
 
 - **Remitente de los emails:** `hello.muneprojects@gmail.com` debe sustituirse por una dirección con dominio propio de MUNE. Es una decisión con coste, que se consultará antes.
 - Las demás decisiones del primer cliente siguen en `docs/arquitectura.md`. Por ejemplo, Supabase Pro.
+- **Partes activables por promoción (pedido el 11/10/2026, pendiente de propuesta):** al dar de alta una promoción, la administradora pregunta antes a la promotora (fase del proyecto, si tiene personalizaciones por vivienda…). En MUNE Studio podrá activar o desactivar partes de cada promoción (por ejemplo Personalización o Compradores); lo desactivado no aparece en MUNE Portal ni en la experiencia pública. La fase del proyecto la puede indicar ella al dar de alta o la promotora, y cambiarse después (ya hecho).
 
 ---
 

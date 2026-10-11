@@ -55,7 +55,7 @@ export async function htmlLista(id: string, version: string, versiones: string[]
 		<h2>Planos comerciales · ${esc(version)}</h2>
 		${!actual ? '<p class="ayuda">Es una versión anterior: puedes consultarla y descargar sus planos.</p>'
 			: todos ? '<p class="ayuda">Todos validados. Tenlos siempre a mano aquí para consultarlos y descargarlos.</p>'
-			: '<p class="ayuda">El equipo de MUNE los ha preparado a partir de los planos acotados de la promoción. Puedes consultarlos y descargarlos cuando quieras. Cada plano queda validado cuando lo aprueban todas las personas elegidas para validarlo; si algo no está bien, pide cambios explicando qué hay que corregir. Lo que se apruebe es lo que se publicará.</p>'}
+			: '<p class="ayuda">El equipo de MUNE los ha preparado a partir de la documentación que aportaste. Puedes consultarlos y descargarlos cuando quieras. Cada plano queda validado cuando lo aprueban todas las personas elegidas para validarlo; si algo no está bien, pide cambios explicando qué hay que corregir. Lo que se apruebe es lo que se publicará.</p>'}
 		${anteriorValidada ? `<p class="aviso">Mientras se valida ${esc(version)}, los últimos planos validados siguen disponibles: <a class="enlace" href="#/promocion/${esc(id)}/planos/${esc(anteriorValidada)}">planos de ${esc(anteriorValidada)}</a>.</p>` : ''}
 		${actual && sinAprobadores ? htmlSinAprobadores(id, 'planos', ctx) : ''}
 		${todos ? '' : `<p class="promo-versiones">${aprobados} de ${planos.length} aprobados</p>
