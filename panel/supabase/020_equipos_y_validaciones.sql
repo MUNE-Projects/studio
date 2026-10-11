@@ -597,7 +597,7 @@ begin
 		raise exception 'Es de una versión anterior: valida la versión más reciente';
 	end if;
 	if not exists (select 1 from public.aprobadores_requeridos(e.promocion_id, t)) then
-		raise exception 'Define quién debe validar % antes de iniciar la revisión.', que;
+		raise exception 'Todavía no hay nadie designado para validar %. Elige en Equipo quién debe hacerlo: sin esa validación no se puede publicar.', que;
 	end if;
 	if not exists (select 1 from public.aprobadores_requeridos(e.promocion_id, t) r where r.user_id = auth.uid()) then
 		raise exception 'No estás entre las personas que tienen que validar %.', que;

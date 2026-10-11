@@ -112,7 +112,7 @@ export function motivoNoPublicar(v: Validacion): string {
 	if (!p) return '';
 	return {
 		sin_enviar: 'Primero envía a validar a la promotora.',
-		sin_aprobadores: `La promotora todavía no ha definido quién valida ${LOS[p.tipo]}: lo hace quien la administra, en MUNE Portal (Equipo).`,
+		sin_aprobadores: `La promotora todavía no ha designado a nadie para validar ${LOS[p.tipo]}, y sin esa validación no se puede publicar. Lo hace quien la administra, en MUNE Portal (Equipo).`,
 		cambios: `La promotora ha pedido cambios en ${LOS[p.tipo]}. Para publicar, hay que corregirlo y preparar una versión nueva: díselo a Claude.`,
 		pendientes: `Faltan aprobaciones de ${LOS[p.tipo]}: podrás publicar cuando estén todas.`,
 		listos: '',

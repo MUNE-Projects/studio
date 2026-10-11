@@ -230,7 +230,7 @@ La promotora configura las listas de aprobadores. No las decide MUNE Projects.
 
 ### Reglas comunes
 
-- **Sin aprobadores no se valida.** Si no hay aprobadores definidos, el Portal muestra «Define quién debe validar los planos comerciales antes de iniciar la revisión.» (o el equivalente de la Experiencia 3D) y no permite cerrar la validación. **No existe** la regla de «basta una persona».
+- **Sin aprobadores no se valida.** Si no hay aprobadores definidos, el Portal muestra «Para poder publicar, alguien tiene que validar los planos comerciales, y todavía no hay nadie designado.» (o el equivalente de la Experiencia 3D) y no permite cerrar la validación. **No existe** la regla de «basta una persona».
 - **Validado:** cuando **todos** los aprobadores requeridos han aprobado. Se muestra el avance como «{n} de {total} aprobaciones».
 - **Pedir cambios:** el comentario es obligatorio.
   - En la Experiencia 3D, además, se puede indicar la vista o zona (opcional). Por ejemplo: «Tipología A · Dormitorio principal · La ventana debe llegar hasta…».

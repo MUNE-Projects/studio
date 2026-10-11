@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
 			// Sin aprobadores no se valida: se avisa a quien administra la promoción para que los defina.
 			para = equipo.filter((m) => m.administra).map((m) => m.email);
 			texto = `El equipo de MUNE ha preparado ${que} de la ${version} de ${promo.nombre} para que los valide tu equipo.\n\n`
-				+ `Antes de validar, define en MUNE Portal (Equipo) quién debe validar ${que}. Sin esas personas no se puede validar ni publicar la versión.`;
+				+ `Para poder publicar la versión, alguien tiene que validar ${que}, y todavía no hay nadie designado. Elige en MUNE Portal (Equipo) quién debe hacerlo.`;
 		}
 	}
 	if (tipo === 'publicada') {

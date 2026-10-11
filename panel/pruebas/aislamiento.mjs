@@ -1089,7 +1089,7 @@ await caso( DEBE_FUNCIONAR, 'Experiencia 3D: sin aprobadores no se valida; con e
 	const v6 = await exigir( admin.rpc( 'validacion_de_version', { p_promocion: 'prueba-a', p_version: 'v6', p_tipo: 'experiencia' } ), 'v6' );
 	const ajenoVe = await aprobB.rpc( 'validacion_de_version', { p_promocion: 'prueba-a', p_version: 'v6', p_tipo: 'experiencia' } );
 	const b5 = vista.find( ( x ) => x.clave === 'b' );
-	return falla( sinAprobadores ) && /Define quién debe validar/.test( sinAprobadores.error.message ) && antes === 'sin_aprobadores'
+	return falla( sinAprobadores ) && /nadie designado para validar/.test( sinAprobadores.error.message ) && antes === 'sin_aprobadores'
 		&& falla( ajeno ) && enCambios === 'cambios' && b5.estado === 'cambios' && b5.personas.some( ( x ) => x.zona === 'Cocina' )
 		&& pendienteV6 === 'pendientes' && ( await lista( 'v6' ) ) === 'listos'
 		&& v6.find( ( x ) => x.clave === 'a' ).heredada_de === 'v5' && falla( ajenoVe );

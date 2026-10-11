@@ -106,7 +106,7 @@ export async function pintarEquipo(caja: HTMLElement, promo: { id: string; nombr
 		const que = tipo === 'planos' ? 'los planos comerciales' : 'la Experiencia 3D';
 		return `<form class="peticion-form bloque-aprobadores" data-aprobadores="${tipo}" novalidate>
 			<h3>${titulo}</h3>
-			${seleccion.size ? '' : `<p class="aviso">Define quién debe validar ${que} antes de iniciar la revisión.</p>`}
+			${seleccion.size ? '' : `<p class="aviso">Todavía no hay nadie designado para validar ${que}. Sin esta validación no se puede publicar.</p>`}
 			<p class="ayuda">${tipo === 'planos'
 				? 'Cada plano queda validado cuando lo aprueban todas las personas marcadas. Solo aparecen quienes pueden ver los planos comerciales.'
 				: 'Cada tipología queda validada cuando la aprueban todas las personas marcadas.'}</p>
@@ -242,7 +242,7 @@ export async function pintarEquipo(caja: HTMLElement, promo: { id: string; nombr
 		form.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled = false;
 		form.querySelector('.aviso')?.remove();
 		if (!d.getAll('persona').length) {
-			form.querySelector('h3')!.insertAdjacentHTML('afterend', `<p class="aviso">Define quién debe validar ${tipo === 'planos' ? 'los planos comerciales' : 'la Experiencia 3D'} antes de iniciar la revisión.</p>`);
+			form.querySelector('h3')!.insertAdjacentHTML('afterend', `<p class="aviso">Todavía no hay nadie designado para validar ${tipo === 'planos' ? 'los planos comerciales' : 'la Experiencia 3D'}. Sin esta validación no se puede publicar.</p>`);
 		}
 	}));
 }

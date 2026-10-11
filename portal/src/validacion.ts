@@ -100,7 +100,7 @@ export function htmlPersonas(e: Elemento, actual: string): string {
 /** Aviso cuando todavía no hay nadie elegido para validar. */
 export function htmlSinAprobadores(id: string, tipo: TipoValidacion, ctx: Contexto): string {
 	const que = tipo === 'planos' ? 'los planos comerciales' : 'la Experiencia 3D';
-	return `<p class="aviso">Define quién debe validar ${que} antes de iniciar la revisión.
+	return `<p class="aviso">Para poder publicar, alguien tiene que validar ${que}, y todavía no hay nadie designado.
 		${ctx.administraPromocion ? `<a class="enlace" href="#/promocion/${esc(id)}/equipo/validan">Elegir quién valida</a>`
 			: 'Pídeselo a quien administra esta promoción.'}</p>`;
 }
