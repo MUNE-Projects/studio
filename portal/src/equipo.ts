@@ -1,4 +1,5 @@
-// MUNE Portal · pestaña «Equipo» de una promoción (solo quien la administra).
+// MUNE Portal · pestaña «Equipo» de una promoción. La ve todo el equipo; solo
+// quien administra la promoción (o la promotora) puede hacer cambios.
 //
 // Quién tiene acceso a esta promoción, con qué capacidades, invitar a personas
 // nuevas y elegir quién valida los planos comerciales y la Experiencia 3D
@@ -10,7 +11,7 @@ import { CAPACIDADES, type Permisos } from './permisos';
 
 interface Persona {
 	id: number; user_id: string; promocion_id: string | null; nombre: string; email: string; cargo: string; activo: boolean;
-	administra: boolean; capacidades: string[]; aceptada: boolean; ultima_entrada: string | null; editable: boolean;
+	administra: boolean; capacidades: string[]; aceptada: boolean | null; ultima_entrada: string | null; editable: boolean;
 }
 
 /** Las funciones de Supabase devuelven sus errores en el cuerpo de la respuesta. */
@@ -30,6 +31,7 @@ function chipsCapacidades(p: Persona): string {
 
 function estadoPersona(p: Persona): string {
 	if (!p.activo) return '<span class="estado rechazado">Acceso retirado</span>';
+	if (p.aceptada === null) return '';
 	if (!p.aceptada) return '<span class="estado pendiente">Invitación pendiente</span>';
 	return `<span class="promo-lugar">${p.ultima_entrada ? `Última entrada: ${esc(fecha(p.ultima_entrada))}` : 'Todavía no ha entrado'}</span>`;
 }
@@ -120,6 +122,24 @@ export async function pintarEquipo(caja: HTMLElement, promo: { id: string; nombr
 	};
 
 	const admin = permisos.esAdminPromotora;
+	if (!permisos.administraPromocion) {
+		// Solo consulta: quién está y quién valida, sin cambios.
+		const nombres = (sel: Set<string>) => {
+			const n = [...new Map(activos.filter((p) => sel.has(p.user_id)).map((p) => [p.user_id, p.nombre])).values()];
+			return n.length ? esc(n.join(', ')) : '<span class="promo-lugar">Nadie designado todavía</span>';
+		};
+		caja.innerHTML = `
+			<h2>Equipo</h2>
+			<p class="ayuda">Las personas que tienen acceso a ${esc(promo.nombre)} y lo que puede hacer cada una. Si hay que cambiar algo, pídeselo a quien administra esta promoción.</p>
+			<div class="personas">${activos.length ? activos.map((p) => htmlPersona(p, permisos)).join('') : '<p class="vacio">Todavía no hay nadie.</p>'}</div>
+			<h2 class="separado">Quién valida</h2>
+			<p class="ayuda">Las personas que tienen que aprobar cada versión antes de publicarla.</p>
+			<table class="resumen-validacion"><tbody>
+				<tr><th>Planos comerciales</th><td>${nombres(selPlanos)}</td></tr>
+				<tr><th>Experiencia 3D</th><td>${nombres(selExperiencia)}</td></tr>
+			</tbody></table>`;
+		return;
+	}
 	caja.innerHTML = `
 		<h2>Equipo</h2>
 		<p class="ayuda">Las personas que tienen acceso a ${esc(promo.nombre)} y lo que puede hacer cada una. El cargo es solo informativo.</p>

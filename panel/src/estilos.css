@@ -236,6 +236,8 @@ label.desactivado { opacity: 0.45; pointer-events: none; }
 
 /* Equipos, administración y validaciones (020) */
 .estado.admin { background: #e6ecf4; color: #2a4466; }
+.estado.fase { background: #e9e4f5; color: #4a3878; }
+.estado.sin-fase { background: #f6ead6; color: #7a4d10; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--linea); color: var(--tinta-2); white-space: nowrap; }
 fieldset.capacidades { border: 1px solid var(--linea); border-radius: 8px; padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; }

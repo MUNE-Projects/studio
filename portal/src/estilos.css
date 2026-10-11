@@ -253,3 +253,6 @@ form.desactivado { opacity: 0.45; }
 .anadir > summary::-webkit-details-marker { display: none; }
 .anadir[open] > summary { margin-bottom: 8px; }
 details.desactivado { opacity: 0.45; pointer-events: none; }
+.resumen-validacion { width: auto; margin: 4px 0 8px; border-collapse: collapse; }
+.resumen-validacion th { text-align: left; padding: 4px 24px 4px 0; font-weight: 600; vertical-align: top; }
+.resumen-validacion td { padding: 4px 0; }

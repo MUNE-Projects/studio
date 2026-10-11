@@ -304,7 +304,7 @@ const PESTANAS: [string, string, string | null][] = [
 	['compradores', 'Compradores', 'compradores'],
 	['personalizacion', 'Personalización', 'personalizacion'],
 	['datos', 'Ficha y datos', 'datos'],
-	['equipo', 'Equipo', 'administra'],
+	['equipo', 'Equipo', null],
 ];
 
 /** Elementos pendientes de mi aprobación (para el contador de la pestaña). */
@@ -401,7 +401,7 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 				.eq('promocion_id', id).not('tipo', 'in', '(plano,experiencia)').order('creado_en', { ascending: false });
 			const extras = (otros ?? []) as Entregable[];
 			caja.innerHTML = `${version ? await htmlLista(id, version, versionesPlanos, ctx)
-				: '<h2>Planos comerciales</h2><p class="vacio">Todavía no hay planos comerciales para validar. Cuando el equipo de MUNE los prepare a partir de tu documentación, aparecerán aquí.</p>'}
+				: '<h2>Planos comerciales</h2><p class="vacio">Todavía no hay planos comerciales. El equipo de MUNE los prepara a partir de los planos acotados de tu documentación. Cuando estén, los tendrás siempre aquí para consultarlos y descargarlos, y para validarlos cuando haga falta.</p>'}
 				${extras.length ? `<h2 class="separado">Otros entregables</h2>${extras.map((e) => `<div class="entregable">
 					<span>${esc(TIPOS_ENTREGABLE[e.tipo] ?? e.tipo)} · ${esc(e.version)}<br><span class="promo-lugar">${esc(e.nombre)}</span></span>
 					<button class="boton secundario pequeno" type="button" data-bajar="entregables" data-ruta="${esc(e.ruta)}" data-nombre="${esc(e.nombre)}">Descargar</button>

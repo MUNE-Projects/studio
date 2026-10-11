@@ -230,21 +230,30 @@ as $$
 #variable_conflict use_column
 declare
 	global boolean := public.es_admin() or public.es_admin_promotora(p_promotora);
+	administra_alguna boolean;
 begin
+	-- Todo el equipo ve a sus compañeros (solo consulta). Quien administra ve
+	-- además los accesos retirados, si han entrado ya y puede hacer cambios.
 	if not global and not exists (
 		select 1 from public.miembros m
-		where m.promotora_id = p_promotora and m.user_id = auth.uid() and m.activo and m.administra) then
-		raise exception 'Solo quien administra puede ver el equipo';
+		where m.promotora_id = p_promotora and m.user_id = auth.uid() and m.activo) then
+		raise exception 'Sin acceso a esta promotora';
 	end if;
+	administra_alguna := global or exists (
+		select 1 from public.miembros m
+		where m.promotora_id = p_promotora and m.user_id = auth.uid() and m.activo and m.administra);
 	return query
 		select m.id, m.user_id, m.promocion_id, m.nombre, m.email, m.cargo, m.activo, m.administra, m.capacidades,
-			u.email_confirmed_at is not null, u.last_sign_in_at,
+			case when administra_alguna then u.email_confirmed_at is not null end,
+			case when administra_alguna then u.last_sign_in_at end,
 			(global or (m.promocion_id is not null and not m.administra and public.administra_promocion(m.promocion_id)))
 				and (public.es_admin() or m.user_id <> auth.uid())
 		from public.miembros m
 		join auth.users u on u.id = m.user_id
 		where m.promotora_id = p_promotora
-			and (global or m.promocion_id is null or public.administra_promocion(m.promocion_id))
+			and (global
+				or (m.promocion_id is not null and public.administra_promocion(m.promocion_id))
+				or (m.activo and (m.promocion_id is null or public.es_miembro_de_promocion(m.promocion_id))))
 		order by m.activo desc, m.nombre, m.promocion_id nulls first;
 end $$;
 revoke all on function public.equipo_de_promotora(uuid) from public, anon;

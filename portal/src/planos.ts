@@ -32,20 +32,34 @@ const pdfBoton = (p: Elemento, texto = 'Descargar PDF') =>
 const meToca = (p: Elemento, ctx: Contexto, actual: boolean) =>
 	actual && p.estado !== 'aprobado' && !!miVoto(p, ctx) && miVoto(p, ctx)!.decision !== 'aprobado';
 
-/** Lista de planos de una versión. */
+/** La versión más reciente (de las dadas) con todos sus planos validados. */
+async function ultimaValidada(id: string, versiones: string[]): Promise<string | null> {
+	for (const v of versiones) {
+		const { data } = await sb.rpc('validacion_lista', { p_promocion: id, p_version: v, p_tipo: 'planos' });
+		if (data === 'listos') return v;
+	}
+	return null;
+}
+
+/** Lista de planos de una versión: siempre a mano para consultarlos y descargarlos, y para validarlos si toca. */
 export async function htmlLista(id: string, version: string, versiones: string[], ctx: Contexto): Promise<string> {
 	const planos = await leerPlanos(id, version);
 	const urls = await miniaturas(planos);
 	const actual = version === versiones[0];
 	const aprobados = planos.filter((p) => p.estado === 'aprobado').length;
 	const sinAprobadores = planos.some((p) => p.estado === 'sin_aprobadores');
+	const todos = planos.length > 0 && aprobados === planos.length;
+	// Si la versión más reciente aún se está validando, los últimos validados siguen a mano.
+	const anteriorValidada = actual && !todos ? await ultimaValidada(id, versiones.slice(1)) : null;
 	return `
-		<h2>Validación de planos comerciales · ${esc(version)}</h2>
-		${actual ? `<p class="ayuda">El equipo de MUNE los ha preparado a partir de los planos acotados de la promoción. Cada plano queda validado cuando lo aprueban todas las personas elegidas para validarlo. Si algo no está bien, pide cambios explicando qué hay que corregir. Lo que se apruebe es lo que se publicará.</p>`
-			: '<p class="ayuda">Es una versión anterior y solo se puede consultar.</p>'}
+		<h2>Planos comerciales · ${esc(version)}</h2>
+		${!actual ? '<p class="ayuda">Es una versión anterior: puedes consultarla y descargar sus planos.</p>'
+			: todos ? '<p class="ayuda">Todos validados. Tenlos siempre a mano aquí para consultarlos y descargarlos.</p>'
+			: '<p class="ayuda">El equipo de MUNE los ha preparado a partir de los planos acotados de la promoción. Puedes consultarlos y descargarlos cuando quieras. Cada plano queda validado cuando lo aprueban todas las personas elegidas para validarlo; si algo no está bien, pide cambios explicando qué hay que corregir. Lo que se apruebe es lo que se publicará.</p>'}
+		${anteriorValidada ? `<p class="aviso">Mientras se valida ${esc(version)}, los últimos planos validados siguen disponibles: <a class="enlace" href="#/promocion/${esc(id)}/planos/${esc(anteriorValidada)}">planos de ${esc(anteriorValidada)}</a>.</p>` : ''}
 		${actual && sinAprobadores ? htmlSinAprobadores(id, 'planos', ctx) : ''}
-		<p class="promo-versiones">${aprobados} de ${planos.length} aprobados</p>
-		<progress class="progreso" value="${aprobados}" max="${Math.max(1, planos.length)}" aria-hidden="true"></progress>
+		${todos ? '' : `<p class="promo-versiones">${aprobados} de ${planos.length} aprobados</p>
+		<progress class="progreso" value="${aprobados}" max="${Math.max(1, planos.length)}" aria-hidden="true"></progress>`}
 		${planos.map((p) => {
 			const toca = meToca(p, ctx, actual);
 			return `<div class="plano-fila">
@@ -62,7 +76,7 @@ export async function htmlLista(id: string, version: string, versiones: string[]
 			</div>
 		</div>`;
 		}).join('')}
-		${versiones.length > 1 ? `<p class="ayuda separado">Otras versiones: ${versiones.filter((v) => v !== version)
+		${versiones.length > 1 ? `<p class="ayuda separado">Planos de otras versiones: ${versiones.filter((v) => v !== version)
 			.map((v) => `<a class="enlace" href="#/promocion/${esc(id)}/planos/${esc(v)}">${esc(v)}</a>`).join(' · ')}</p>` : ''}`;
 }
 

@@ -1006,14 +1006,13 @@ await caso( DEBE_FUNCIONAR, 'Capacidades: con «compradores» se gestionan los c
 
 } );
 
-await caso( DEBE_FALLAR, '35. Equipo: quien no administra da accesos o ve el equipo; quien administra una promoción se sale de ella, nombra administradores o toca a quien administra la promotora; nadie se cambia a sí mismo ni deja la promotora sin administrar', async () => {
+await caso( DEBE_FALLAR, '35. Equipo: quien no administra da accesos; otra promotora ve el equipo; quien administra una promoción se sale de ella, nombra administradores o toca a quien administra la promotora; nadie se cambia a sí mismo ni deja la promotora sin administrar', async () => {
 
 	const filaAprobA = ( await servicio.from( 'miembros' ).select( 'id' ).eq( 'user_id', aprobAId ).single() ).data;
 	const filaAdminProm = ( await servicio.from( 'miembros' ).select( 'id' ).eq( 'user_id', adminPromA.id ).single() ).data;
 	const dar = ( sb, promocion, administra = false ) => sb.rpc( 'dar_acceso', { p_user: nuevaPersona, p_promotora: pA.id, p_promocion: promocion, p_nombre: 'Nueva', p_cargo: '', p_administra: administra, p_capacidades: [ 'documentacion' ] } );
 	const r = {
 		gestorDa: dar( gestorA, 'prueba-a' ),
-		gestorVeEquipo: gestorA.rpc( 'equipo_de_promotora', { p_promotora: pA.id } ),
 		otraPromotoraVe: aprobB.rpc( 'equipo_de_promotora', { p_promotora: pA.id } ),
 		otraPromotoraDa: dar( aprobB, 'prueba-a' ),
 		adminPromFuera: dar( adminPromA.sb, 'prueba-a2' ),
@@ -1032,7 +1031,7 @@ await caso( DEBE_FALLAR, '35. Equipo: quien no administra da accesos o ve el equ
 
 } );
 
-await caso( DEBE_FUNCIONAR, 'Equipo: quien administra la promotora da accesos con capacidades y ve a todo su equipo; quien administra una promoción gestiona a las personas de esa promoción', async () => {
+await caso( DEBE_FUNCIONAR, 'Equipo: quien administra la promotora da accesos con capacidades y ve a todo su equipo; quien administra una promoción gestiona a las personas de esa promoción; el resto del equipo lo ve sin poder cambiarlo', async () => {
 
 	const idA2 = await exigir( aprobA.rpc( 'dar_acceso', { p_user: nuevaPersona, p_promotora: pA.id, p_promocion: 'prueba-a2', p_nombre: 'Nueva', p_cargo: 'Técnica', p_administra: false, p_capacidades: [ 'planos' ] } ), 'dar acceso a2' );
 	const equipo = await exigir( aprobA.rpc( 'equipo_de_promotora', { p_promotora: pA.id } ), 'equipo' );
@@ -1042,7 +1041,12 @@ await caso( DEBE_FUNCIONAR, 'Equipo: quien administra la promotora da accesos co
 	const idGestor = ( await servicio.from( 'miembros' ).select( 'id' ).eq( 'user_id', gestorAId ).single() ).data.id;
 	await exigir( adminPromA.sb.rpc( 'cambiar_acceso', { p_id: idGestor, p_activo: null, p_administra: null, p_capacidades: [ 'documentacion', 'planos', 'compradores', 'personalizacion', 'materiales', 'datos' ], p_cargo: 'Comercial' } ), 'cambiar capacidades' );
 	const registro = ( await admin.from( 'registro' ).select( 'detalle' ).eq( 'accion', 'acceso_cambiado' ) ).data;
-	return filaNueva?.promocion_id === 'prueba-a2' && filaNueva.capacidades.join() === 'planos' && filaNueva.editable
+	// quien no administra ve a su equipo de prueba-a, sin cambios ni datos de entrada, y no ve prueba-a2
+	const loVeGestor = await exigir( gestorA.rpc( 'equipo_de_promotora', { p_promotora: pA.id } ), 'equipo visto por el gestor' );
+	return loVeGestor.length > 1 && loVeGestor.every( ( m ) => m.activo && ! m.editable && m.aceptada === null && m.ultima_entrada === null
+		&& ( m.promocion_id === null || m.promocion_id === 'prueba-a' ) )
+		&& loVeGestor.some( ( m ) => m.user_id === aprobAId )
+		&& filaNueva?.promocion_id === 'prueba-a2' && filaNueva.capacidades.join() === 'planos' && filaNueva.editable
 		&& suEquipo.every( ( m ) => m.promocion_id === null || m.promocion_id === 'prueba-a' )
 		&& suEquipo.some( ( m ) => m.user_id === gestorAId && m.editable ) && suEquipo.some( ( m ) => m.user_id === aprobAId && ! m.editable )
 		&& registro.some( ( r ) => r.detalle.capacidades );

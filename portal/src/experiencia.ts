@@ -1,39 +1,50 @@
-// MUNE Portal · pestaña «Experiencia 3D» de una promoción.
+// MUNE Portal · pestaña «Experiencia 3D» de una promoción: siempre se puede
+// recorrer (la versión publicada y, si la hay, la que está en revisión).
 //
 // Cada versión se valida por tipología o variante 3D (y, si existe, el bloque
 // «Entorno y elementos generales»), nunca por vista. La validan las personas
 // elegidas en «Equipo → Quién valida»; queda validada cuando aprueban todas.
 // Las unidades son entregables de tipo «experiencia», sin archivo.
 
-import { alEnviar, esc } from './comun';
+import { ESCAPARATE, REVISION, alEnviar, esc } from './comun';
 import {
 	type Contexto, type Elemento, avance, baseVisita, chipEstado, faltanTrasAprobar, guardarDecision, htmlPersonas,
-	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, tituloUnidad, versionesCon,
+	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, numVersion, tituloUnidad, versionPublicada, versionesCon,
 } from './validacion';
 
 export const versionesConExperiencia = (id: string) => versionesCon(id, 'experiencia');
 
 export async function pintarExperiencia(caja: HTMLElement, id: string, extra: string, ctx: Contexto,
 	alValidar: (mensaje: string, version: string) => void): Promise<void> {
-	const versiones = await versionesConExperiencia(id);
+	const [versiones, publicada] = await Promise.all([versionesConExperiencia(id), versionPublicada(id)]);
+	// La versión enviada a validar que aún no se ha publicado se ve en la vista previa.
+	const enRevision = versiones[0] && (!publicada || numVersion(versiones[0]) > numVersion(publicada)) ? versiones[0] : null;
+	const cabecera = `
+		<h2>Experiencia 3D</h2>
+		<p class="ayuda">La experiencia 3D de la promoción, siempre a mano para recorrerla y enseñarla.</p>
+		${publicada || enRevision ? `<div class="acciones">
+			${publicada ? `<a class="boton pequeno" href="${esc(`${ESCAPARATE}/${id}/`)}" target="_blank" rel="noopener noreferrer">Recorrer la versión publicada (${esc(publicada)})</a>` : ''}
+			${enRevision ? `<a class="boton ${publicada ? 'secundario' : ''} pequeno" href="${esc(`${REVISION}/${id}/`)}" target="_blank" rel="noopener noreferrer">Recorrer la versión en revisión (${esc(enRevision)})</a>` : ''}
+		</div>` : '<p class="vacio">Todavía no hay ninguna versión. Cuando el equipo de MUNE prepare la primera, podrás recorrerla aquí y validarla cuando haga falta.</p>'}`;
 	if (!versiones.length) {
-		caja.innerHTML = `<h2>Validación de Experiencia 3D</h2>
-			<p class="vacio">Todavía no hay ninguna Experiencia 3D para validar. Cuando el equipo de MUNE prepare una versión, aparecerá aquí cada tipología para que la recorras y la valides.</p>`;
+		caja.innerHTML = cabecera;
 		return;
 	}
 	const version = versiones.includes(extra) ? extra : versiones[0];
 	const actual = version === versiones[0];
 	const [unidades, base] = await Promise.all([leerValidacion(id, version, 'experiencia'), baseVisita(id, version)]);
 	const aprobadas = unidades.filter((u) => u.estado === 'aprobado').length;
+	const todas = unidades.length > 0 && aprobadas === unidades.length;
 	const pendientes = unidades.filter((u) => u.estado !== 'aprobado').map(tituloUnidad);
 
-	caja.innerHTML = `
-		<h2>Validación de Experiencia 3D · ${esc(version)}</h2>
-		${actual ? `<p class="ayuda">Recorre cada tipología en 3D: distribución, espacios, materiales, acabados, mobiliario, vistas guiadas, exteriores y modo Plano. Cada una queda validada cuando la aprueban todas las personas elegidas para validarla. Si algo no está bien, pide cambios e indica, si quieres, en qué vista o zona.</p>`
-			: '<p class="ayuda">Es una versión anterior y solo se puede consultar.</p>'}
+	caja.innerHTML = `${cabecera}
+		<h2 class="separado">${todas ? 'Tipologías' : 'Validación'} · ${esc(version)}</h2>
+		${!actual ? '<p class="ayuda">Es una versión anterior y solo se puede consultar.</p>'
+			: todas ? '<p class="ayuda">Todas validadas. Puedes recorrer cada tipología cuando quieras.</p>'
+			: '<p class="ayuda">Recorre cada tipología en 3D: distribución, espacios, materiales, acabados, mobiliario, vistas guiadas, exteriores y modo Plano. Cada una queda validada cuando la aprueban todas las personas elegidas para validarla. Si algo no está bien, pide cambios e indica, si quieres, en qué vista o zona.</p>'}
 		${actual && unidades.some((u) => u.estado === 'sin_aprobadores') ? htmlSinAprobadores(id, 'experiencia', ctx) : ''}
-		<p class="promo-versiones">${aprobadas} de ${unidades.length} aprobadas${pendientes.length && aprobadas ? ` · Pendiente: ${esc(pendientes.join(', '))}` : ''}</p>
-		<progress class="progreso" value="${aprobadas}" max="${Math.max(1, unidades.length)}" aria-hidden="true"></progress>
+		${todas ? '' : `<p class="promo-versiones">${aprobadas} de ${unidades.length} aprobadas${pendientes.length && aprobadas ? ` · Pendiente: ${esc(pendientes.join(', '))}` : ''}</p>
+		<progress class="progreso" value="${aprobadas}" max="${Math.max(1, unidades.length)}" aria-hidden="true"></progress>`}
 		${unidades.map((u) => htmlUnidad(id, u, version, actual, base, ctx)).join('')}
 		${versiones.length > 1 ? `<p class="ayuda separado">Otras versiones: ${versiones.filter((v) => v !== version)
 			.map((v) => `<a class="enlace" href="#/promocion/${esc(id)}/experiencia/${esc(v)}">${esc(v)}</a>`).join(' · ')}</p>` : ''}`;

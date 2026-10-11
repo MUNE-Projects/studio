@@ -70,6 +70,11 @@ function chipActiva(activa: boolean, si = 'Activa', no = 'Desactivada'): string 
 	return `<span class="estado ${activa ? 'al-dia' : ''}">${activa ? si : no}</span>`;
 }
 
+/** Fase del proyecto bien visible: «Fase: Proyecto básico» o «Fase sin indicar». */
+function chipFase(fase: string | null | undefined): string {
+	return `<span class="estado ${fase ? 'fase' : 'sin-fase'}">${fase ? `Fase: ${esc(textoFase(fase))}` : 'Fase sin indicar'}</span>`;
+}
+
 /** Resumen de la ficha de la promoción, o aviso si no está rellenada. */
 function resumenFicha(p: Ficha): string {
 	const lugar = [p.direccion, [p.codigo_postal, p.municipio].filter(Boolean).join(' '), p.provincia].filter(Boolean).join(', ');
@@ -287,11 +292,11 @@ export async function pantallaPromotora(destino: HTMLElement, id: string): Promi
 		return;
 	}
 	const [{ data: pcs, error }, accesos] = await Promise.all([
-		sb.from('promociones').select('id, nombre, ubicacion, estado, activa').eq('promotora_id', id).order('nombre'),
+		sb.from('promociones').select('id, nombre, ubicacion, estado, activa, fase_proyecto').eq('promotora_id', id).order('nombre'),
 		leerAccesos(id),
 	]);
 	if (error) throw error;
-	const promociones = (pcs ?? []) as Pick<Promocion, 'id' | 'nombre' | 'ubicacion' | 'estado' | 'activa'>[];
+	const promociones = (pcs ?? []) as Pick<Promocion, 'id' | 'nombre' | 'ubicacion' | 'estado' | 'activa' | 'fase_proyecto'>[];
 	const recargar = () => pantallaPromotora(destino, id);
 
 	destino.innerHTML = `
@@ -302,7 +307,7 @@ export async function pantallaPromotora(destino: HTMLElement, id: string): Promi
 		<section class="tarjeta">
 			<h2>Promociones</h2>
 			<div class="lista-enlaces">${promociones.map((p) => `<a class="fila-enlace" href="#/promocion/${esc(p.id)}">
-				<span><strong>${esc(p.nombre)}</strong><br><span class="promo-lugar">${esc(p.ubicacion)}${p.ubicacion ? ' · ' : ''}${esc(ESTADOS[p.estado] ?? p.estado)}</span></span>
+				<span><strong>${esc(p.nombre)}</strong><br><span class="promo-lugar">${esc(p.ubicacion)}${p.ubicacion ? ' · ' : ''}${esc(ESTADOS[p.estado] ?? p.estado)} · ${esc(textoFase(p.fase_proyecto))}</span></span>
 				<span data-version="${esc(p.id)}">${p.activa ? '' : chipActiva(false)}</span>
 			</a>`).join('') || '<p class="vacio">Esta promotora todavía no tiene promociones.</p>'}</div>
 			<div class="acciones"><button class="boton secundario pequeno" type="button" data-abrir="promocion">Nueva promoción</button></div>
@@ -573,8 +578,8 @@ export async function pantallaPromocion(destino: HTMLElement, id: string, pestan
 
 	destino.innerHTML = `
 		${migas([['Promotoras', '#/promotoras'], [po?.nombre ?? '—', `#/promotora/${p.promotora_id}`], [p.nombre, null]])}
-		<div class="cabecera"><div><h1>${esc(p.nombre)}</h1><p class="promo-lugar">${esc(p.ubicacion)}${p.ubicacion ? ' · ' : ''}${esc(p.id)} · ${esc(textoFase(p.fase_proyecto))}</p></div>
-			${chipActiva(p.activa, 'Visible para su equipo', 'Desactivada')}</div>
+		<div class="cabecera"><div><h1>${esc(p.nombre)}</h1><p class="promo-lugar">${esc(p.ubicacion)}${p.ubicacion ? ' · ' : ''}${esc(p.id)}</p></div>
+			<div class="chips">${chipFase(p.fase_proyecto)}${chipActiva(p.activa, 'Visible para su equipo', 'Desactivada')}</div></div>
 		<nav class="pestanas" aria-label="Secciones de la promoción">${PESTANAS.map(([k, t]) =>
 			`<a href="#/promocion/${esc(id)}/${k}" ${k === actual ? 'aria-current="page"' : ''}>${esc(t)}</a>`).join('')}</nav>
 		<p class="aviso" data-aviso role="status" hidden></p>
@@ -584,7 +589,10 @@ export async function pantallaPromocion(destino: HTMLElement, id: string, pestan
 
 	if (actual === 'resumen') {
 		caja.innerHTML = `
-			<h2>Versiones</h2>
+			<h2>Fase del proyecto</h2>
+			<p>${chipFase(p.fase_proyecto)} <a href="#/promocion/${esc(id)}/documentacion">Ver el historial de fases en Documentación</a></p>
+			<p class="ayuda">${p.fase_proyecto ? 'La indica la promotora en MUNE Portal, en Documentación. Los documentos que sube quedan marcados con esta fase.' : 'La promotora todavía no ha indicado en qué fase está el proyecto. Puede hacerlo en MUNE Portal, en Documentación (o tú, desde la pestaña Documentación).'}</p>
+			<h2 class="separado">Versiones</h2>
 			<div data-versiones></div>
 			<h2 class="separado">Estado</h2>
 			<label class="en-linea">Estado que ve la promotora
