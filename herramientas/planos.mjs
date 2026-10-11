@@ -9,6 +9,10 @@
 //   <clave>.pdf          el plano A3 que se valida
 //   <clave>.png          miniatura para el portal
 //   planos.json          lista con título, viviendas y huellas (archivo y datos)
+// y en <salida>/experiencia/experiencia.json las unidades de validación de la
+// Experiencia 3D: una por tipología y variante (o por vivienda en las
+// unifamiliares), con la huella de todo lo que define su 3D y sus vistas
+// guiadas; más «Entorno y elementos generales» si existe promociones/<id>/entorno/.
 // Por defecto, <salida> es salida/<promoción>/. «publicacion.mjs preparar» lo
 // llama solo, así que los planos viajan con cada versión a la vista previa.
 //
@@ -16,12 +20,29 @@
 // variable CHROMIUM (ruta del ejecutable).
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const RAIZ = resolve( dirname( fileURLToPath( import.meta.url ) ), '..' );
 const CHROMIUM = [ process.env.CHROMIUM, '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-browsers/chromium/chrome-linux/chrome' ].find( ( r ) => r && existsSync( r ) );
+
+/** Huella del entorno (promociones/<id>/entorno/): rutas y contenido de todos sus archivos; null si no hay. */
+function huellaEntorno( id ) {
+
+	const raiz = join( RAIZ, 'promociones', id, 'entorno' );
+	if ( ! existsSync( raiz ) ) return null;
+	const listar = ( d ) => readdirSync( d, { withFileTypes: true } ).flatMap( ( e ) => ( e.isDirectory() ? listar( join( d, e.name ) ) : [ join( d, e.name ) ] ) );
+	const h = createHash( 'sha256' );
+	for ( const a of listar( raiz ).map( ( a ) => relative( raiz, a ).split( '\\' ).join( '/' ) ).sort() ) {
+
+		h.update( `${ a }\n` );
+		h.update( `${ createHash( 'sha256' ).update( readFileSync( join( raiz, a ) ) ).digest( 'hex' ) }\n` );
+
+	}
+	return h.digest( 'hex' );
+
+}
 
 export async function generarPlanos( id, version, salida = join( RAIZ, 'salida', id ) ) {
 
@@ -57,7 +78,18 @@ export async function generarPlanos( id, version, salida = join( RAIZ, 'salida',
 			};
 
 		} );
-		writeFileSync( join( carpeta, 'planos.json' ), JSON.stringify( { promocion: id, version, generados: new Date().toISOString(), planos }, null, '\t' ) + '\n' );
+		const generados = new Date().toISOString();
+		writeFileSync( join( carpeta, 'planos.json' ), JSON.stringify( { promocion: id, version, generados, planos }, null, '\t' ) + '\n' );
+
+		// unidades de validación de la Experiencia 3D
+		const unidades = await pagina.evaluate( () => window.generarUnidadesExperiencia() );
+		const entorno = huellaEntorno( id );
+		if ( entorno ) unidades.push( { clave: 'entorno', titulo: 'Entorno y elementos generales', detalle: 'Parcela, urbanización y zonas comunes de la promoción', viviendas: '', orden: unidades.length, huella: entorno, vistas: [] } );
+		const carpetaExp = join( salida, 'experiencia' );
+		rmSync( carpetaExp, { recursive: true, force: true } );
+		mkdirSync( carpetaExp, { recursive: true } );
+		writeFileSync( join( carpetaExp, 'experiencia.json' ), JSON.stringify( { promocion: id, version, generados, unidades }, null, '\t' ) + '\n' );
+		planos.experiencia = unidades;
 		return planos;
 
 	} finally {
@@ -77,6 +109,7 @@ if ( process.argv[ 1 ] === fileURLToPath( import.meta.url ) ) {
 
 		const planos = await generarPlanos( args[ 0 ], opcion( 'version' ), opcion( 'salida' ) && resolve( opcion( 'salida' ) ) );
 		console.log( `\n✓ ${ planos.length } plano(s) en ${ opcion( 'salida' ) ?? `salida/${ args[ 0 ] }` }/planos/` );
+		console.log( `✓ ${ planos.experiencia.length } unidad(es) de la Experiencia 3D en ${ opcion( 'salida' ) ?? `salida/${ args[ 0 ] }` }/experiencia/` );
 
 	} catch ( e ) {
 

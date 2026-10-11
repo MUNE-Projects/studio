@@ -1243,4 +1243,13 @@ begin
 	return n = 1;
 end $$;
 
+-- ═══ 10. Lo que usan las funciones de Supabase (cuenta interna service_role) ═
+-- (en el proyecto real esa cuenta necesita permiso explícito: ver 013)
+grant select on public.aprobadores, public.aprobaciones to service_role;
+grant execute on function public.aprobadores_requeridos(text, text) to service_role;
+grant execute on function public.persona_puede(uuid, text, text) to service_role;
+grant execute on function public.estado_validacion(bigint) to service_role;
+grant execute on function public.recuento_validacion(bigint) to service_role;
+grant execute on function public.mismo_contenido(bigint) to service_role;
+
 select 'Listo: equipos, administración y validaciones' as resultado;

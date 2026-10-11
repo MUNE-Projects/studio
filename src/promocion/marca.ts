@@ -50,6 +50,18 @@ export function aplicarMarca( p: Promocion ) {
 	const nombre = document.querySelector( '#ficha-promocion' );
 	if ( nombre ) nombre.textContent = `${ p.promocion.nombre } · ${ p.promocion.ubicacion }`;
 
+	// avisos legales de la promotora: en la visita (si lo ha escrito) y en la personalización
+	const legales: [ string, string | undefined ][] = [ [ '#legal-experiencia', m.legal.experiencia ], [ '#legal-precios', m.legal.precios ] ];
+	for ( const [ selector, texto ] of legales ) {
+
+		const el = document.querySelector<HTMLElement>( selector );
+		if ( ! el ) continue;
+		el.textContent = texto?.trim() ?? '';
+		el.title = el.textContent;
+		el.hidden = ! el.textContent;
+
+	}
+
 }
 
 /** Logo rasterizado (PNG) para el PDF. */

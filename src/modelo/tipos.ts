@@ -232,7 +232,12 @@ export interface Marca {
 	tipografia: { familia: string; googleFonts?: string };
 	favicon: string | null;
 	contacto: { telefono: string; email: string; web: string; direccion: string };
-	legal: { precios: string; imagenes: string; pie: string; plano?: string };
+	/**
+	 * Avisos legales. La promotora puede escribirlos en MUNE Portal y se aplican al
+	 * construir cada versión (vite.config.ts): plano → planos, imagenes → Render HD,
+	 * precios → personalización, experiencia → visita 3D (si no hay, no se muestra).
+	 */
+	legal: { precios: string; imagenes: string; pie: string; plano?: string; experiencia?: string };
 }
 
 export interface Promocion {

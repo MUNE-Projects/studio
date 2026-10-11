@@ -25,6 +25,58 @@ export interface OpcionesHD {
 	muestras: number;
 	progreso?: ( texto: string ) => void;
 	tipo?: 'image/jpeg' | 'image/png';
+	/** Aviso legal de la promotora, en letra pequeña abajo a la izquierda (máx. 2 líneas). */
+	aviso?: string;
+}
+
+/** Aviso legal sobre la imagen: banda oscura suave abajo, texto claro proporcional al ancho. */
+export function dibujarAviso( ctx: CanvasRenderingContext2D, W: number, H: number, aviso: string ) {
+
+	const texto = aviso.replace( /\s+/g, ' ' ).trim();
+	if ( ! texto ) return;
+	const tam = Math.max( 11, Math.round( W * 0.0085 ) );
+	const margen = Math.round( tam * 1.4 );
+	const fuente = getComputedStyle( document.documentElement ).getPropertyValue( '--fuente' ).trim() || 'Helvetica, Arial, sans-serif';
+	ctx.save();
+	ctx.font = `400 ${ tam }px ${ fuente }`;
+	// hasta 2 líneas en el 70 % del ancho; lo que no cabe se acorta con «…»
+	const maximo = W * 0.7;
+	const lineas: string[] = [];
+	let actual = '';
+	for ( const palabra of texto.split( ' ' ) ) {
+
+		const prueba = actual ? `${ actual } ${ palabra }` : palabra;
+		if ( ctx.measureText( prueba ).width <= maximo || ! actual ) actual = prueba;
+		else {
+
+			lineas.push( actual );
+			actual = palabra;
+
+		}
+
+	}
+	if ( actual ) lineas.push( actual );
+	if ( lineas.length > 2 ) {
+
+		let ultima = lineas[ 1 ];
+		while ( ultima && ctx.measureText( `${ ultima }…` ).width > maximo ) ultima = ultima.slice( 0, ultima.lastIndexOf( ' ' ) > 0 ? ultima.lastIndexOf( ' ' ) : ultima.length - 1 );
+		lineas.splice( 1, Infinity, `${ ultima }…` );
+
+	}
+	const interlinea = Math.round( tam * 1.35 );
+	const alto = lineas.length * interlinea + margen * 1.6;
+	const banda = ctx.createLinearGradient( 0, H - alto * 1.6, 0, H );
+	banda.addColorStop( 0, 'rgb(0 0 0 / 0)' );
+	banda.addColorStop( 1, 'rgb(0 0 0 / 0.42)' );
+	ctx.fillStyle = banda;
+	ctx.fillRect( 0, H - alto * 1.6, W, alto * 1.6 );
+	ctx.fillStyle = 'rgb(255 255 255 / 0.88)';
+	ctx.shadowColor = 'rgb(0 0 0 / 0.5)';
+	ctx.shadowBlur = tam * 0.3;
+	ctx.textBaseline = 'alphabetic';
+	lineas.forEach( ( l, i ) => ctx.fillText( l, margen, H - margen - ( lineas.length - 1 - i ) * interlinea ) );
+	ctx.restore();
+
 }
 
 const MOSAICO = 2048; // lado máximo de cada mosaico (px)
@@ -215,6 +267,7 @@ export class RenderHD {
 			fctx.fillStyle = g;
 			fctx.fillRect( 0, 0, W, H );
 			fctx.globalCompositeOperation = 'source-over';
+			if ( o.aviso ) dibujarAviso( fctx, W, H, o.aviso );
 
 		} finally {
 

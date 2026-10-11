@@ -30,6 +30,12 @@
 //    vigente como «retirada»;
 //  - publicar exige el taller sin cambios pendientes (lo publicado = lo guardado);
 //  - no se envía nada a GitHub: el envío (push) es un paso aparte y explícito.
+//
+// Textos legales: los escribe la promotora en MUNE Portal (promociones.textos_legales
+// en Supabase). «preparar» los lee como el robot de Claude (variables ROBOT_EMAIL y
+// ROBOT_CLAVE) y la construcción los pone en lugar de los de promocion.json
+// (vite.config.ts, variable TEXTOS_LEGALES). Sin esas variables, avisa y sigue
+// con los de promocion.json. La web pública no consulta Supabase.
 
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -50,6 +56,9 @@ const MAX_ARCHIVOS = 20000;
 const MARCAS_STUDIO = [ 'Interiorismo IA', 'st-ayuda', 'abrirStudio' ];
 
 // formas típicas de credenciales (Supabase, GitHub, Cloudflare, AWS, claves privadas…)
+const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://iowtdenlkxjqzlpwizgb.supabase.co';
+const SUPABASE_CLAVE_PUBLICA = process.env.SUPABASE_CLAVE_PUBLICA ?? 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR';
+
 const SECRETOS = [
 	/sb_secret_[A-Za-z0-9_-]{10,}/,
 	/service_role/,
@@ -193,6 +202,7 @@ function asegurarCabeceras( esc ) {
 	let texto = existsSync( cabeceras ) ? readFileSync( cabeceras, 'utf8' ).trimEnd() : '';
 	const reglas = [
 		[ '/*/planos/*', 'Planos comerciales de cada versión: el Panel los copia para enviarlos a la promotora.' ],
+		[ '/*/experiencia/*', 'Unidades de la Experiencia 3D de cada versión: el Panel y el portal las usan para validarla.' ],
 		[ '/*/viviendas.json', 'Lista de viviendas (sin datos privados): la usan el Panel y el portal para los códigos de comprador.' ],
 	];
 	let cambia = false;
@@ -206,6 +216,49 @@ function asegurarCabeceras( esc ) {
 	if ( ! cambia ) return;
 	writeFileSync( cabeceras, `${ texto.trimStart() }\n` );
 	git( esc, 'add', join( PUBLICO, '_headers' ) );
+
+}
+
+// ---------------------------------------------------------------- textos legales (MUNE Portal)
+
+const LEGALES = [ 'planos', 'renders', 'experiencia', 'personalizacion' ];
+
+/** Textos legales que la promotora ha escrito en MUNE Portal; null si no se pueden leer. */
+async function textosLegales( id ) {
+
+	const email = process.env.ROBOT_EMAIL;
+	const password = process.env.ROBOT_CLAVE;
+	if ( ! email || ! password ) {
+
+		console.warn( '⚠ Sin ROBOT_EMAIL y ROBOT_CLAVE: no se leen los textos legales de MUNE Portal. Se usan los de promocion.json.' );
+		return null;
+
+	}
+	try {
+
+		const cabeceras = { apikey: SUPABASE_CLAVE_PUBLICA, 'Content-Type': 'application/json' };
+		const r = await fetch( `${ SUPABASE_URL }/auth/v1/token?grant_type=password`, { method: 'POST', headers: cabeceras, body: JSON.stringify( { email, password } ) } );
+		if ( ! r.ok ) throw new Error( `la entrada del robot respondió ${ r.status }` );
+		const { access_token: token } = await r.json();
+		const p = await fetch( `${ SUPABASE_URL }/rest/v1/promociones?id=eq.${ encodeURIComponent( id ) }&select=textos_legales`, { headers: { ...cabeceras, Authorization: `Bearer ${ token }` } } );
+		if ( ! p.ok ) throw new Error( `Supabase respondió ${ p.status } al leer la promoción` );
+		const [ fila ] = await p.json();
+		if ( ! fila ) throw new Error( 'la promoción no está en Supabase' );
+		const textos = {};
+		for ( const k of LEGALES ) {
+
+			const t = fila.textos_legales?.[ k ];
+			if ( typeof t === 'string' && t.trim() ) textos[ k ] = t.trim().slice( 0, 1000 );
+
+		}
+		return textos;
+
+	} catch ( e ) {
+
+		console.warn( `⚠ No se han podido leer los textos legales de MUNE Portal (${ e.message }). Se usan los de promocion.json.` );
+		return null;
+
+	}
 
 }
 
@@ -235,11 +288,16 @@ async function preparar( id ) {
 	console.log( `  preparada por:     ${ preparadoPor }` );
 	console.log( `  cambios:           ${ cambios }\n` );
 
+	const textos = await textosLegales( id );
+	if ( textos ) ok( `Textos legales de MUNE Portal: ${ Object.keys( textos ).join( ', ' ) || 'ninguno escrito (se usan los de promocion.json)' }` );
+	// la construcción y los planos (mismo proceso) usan los textos de MUNE Portal
+	process.env.TEXTOS_LEGALES = textos ? JSON.stringify( textos ) : '';
 	const { destino } = construir( id );
 	// planos comerciales de esta versión, para que la promotora los valide (Etapa 4)
 	console.log( 'Generando los planos comerciales…' );
 	const planos = await generarPlanos( id, version, destino );
 	ok( `Planos para validar: ${ planos.length } (${ planos.map( ( p ) => p.titulo ).join( ', ' ) })` );
+	ok( `Experiencia 3D para validar: ${ planos.experiencia.length } unidad(es) (${ planos.experiencia.map( ( u ) => u.titulo ).join( ', ' ) })` );
 	if ( ! bandera( 'confirmar' ) ) {
 
 		console.log( '\nSimulación: no se ha preparado nada. Repite con --confirmar.\n' );

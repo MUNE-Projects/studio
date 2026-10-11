@@ -6,6 +6,9 @@ import { defineConfig, type Plugin } from 'vite';
 //
 //   PROMOCION=<id>      promoción que se construye (promociones/<id>/); por defecto la demo
 //   --mode studio       incluye el Studio (herramienta interna de producción)
+//   TEXTOS_LEGALES=<json>  textos legales escritos por la promotora en MUNE Portal
+//                       ({ planos, renders, experiencia, personalizacion }); los pone
+//                       «publicacion.mjs preparar» y sustituyen a los de promocion.json
 //
 // La web pública se construye SIN Studio: ni su código ni su acceso llegan al
 // navegador del visitante.
@@ -38,6 +41,45 @@ const sinDatosDeStudio = (): Plugin => ( {
 	},
 } );
 
+/** marca.legal de promocion.json ← textos de MUNE Portal (los vacíos no cambian nada). */
+const LEGAL: Record<string, string> = { planos: 'plano', renders: 'imagenes', experiencia: 'experiencia', personalizacion: 'precios' };
+function textosLegales(): Record<string, string> {
+
+	if ( ! process.env.TEXTOS_LEGALES ) return {};
+	try {
+
+		const t = JSON.parse( process.env.TEXTOS_LEGALES ) as Record<string, unknown>;
+		const r: Record<string, string> = {};
+		for ( const [ origen, destino ] of Object.entries( LEGAL ) ) {
+
+			const v = t?.[ origen ];
+			if ( typeof v === 'string' && v.trim() ) r[ destino ] = v.trim().slice( 0, 1000 );
+
+		}
+		return r;
+
+	} catch {
+
+		console.warn( 'TEXTOS_LEGALES no es un JSON válido: se usan los textos de promocion.json' );
+		return {};
+
+	}
+
+}
+
+const conTextosLegales = ( textos: Record<string, string> ): Plugin => ( {
+	name: 'textos-legales',
+	enforce: 'pre',
+	transform( codigo, id ) {
+
+		if ( ! Object.keys( textos ).length || ! /promociones[\\/][^\\/]+[\\/]promocion\.json$/.test( id ) ) return null;
+		const datos = JSON.parse( codigo );
+		if ( datos.marca ) datos.marca.legal = { ...datos.marca.legal, ...textos };
+		return { code: JSON.stringify( datos ), map: null };
+
+	},
+} );
+
 export default defineConfig( ( { mode } ) => {
 
 	const promocion = process.env.PROMOCION || PROMOCION_POR_DEFECTO;
@@ -49,7 +91,7 @@ export default defineConfig( ( { mode } ) => {
 		base: './',
 		resolve: { alias: { '@promocion': carpeta } },
 		define: { __STUDIO__: JSON.stringify( studio ) },
-		plugins: studio ? [] : [ sinDatosDeStudio() ],
+		plugins: [ conTextosLegales( textosLegales() ), ...( studio ? [] : [ sinDatosDeStudio() ] ) ],
 		build: { target: 'es2022', chunkSizeWarningLimit: 2000, outDir: process.env.SALIDA || 'dist' },
 	};
 
