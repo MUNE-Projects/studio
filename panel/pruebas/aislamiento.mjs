@@ -975,7 +975,7 @@ const altaEquipo = async ( email, promocion, capacidades, administra = false ) =
 const soloCompradores = await altaEquipo( 'compradores.a@prueba.local', 'prueba-a', [ 'compradores' ] );
 const soloPersonalizacion = await altaEquipo( 'personalizacion.a@prueba.local', 'prueba-a', [ 'personalizacion' ] );
 const adminPromA = await altaEquipo( 'admin.promocion.a@prueba.local', 'prueba-a', [], true );
-const nuevaPersona = await crearUsuario( 'nueva.a@prueba.local' );
+const nuevaPersona = await crearUsuario( 'equipo.nuevo.a@prueba.local' );
 
 await caso( DEBE_FALLAR, '34. Capacidades: sin la capacidad no se ve ni se cambia esa parte (documentación, selecciones, ficha, formalización, códigos)', async () => {
 
