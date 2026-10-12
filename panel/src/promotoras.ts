@@ -12,7 +12,7 @@
 // lo ve todo y lo cambia solo como soporte (equipo.ts, función «invitar»,
 // cambiar_acceso). Todo lo comprueban las reglas de la base de datos (005–020).
 
-import { textoFase } from './fase';
+import { FASES, textoFase } from './fase';
 import { datosFormalizacion, formFormalizacion, type Formalizacion } from './formalizacion';
 import { pintarActividad } from './actividad';
 import { alEnviar, anotar, conectarPlegables, cuantos, esc, fallo, fecha, sb, traducir } from './comun';
@@ -30,11 +30,45 @@ interface Ficha {
 	referencia_catastral: string | null; tipo: string | null; num_viviendas: number | null; num_portales: number | null;
 	num_plantas: number | null; fecha_entrega: string | null; fase_proyecto?: string | null;
 }
-interface Promocion extends DatosFiscales, Ficha { id: string; nombre: string; ubicacion: string; estado: string; activa: boolean; promotora_id: string; formalizacion?: Formalizacion; textos_legales?: TextosLegales | null }
+interface Promocion extends DatosFiscales, Ficha { id: string; nombre: string; ubicacion: string; estado: string; activa: boolean; promotora_id: string; formalizacion?: Formalizacion; textos_legales?: TextosLegales | null; modulos?: Modulos; publicacion?: string }
+interface Modulos { experiencia_publica: boolean; acceso_comprador: boolean; personalizacion: boolean }
 interface TextosLegales { planos?: string; renders?: string; experiencia?: string; personalizacion?: string }
 
 const CAMPOS_PROMOCION = `id, nombre, ubicacion, estado, activa, promotora_id, razon_social, cif, domicilio_fiscal,
-	direccion, codigo_postal, municipio, provincia, referencia_catastral, tipo, num_viviendas, num_portales, num_plantas, fecha_entrega, fase_proyecto, formalizacion, textos_legales`;
+	direccion, codigo_postal, municipio, provincia, referencia_catastral, tipo, num_viviendas, num_portales, num_plantas, fecha_entrega, fase_proyecto, formalizacion, textos_legales, modulos, publicacion`;
+
+// ─── Partes de cada promoción y modo de publicación (022) ─────────────────
+
+const MODULOS: [keyof Modulos, string, string][] = [
+	['experiencia_publica', 'Experience pública', 'La promotora puede enseñar la Experiencia 3D en su web con direcciones públicas y códigos de inserción. Apagada, solo se ve en MUNE Portal y en los accesos privados.'],
+	['acceso_comprador', 'Acceso comprador', 'Los compradores entran con su código a su vivienda. Apagado, no hay códigos ni puerta de comprador.'],
+	['personalizacion', 'Personalización', 'Opciones y mejoras de la vivienda. Funciona aunque no haya acceso de comprador: el comercial puede enseñarla desde MUNE Portal.'],
+];
+const MODULOS_POR_DEFECTO: Modulos = { experiencia_publica: true, acceso_comprador: true, personalizacion: true };
+
+/** Casillas de las partes de la promoción y el modo de publicación. */
+function htmlModulos(m: Modulos = MODULOS_POR_DEFECTO, publicacion = 'automatica'): string {
+	return `<fieldset class="capacidades modulos"><legend>Partes de la promoción</legend>
+		${MODULOS.map(([k, t, ayuda]) => `<label class="casilla"><input type="checkbox" name="modulo" value="${k}" ${m[k] !== false ? 'checked' : ''}>
+			<span><strong>${esc(t)}</strong><br><span class="promo-lugar">${esc(ayuda)}</span></span></label>`).join('')}
+		<p class="ayuda">La Experiencia 3D profesional en MUNE Portal está siempre.</p>
+	</fieldset>
+	<fieldset class="capacidades modulos"><legend>Publicación</legend>
+		<label class="casilla"><input type="radio" name="publicacion" value="automatica" ${publicacion !== 'manual' ? 'checked' : ''}>
+			<span><strong>Publicar al aprobar la promotora</strong><br><span class="promo-lugar">Tu visto bueno es «Enviar a validar a la promotora». Cuando valida todo, se publica esa misma versión y te llega un email.</span></span></label>
+		<label class="casilla"><input type="radio" name="publicacion" value="manual" ${publicacion === 'manual' ? 'checked' : ''}>
+			<span><strong>Publico yo</strong><br><span class="promo-lugar">Con todo validado, publicas tú con el botón «Publicar».</span></span></label>
+	</fieldset>`;
+}
+
+const leerModulos = (d: FormData): Modulos => {
+	const marcados = new Set(d.getAll('modulo').map(String));
+	return { experiencia_publica: marcados.has('experiencia_publica'), acceso_comprador: marcados.has('acceso_comprador'), personalizacion: marcados.has('personalizacion') };
+};
+const guardarModulos = (promocion: string, m: Modulos, publicacion: string) => sb.rpc('guardar_modulos', {
+	p_promocion: promocion, p_experiencia_publica: m.experiencia_publica, p_acceso_comprador: m.acceso_comprador,
+	p_personalizacion: m.personalizacion, p_publicacion: publicacion === 'manual' ? 'manual' : 'automatica',
+});
 
 const ESTADOS: Record<string, string> = {
 	documentacion: 'Recogiendo documentación',
@@ -314,7 +348,10 @@ export async function pantallaPromotora(destino: HTMLElement, id: string): Promi
 			<form class="peticion-form" data-nueva-promocion data-plegable="promocion" novalidate hidden>
 				<label>Nombre <input name="nombre" maxlength="120" required placeholder="Por ejemplo: Residencial Las Eras"></label>
 				<label>Ubicación (opcional) <input name="ubicacion" maxlength="120" placeholder="Por ejemplo: Alovera (Guadalajara)"></label>
-				<p class="ayuda">Se creará con la lista estándar de documentos, que luego puedes ajustar.</p>
+				<label>Fase del proyecto (si ya la sabes) <select name="fase"><option value="">La indicará la promotora</option>
+					${Object.entries(FASES).map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select></label>
+				${htmlModulos()}
+				<p class="ayuda">Se creará con la lista estándar de documentos, que luego puedes ajustar. Todo esto se puede cambiar después en «Resumen y versiones».</p>
 				<p class="error" role="alert"></p>
 				<div class="acciones">
 					<button class="boton" type="submit">Crear promoción</button>
@@ -381,6 +418,13 @@ export async function pantallaPromotora(destino: HTMLElement, id: string): Promi
 		const { error: e } = await sb.from('promociones').insert({ id: nuevo, promotora_id: id, nombre, ubicacion: String(d.get('ubicacion')).trim() });
 		if (e) throw e.code === '23505' ? new Error(`Ya hay una promoción con un nombre muy parecido («${nuevo}»). Cambia un poco el nombre.`) : e;
 		await anotar('da de alta una promoción', { promocion: nuevo, promotora: id });
+		const { error: eModulos } = await guardarModulos(nuevo, leerModulos(d), String(d.get('publicacion')));
+		if (eModulos) console.error('[MUNE Studio]', eModulos);
+		const fase = String(d.get('fase') ?? '');
+		if (fase) {
+			const { error: eFase } = await sb.rpc('cambiar_fase_proyecto', { p_promocion: nuevo, p_fase: fase });
+			if (eFase) console.error('[MUNE Studio]', eFase);
+		}
 		// Lista estándar de documentos, que luego se puede ajustar.
 		const { error: eLista } = await sb.rpc('aplicar_lista_estandar', { p_promocion: nuevo });
 		if (eLista) {
@@ -594,6 +638,12 @@ export async function pantallaPromocion(destino: HTMLElement, id: string, pestan
 			<p class="ayuda">${p.fase_proyecto ? 'La indica la promotora en MUNE Portal, en Documentación. Los documentos que sube quedan marcados con esta fase.' : 'La promotora todavía no ha indicado en qué fase está el proyecto. Puede hacerlo en MUNE Portal, en Documentación (o tú, desde la pestaña Documentación).'}</p>
 			<h2 class="separado">Versiones</h2>
 			<div data-versiones></div>
+			<h2 class="separado">Partes de la promoción y publicación</h2>
+			<form class="peticion-form" data-modulos novalidate>
+				${htmlModulos(p.modulos ?? MODULOS_POR_DEFECTO, p.publicacion)}
+				<p class="error" role="alert"></p>
+				<div class="acciones"><button class="boton pequeno" type="submit">Guardar</button></div>
+			</form>
 			<h2 class="separado">Estado</h2>
 			<label class="en-linea">Estado que ve la promotora
 				<select data-estado-promo>${Object.entries(ESTADOS).map(([e, t]) => `<option value="${e}" ${p.estado === e ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
@@ -608,6 +658,12 @@ export async function pantallaPromocion(destino: HTMLElement, id: string, pestan
 		const zonaBorrar = caja.querySelector<HTMLElement>('[data-borrar]');
 		if (zonaBorrar) void pintarBorradoPromocion(zonaBorrar, p);
 		conectarExportar(destino, caja.querySelector<HTMLButtonElement>('[data-exportar]')!, (progreso) => exportarPromocion(id, progreso));
+		alEnviar(caja.querySelector<HTMLFormElement>('[data-modulos]')!, async (d) => {
+			const { error: e } = await guardarModulos(id, leerModulos(d), String(d.get('publicacion')));
+			if (e) throw e;
+			await recargar();
+			avisador(destino)('✓ Partes de la promoción y publicación guardadas.');
+		});
 		caja.querySelector<HTMLSelectElement>('[data-estado-promo]')!.addEventListener('change', async (ev) => {
 			const sel = ev.target as HTMLSelectElement;
 			const { error: e } = await sb.from('promociones').update({ estado: sel.value }).eq('id', id);
@@ -692,7 +748,9 @@ export async function pantallaPromocion(destino: HTMLElement, id: string, pestan
 		});
 	}
 
-	if (actual === 'compradores') {
+	if (actual === 'compradores' && p.modulos?.acceso_comprador === false) {
+		caja.innerHTML = '<h2>Compradores</h2><p class="vacio">Esta promoción no tiene activado el acceso de compradores. Actívalo en «Resumen y versiones» → «Partes de la promoción» si lo necesita.</p>';
+	} else if (actual === 'compradores') {
 		await pintarCompradores(caja, { sb, esc, fecha, traducir, escaparate: ESCAPARATE, revision: REVISION, modo: 'administradora' }, p);
 	}
 

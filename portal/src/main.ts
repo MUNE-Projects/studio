@@ -7,7 +7,7 @@ import { textoFase } from './fase';
 import { datosFormalizacion, formFormalizacion, type Formalizacion } from './formalizacion';
 import { ESCAPARATE, REVISION, INACTIVIDAD_MAX, MIN_CLAVE, CABECERA, alEnviar, app, errorEnlace, esc, fecha, pintar, sb, tipoEnlace, traducir } from './comun';
 import { pintarCompradores } from './compradores';
-import { COLUMNAS_DOCUMENTO, COLUMNAS_REQUISITO, type Documento, type Requisito, pintarDocumentacion, resumenDocumentos } from './documentos';
+import { COLUMNAS_DOCUMENTO, COLUMNAS_REQUISITO, type Documento, type Requisito, leerCubre, pintarDocumentacion, resumenDocumentos } from './documentos';
 import { pintarEquipo } from './equipo';
 import { pintarExperiencia, versionesConExperiencia } from './experiencia';
 import { type Miembro, type Permisos, permisosDe } from './permisos';
@@ -313,7 +313,7 @@ const pendientesMios = (elementos: Elemento[], yo: string) =>
 
 async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', mensaje = ''): Promise<void> {
 	const promo = await sb.from('promociones').select(`id, nombre, ubicacion, estado, promotora_id, razon_social, cif, domicilio_fiscal, direccion, codigo_postal,
-		municipio, provincia, referencia_catastral, tipo, num_viviendas, num_portales, num_plantas, fecha_entrega, fase_proyecto, formalizacion, textos_legales`).eq('id', id).maybeSingle();
+		municipio, provincia, referencia_catastral, tipo, num_viviendas, num_portales, num_plantas, fecha_entrega, fase_proyecto, formalizacion, textos_legales, modulos`).eq('id', id).maybeSingle();
 	if (promo.error) throw promo.error;
 	if (!promo.data) {
 		location.hash = '#/';
@@ -323,7 +323,11 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 	const yo = acceso!.yo;
 	const per = permisosDe(acceso!.filas, p.promotora_id, id);
 	const ctx: Contexto = { yo, administraPromocion: per.administraPromocion };
-	const visibles = PESTANAS.filter(([, , c]) => c === null || (c === 'administra' ? per.administraPromocion : per.puede(c)));
+	// Partes que MUNE Studio ha activado en esta promoción (022): sin ellas, su pestaña no aparece.
+	const modulos = ((p as unknown as { modulos?: Record<string, boolean> }).modulos ?? {}) as Record<string, boolean>;
+	const MODULO_DE: Record<string, string> = { compradores: 'acceso_comprador', personalizacion: 'personalizacion' };
+	const visibles = PESTANAS.filter(([k, , c]) => modulos[MODULO_DE[k]] !== false
+		&& (c === null || (c === 'administra' ? per.administraPromocion : per.puede(c))));
 	const actual = visibles.some(([k]) => k === pestana) ? pestana : 'resumen';
 
 	const [reqs, docs, versionesPlanos, versionesExp] = await Promise.all([
@@ -335,13 +339,14 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 	for (const r of [reqs, docs]) if (r?.error) throw r.error;
 	const requisitos = (reqs?.data ?? []) as Requisito[];
 	const documentos = (docs?.data ?? []) as Documento[];
+	const cubre = await leerCubre(documentos);
 	// La versión en curso: la más reciente que se ha enviado a validar.
 	const enCurso = [versionesPlanos[0], versionesExp[0]].filter(Boolean).sort((a, b) => numVersion(b) - numVersion(a))[0] as string | undefined;
 	const [planosCurso, expCurso] = await Promise.all([
 		enCurso && versionesPlanos.includes(enCurso) ? leerPlanos(id, enCurso) : Promise.resolve([] as Elemento[]),
 		enCurso && versionesExp.includes(enCurso) ? leerValidacion(id, enCurso, 'experiencia') : Promise.resolve([] as Elemento[]),
 	]);
-	const { faltan, rechazados } = resumenDocumentos(requisitos, documentos);
+	const { faltan, rechazados } = resumenDocumentos(requisitos, documentos, cubre);
 	const misPlanos = pendientesMios(planosCurso, yo);
 	const miExperiencia = pendientesMios(expCurso, yo);
 	const contador: Record<string, string> = {
@@ -377,14 +382,14 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 					<span class="estado ${faltan + rechazados ? 'pendiente' : 'al-dia'}">${faltan + rechazados ? 'Pendiente' : 'Al día'}</span></a>` : ''}
 				${per.puede('datos') ? `<a class="promo-enlace" href="#/promocion/${esc(id)}/datos"><span><strong>Ficha y datos</strong><br>
 					<span class="promo-lugar">Dirección, tipo, viviendas, sociedad y textos legales</span></span></a>` : ''}
-				${per.puede('personalizacion') ? `<a class="promo-enlace" href="#/promocion/${esc(id)}/personalizacion"><span><strong>Personalización</strong><br>
+				${visibles.some(([k]) => k === 'personalizacion') ? `<a class="promo-enlace" href="#/promocion/${esc(id)}/personalizacion"><span><strong>Personalización</strong><br>
 					<span class="promo-lugar">A quién envía el comprador su documento de selección y los datos para la transferencia</span></span></a>` : ''}
 			</div>`;
 		void pintarPublicada(p.id);
 	}
 
 	if (actual === 'documentacion') {
-		await pintarDocumentacion(caja, p, requisitos, documentos, (m) => pantallaPromocion(id, 'documentacion', '', m ?? ''));
+		await pintarDocumentacion(caja, p, requisitos, documentos, (m) => pantallaPromocion(id, 'documentacion', '', m ?? ''), cubre);
 	}
 
 	if (actual === 'planos') {

@@ -100,7 +100,7 @@ async function ejecutar(aviso: HTMLElement, id: string, orden: Record<string, st
 }
 
 /** Bloque de versiones de una promoción: ver, publicar y volver a una anterior. */
-export async function pintarVersiones(destino: HTMLElement, p: { id: string; nombre: string; promotora_id: string }): Promise<void> {
+export async function pintarVersiones(destino: HTMLElement, p: { id: string; nombre: string; promotora_id: string; publicacion?: string }): Promise<void> {
 	destino.innerHTML = '<p class="vacio">Comprobando las versiones…</p>';
 	const e = await estadoVersiones(p.id);
 	const { pub, rev, pendiente } = e;
@@ -131,6 +131,7 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 			${volver.length ? '<button class="boton secundario" type="button" data-abrir-volver>Volver a una anterior</button>' : ''}
 		</div>
 		${bloqueo ? `<p class="ayuda">${esc(bloqueo)}</p>` : ''}
+		${pendiente && p.publicacion !== 'manual' ? `<p class="ayuda">Esta promoción se publica al aprobar la promotora: cuando valide todo lo enviado, la ${esc(rev!.version)} se publicará sola y te llegará un email.</p>` : ''}
 		<p class="aviso" data-progreso role="status" hidden></p>
 		<div data-validacion></div>
 		${volver.length ? `<form class="peticion-form" data-volver hidden novalidate>

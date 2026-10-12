@@ -6,6 +6,8 @@
 //   archivos (020) muestran cada archivo con lo que contiene y su historial, y
 //   se revisa archivo a archivo.
 // · La lista de documentos que tiene que entregar, que se puede ajustar.
+// · Un archivo puede cubrir varios documentos de la lista (022): se ve en el
+//   archivo («También incluye…») y en los documentos que cubre («Incluido en…»).
 //
 // Las reglas (005, 008) dejan a la administradora cambiar solo el estado y la
 // nota; nadie puede borrar ni sobrescribir un documento.
@@ -80,12 +82,13 @@ function estadoConjunto(ultimas: Documento[]): string | null {
 }
 
 /** Un archivo (o el documento entero, si no admite varios) con su historial, y aceptar o rechazar su última versión. */
-function htmlCadena(versiones: Documento[], varios: boolean, quien: Map<string, string>): string {
+function htmlCadena(versiones: Documento[], varios: boolean, quien: Map<string, string>, incluye: string[] = []): string {
 	const u = versiones[0];
 	const [etiqueta, clase] = ESTADOS_DOC[u.estado] ?? [u.estado, ''];
 	return `<div class="${varios ? 'archivo-doc' : ''}">
 		${varios ? `<div class="promo-cabeza"><span><strong>${esc(u.contenido ?? 'Archivo')}</strong>${u.detalle ? ` · ${esc(u.detalle)}` : ''}</span>
 			<span class="estado ${clase}">${esc(etiqueta)}</span></div>` : ''}
+		${incluye.length ? `<p class="promo-lugar">También incluye: ${esc(incluye.join(', '))}</p>` : ''}
 		<div class="historial">${versiones.map((d, i) => `<div class="historial-fila">
 			<span><strong>v${d.version}</strong> · ${esc(d.nombre)} · ${esc(tamano(d.tamano))} · ${esc(fecha(d.subido_en))}${d.fase ? ` · ${FASES[d.fase] ?? ''}` : ''} · ${esc(quien.get(d.subido_por) ?? '—')}
 				${i > 0 || d.estado !== 'pendiente' ? ` · <span class="estado ${ESTADOS_DOC[d.estado]?.[1] ?? ''}">${esc(ESTADOS_DOC[d.estado]?.[0] ?? d.estado)}</span>` : ''}</span>
@@ -109,21 +112,31 @@ function htmlCadena(versiones: Documento[], varios: boolean, quien: Map<string, 
 }
 
 export async function pintarDocumentacion(caja: HTMLElement, p: PromocionMin): Promise<void> {
-	const [reqs, docs, personas, historial] = await Promise.all([
+	const [reqs, docs, personas, historial, cubreR] = await Promise.all([
 		sb.from('requisitos').select('id, bloque, elemento, descripcion, obligatorio, activo, varios, contenidos').eq('promocion_id', p.id).order('orden').order('id'),
 		sb.from('documentos').select('id, requisito_id, nombre, ruta, tamano, version, estado, nota, subido_por, subido_en, revisado_en, fase, reemplaza_a, contenido, detalle')
 			.eq('promocion_id', p.id).order('version', { ascending: false }),
 		sb.from('miembros').select('user_id, nombre').eq('promotora_id', p.promotora_id),
 		leerHistorialFases(sb, p.id),
+		sb.from('documento_cubre').select('documento_id, requisito_id, documentos!inner(promocion_id)').eq('documentos.promocion_id', p.id),
 	]);
-	for (const r of [reqs, docs, personas]) if (r.error) throw r.error;
+	for (const r of [reqs, docs, personas, cubreR]) if (r.error) throw r.error;
 	const requisitos = (reqs.data ?? []) as Requisito[];
 	const documentos = (docs.data ?? []) as Documento[];
 	const quien = new Map(((personas.data ?? []) as { user_id: string; nombre: string }[]).map((x) => [x.user_id, x.nombre]));
 	const recargar = () => pintarDocumentacion(caja, p);
 	// Cada requisito tiene una o varias cadenas de versiones (una por archivo, si admite varios).
 	const cadenas = new Map(requisitos.map((r) => [r.id, cadenasDe(r, documentos)]));
-	const ultimos = (r: Requisito) => (cadenas.get(r.id) ?? []).map((c) => c[0]);
+	// Lo que cubre cada archivo además de su documento (solo cuentan las versiones que nadie sustituye).
+	const cubre = new Map<number, number[]>();
+	for (const x of (cubreR.data ?? []) as { documento_id: number; requisito_id: number }[]) cubre.set(x.documento_id, [...(cubre.get(x.documento_id) ?? []), x.requisito_id]);
+	const sustituidos = new Set(documentos.map((d) => d.reemplaza_a).filter((x): x is number => typeof x === 'number'));
+	const cubiertoPor = (r: Requisito) => documentos.filter((d) => !sustituidos.has(d.id) && (cubre.get(d.id) ?? []).includes(r.id));
+	const nombreReq = new Map(requisitos.map((r) => [r.id, r.elemento]));
+	const incluye = (d: Documento) => (cubre.get(d.id) ?? []).map((id) => nombreReq.get(id) ?? '').filter(Boolean);
+	const propios = (r: Requisito) => (cadenas.get(r.id) ?? []).map((c) => c[0]);
+	// sin archivo propio, cuenta el archivo que lo incluye
+	const ultimos = (r: Requisito) => propios(r).length ? propios(r) : cubiertoPor(r);
 	const estadoReq = (r: Requisito) => estadoConjunto(ultimos(r));
 
 	const activos = requisitos.filter((r) => r.activo);
@@ -153,7 +166,8 @@ export async function pintarDocumentacion(caja: HTMLElement, p: PromocionMin): P
 					<span><strong>${esc(r.elemento)}</strong>${r.obligatorio ? '' : ' <span class="promo-lugar">(opcional)</span>'}${r.varios && lista.length ? ` <span class="promo-lugar">· ${lista.length === 1 ? '1 archivo' : `${lista.length} archivos`}</span>` : ''}</span>
 					<span class="estado ${clase}">${esc(etiqueta)}</span>
 				</div>
-				${lista.length ? lista.map((versiones) => htmlCadena(versiones, !!r.varios, quien)).join('')
+				${lista.length ? lista.map((versiones) => htmlCadena(versiones, !!r.varios, quien, incluye(versiones[0]))).join('')
+					: cubiertoPor(r).length ? `<p class="promo-lugar">Incluido en ${cubiertoPor(r).map((d) => `«${esc(d.nombre)}» (en «${esc(nombreReq.get(d.requisito_id) ?? '')}»)`).join(', ')}. Se revisa en ese documento.</p>`
 					: '<p class="vacio">La promotora todavía no ha subido nada.</p>'}
 			</article>`;
 		}).join('')}</div>`).join('') || '<p class="vacio">La lista de documentos está vacía. Pulsa «Ajustar la lista de documentos» para añadir la lista estándar o documentos sueltos.</p>'}
