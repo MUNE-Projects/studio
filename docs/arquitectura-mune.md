@@ -400,19 +400,64 @@ Se implementa dentro del **paso 2**.
 
 ---
 
-## 10. Orden de implementación
+## 10. Lista maestra y orden (aprobada el 12/10/2026)
 
-| Paso | Contenido |
-|---|---|
-| **0** | Revisión de marca y textos, con todos los cambios editoriales de esta decisión. Después del merge: los pasos de Supabase (`016`, `017`, la función `avisar-promotora` y los 2 emails) |
-| **1** | Nombres y estructura: `taller` → `studio`, `escaparate` → `experience`, Panel → Studio, Workers, carpetas, 2FA, documentación y Supabase visible |
-| **2** | Equipos, administración y validaciones: alta de promotora con datos y administradores, administradores, capacidades, separación entre `compradores` y `personalizacion`, Equipo en el Portal, validación de planos comerciales y de Experiencia 3D, varios aprobadores, trazabilidad, emails, varios archivos por documento (con nombre) y textos legales |
-| **3** | Selecciones guardadas al descargar el PDF, fechas de packs desde el Portal y exportación: van con el paso 5 (datos privados) |
-| **4** | Experience integrada en el Portal: modo profesional, previsualización de la personalización, Render HD, materiales y fin del acceso profesional público |
-| **5** | Datos privados fuera de lo público |
+Sustituye al orden de pasos 0–5 anterior (los pasos 0, 2 y 3 de equipos y validaciones ya están hechos).
 
-Quedan fuera hasta nuevo aviso:
+### A. Principios permanentes
 
-- copias de seguridad (etapa 7);
-- Fase 2;
-- la evolución de packs a fases.
+- **Flexibilidad por configuración**, reglas o módulos reutilizables; nunca un MUNE distinto por cliente (validaciones, aprobadores, permisos, forma de personalizar, periodos, terminología, flujos visuales).
+- **Clasificar cada necesidad nueva:** CORE · CONFIGURACIÓN · MÓDULO · INTEGRACIÓN · FUERA DE ALCANCE.
+- **Fuera de alcance:** CRM, ERP, leads, pipeline, stock, reservas, facturación, contabilidad, financiación, pedidos y CPQ. Con ellos, solo exportación, importación o integración.
+- **Claude forma parte del flujo:** lee directamente la documentación del cliente; nadie de MUNE la transcribe.
+- **Sin plantillas MUNE obligatorias.** La lista de documentos es de información, no de archivos: un archivo puede cubrir varios requisitos y un requisito puede ir en varios archivos.
+- **Las fases del proyecto son fases, no documentos** (anteproyecto, proyecto básico, proyecto de ejecución).
+- **MUNE Experience no es la web comercial de la promotora:** precios de venta, disponibilidad, formularios y CRM siguen en su web; MUNE es la capa visual.
+- **Un motor, tres contextos:** público (si Experience pública está activa), comprador (si Acceso comprador está activo) y profesional (siempre, en MUNE Portal).
+- **Alcance cerrado:** promoción; tipología ↔ promoción; vivienda del comprador ↔ promoción. Nunca catálogo ni selector de tipologías.
+- **Personalización con dos estados:** Seleccionada (el comprador descarga el PDF) y Cerrada (termina el periodo; queda bloqueada como histórico). Cada fase o grupo por separado. Sin «formalizada» ni validación manual del comercial.
+
+### B. Núcleo, en este orden
+
+1. ✔ **Comprobar** el flujo real (v9 y v10 de Residencial Demo, 12/10/2026).
+2. **Documentación, onboarding y módulos de cada promoción** (022): lista de información; un archivo cubre varios requisitos; relación de viviendas sin plantilla; alta guiada en Studio; módulos **Experience pública**, **Acceso comprador** y **Personalización** (independientes y combinables; «Compradores» sigue siendo solo una capacidad); modo de publicación (**Publicar al aprobar la promotora**, por defecto, o **Publico yo**); avisos a MUNE por el Gmail de MUNE.
+3. **Nombres definitivos** (studio, experience, Workers, carpetas, 2FA, Supabase), preparados para pasar al dominio propio sin rehacer nada. Antes de entregar ninguna dirección pública ni código de inserción.
+4. **Copias de seguridad y simulacro**, antes de mover datos.
+5. **Datos privados, personalización y Excel:** catálogo, precios, packs y viviendas servidos de forma privada; selecciones Seleccionada → Cerrada; Excel con las selecciones cerradas y sus importes; estructura preparada para fases y grupos; **puerta general del comprador** («Accede a tu vivienda»: el código, único en todo MUNE y con límite de intentos global, identifica promotora, promoción y vivienda). Por decidir: si la selección hecha por el comercial desde el Portal (sin Acceso comprador) también queda como Seleccionada.
+6. **MUNE Experience con sus tres contextos:** visor con alcance («Ver promoción» / «Volver a…»); Portal → Experiencia 3D con promoción general y cada tipología (estado, validación, cambios, Render HD, imágenes, modo profesional, vista previa de la personalización); con Experience pública activa, «Copiar URL pública» y «Copiar código de inserción» (en cualquier web, sin lista de dominios); apagada, la Experience sigue existiendo y solo dejan de funcionar las direcciones públicas; botón «Solicitar información» con una URL de la promotora; fin del acceso profesional público.
+7. **Comprobar** con una promoción ficticia y documentación sintética (varias versiones, una contradicción a propósito, los tres contextos y varias combinaciones de módulos).
+
+### C. Más adelante
+
+8. Personalización configurable y Fase 2 (fases o grupos, opciones, restricciones, aplicabilidad, apertura y cierre; la promotora gestiona catálogo, precios, fechas y marca).
+9. Comparación entre versiones, impacto de cambios y vigencia (Vigente / Requiere actualizar / Pendiente de validar).
+10. Comentarios visuales en planos y Experience, unidos a su versión (no dependen del 9).
+11. Generación de materiales por lotes (depende del 6).
+12. Analítica del uso de MUNE, agregada y por contexto (importes de selecciones cerradas, opciones más elegidas, tipologías y vistas más vistas…).
+13. Entorno real (ubicación, orientación, parcela, vistas), sin soleamiento.
+14. «Solicitar información» más específico, solo si hace falta.
+
+### D. I+D
+
+15. Comprobar BIM / IFC / DWG (qué procesa Claude, qué aporta frente al PDF). Mientras, no se promete ni se pide.
+16. Trazabilidad de fuentes y detección automática de cambios.
+
+### E. Antes del primer cliente
+
+1. Decidir y comprar el dominio principal de MUNE (solo ese; tiene coste: consultar antes), antes de repartir ninguna URL real. Después, los subdominios de producción.
+2. Remitente de email con ese dominio (coste: consultar antes).
+3. Valorar Supabase de pago (coste: consultar antes).
+4. Decidir si las peticiones se revisan solas.
+5. Bloque B terminado y probado.
+
+Fecha fija: las llaves del sistema caducan el 7/10/2027.
+
+## 11. Módulos de la promoción y publicación al aprobar la promotora (paso 2, 022)
+
+- `promociones.modulos` (`experiencia_publica`, `acceso_comprador`, `personalizacion`) y `promociones.publicacion` (`automatica` | `manual`). Solo MUNE Studio los cambia (`guardar_modulos`), en el alta o en *Resumen y versiones*.
+- **Acceso comprador apagado:** no se crean códigos (disparador `codigo_con_acceso`) y `entrar_comprador` no deja entrar; el Portal oculta *Compradores*.
+- **Personalización apagada:** el Portal oculta *Personalización*. La web pública deja de ofrecerla cuando sus datos sean privados (paso 5).
+- **Experience pública:** se guarda ya; actúa en el paso 6, cuando el Portal tenga su propia Experience privada.
+- **Publicación al aprobar la promotora:** el visto bueno de MUNE es *Enviar a validar a la promotora*. Cuando la promotora valida todo lo enviado de la versión en revisión, la función `aviso-subida` arranca el ejecutor con esa misma versión; al terminar, email «publicada» al equipo de la promotora y a MUNE. *Volver a una anterior* sigue en MUNE Studio. Con «Publico yo», como antes.
+- **Avisos a MUNE** (documentación nueva y cada validación): `aviso-mune.yml`, desde el Gmail de MUNE, un email por aviso, a la dirección del secreto `AVISOS_MUNE_PARA`.
+- **Documentos:** `documento_cubre` (qué otros requisitos cubre un archivo; la versión nueva cubre lo mismo) y `cubrir_requisitos`. La relación de viviendas pasa a «Relación de viviendas, tipologías y superficies», en el formato del cliente.

@@ -22,7 +22,7 @@ Claude se usa **solo en producción** (preparar, interpretar, revisar), **nunca 
 - **Códigos de comprador** (Fase 1): se validan en Supabase. Se guarda solo su hash, con límite de intentos, regeneración y revocación. La web pública es estática y no depende de Supabase.
 - **Entorno en tres capas** (A precisa, B próxima, C lejana), con su fiabilidad indicada. Fuentes: generación propia, Catastro, IGN/PNOA/LiDAR y OSM. Google 3D Tiles queda excluido salvo aprobación expresa. Dron: solo un añadido opcional futuro.
 - **3D híbrido:** la arquitectura se genera desde datos; el mobiliario y los objetos son GLB reutilizables de la biblioteca. Se permiten assets externos gratuitos (también modelos 3D) si su licencia permite uso comercial y redistribución, y siempre registrados.
-- **Marca (decisión 39):** MUNE Projects = la empresa; **MUNE** = la plataforma y la marca visible («The agile visual platform»). Capas: **MUNE Portal** (la promotora), **MUNE Studio** (lo interno de MUNE: el Panel y el Studio) y la **experiencia pública de la promoción** (marca blanca). «Escaparate» es solo un nombre técnico interno. Textos: claros, directos, poco técnicos; tú en singular; «MUNE» para la plataforma y «el equipo de MUNE» para las personas; versiones «v7»; nunca errores técnicos a la vista. Arquitectura completa aprobada (decisión 40) en `docs/arquitectura-mune.md`: se implementa por pasos 0–5, uno por propuesta, y en el paso 1 desaparecen «Panel», «taller» y «escaparate» como nombres técnicos.
+- **Marca (decisión 39):** MUNE Projects = la empresa; **MUNE** = la plataforma y la marca visible («The agile visual platform»). Capas: **MUNE Portal** (la promotora), **MUNE Studio** (lo interno de MUNE: el Panel y el Studio) y la **experiencia pública de la promoción** (marca blanca). «Escaparate» es solo un nombre técnico interno. Textos: claros, directos, poco técnicos; tú en singular; «MUNE» para la plataforma y «el equipo de MUNE» para las personas; versiones «v7»; nunca errores técnicos a la vista. Arquitectura completa aprobada (decisión 40) en `docs/arquitectura-mune.md`: se implementa siguiendo su **lista maestra** (apartado 10, decisión 41), una propuesta por paso; en el paso de nombres definitivos desaparecen «Panel», «taller» y «escaparate» como nombres técnicos.
 - **Personas:**
   - la **administradora** (Carolina) usa **MUNE Studio** (el Panel);
   - las **promotoras** usan **MUNE Portal**: documentación, planos, compradores, ficha y formalización; marca y catálogo en la Fase 2;
@@ -30,7 +30,7 @@ Claude se usa **solo en producción** (preparar, interpretar, revisar), **nunca 
 
 ## Reglas que nunca se rompen
 
-1. **Ninguna publicación sin su aprobación explícita.** Ella revisa la vista previa y publica ella, desde el Panel.
+1. **Ninguna publicación sin su aprobación explícita.** Ella revisa la vista previa y da su visto bueno al pulsar *Enviar a validar a la promotora*: si la promoción está en «Publicar al aprobar la promotora» (por defecto), se publica sola cuando la promotora valida todo; si está en «Publico yo», publica ella desde el Panel (decisión 41).
 2. **Nada de pago sin su aprobación.** Si una decisión técnica introduce suscripción, pago por uso, dominio, email de pago, GPU, licencia u otro servicio con coste: **detente y explícaselo antes.** Antes de crear cualquier cuenta, dile qué es, para qué sirve y si es gratis. **Nunca se activa automáticamente una GPU de pago.** No compramos dominio mientras se desarrolla.
 3. **Ninguna clave sensible**:
    - en el frontend;
@@ -70,7 +70,7 @@ Claude se usa **solo en producción** (preparar, interpretar, revisar), **nunca 
   2. `git push` de `revision` del escaparate. `preparar` ya genera los planos comerciales de la versión (`herramientas/planos.mjs`).
   3. Lanzar el proceso `avisar.yml` del taller (`promocion`, `version`, `cambios`). GitHub le manda el email «… lista para revisar».
   4. Tras revisar la vista previa, ella pulsa *Enviar los planos a la promotora*, y la promotora los aprueba en su portal (receta en `docs/recetas/09-10-planos-y-publicar.md`).
-  5. **Ella publica desde el Panel** (solo se activa con todos los planos aprobados): botón *Publicar vN* → función `ejecutar` de Supabase → `publicar.yml` → escaparate `main` → Cloudflare. Solo se publica la versión revisada.
+  5. **Publicación** (solo con todo validado: planos comerciales y Experiencia 3D): en modo «Publicar al aprobar la promotora», la última aprobación arranca sola `publicar.yml` (función `aviso-subida`); en modo «Publico yo», ella pulsa *Publicar vN* → función `ejecutar` → `publicar.yml`. Después, escaparate `main` → Cloudflare. Solo se publica la versión revisada.
 - **Volver atrás:** también desde el Panel (*Volver a una anterior*, con motivo).
 - **El registro de versiones** (`promociones/<id>/publicaciones.json`) solo lo escribe el ejecutor, en `main`.
 - **Documentación de las promotoras** (recetas 2 y 13, `docs/recetas/`): «revisa lo nuevo de X» → `node herramientas/documentos.mjs pendientes | bajar <id> | estado <id> vigente|rechazado --nota "…"`; «¿hay algo nuevo?» → `node herramientas/documentos.mjs novedades`. **Nunca marques un documento sin su OK.**
@@ -116,5 +116,7 @@ Ahora la web pública está en **v7**, y la **v8** (de prueba, idéntica) sigue 
 6. ✔ bandeja de Inicio y avisos del sistema (receta 19, decisión 38): `015_sistema.sql` (llaves con caducidad, `latido`, `avisos_sistema`, `estado_sistema`), `panel/src/sistema.ts`, `vigilancia.yml` (cada 3 días: mantiene despierto Supabase y avisa por email de llaves y caídas);
 7. copias en el almacén privado `copias` de GitHub y simulacro (receta 18);
 8. alta de promoción (receta 1) y ensayo con una promotora ficticia.
+
+**Desde el 12/10/2026 se sigue la lista maestra** de `docs/arquitectura-mune.md` (apartado 10): paso 1 (prueba real del flujo) ✔; paso 2 (documentación, módulos de cada promoción y publicación al aprobar la promotora, `022_modulos_y_documentos.sql`) en propuesta. Las etapas 7 y 8 de arriba quedan dentro de esa lista (copias = paso 4; ensayo ficticio = paso 7).
 
 Cada etapa es una propuesta con su OK. Decisiones clave: Supabase gratuito hasta el primer cliente; promotoras con usuario y contraseña; emails con un Gmail dedicado; la prueba de aislamiento corre en un Supabase local dentro de GitHub (sin segundo proyecto ni llaves).
