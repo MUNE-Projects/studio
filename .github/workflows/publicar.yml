@@ -1,9 +1,12 @@
 # Brazo ejecutor: publica o vuelve atrás una promoción cuando la administradora
-# pulsa el botón del Panel.
+# pulsa el botón de MUNE Studio, o cuando la promotora valida todo lo enviado en
+# una promoción con «Publicar al aprobar la promotora» (022).
 #
-# Solo lo lanza la función «ejecutar» de Supabase (llave A, que únicamente
-# permite arrancar procesos de este almacén), después de comprobar que quien
-# pulsa es administradora con contraseña + código del móvil.
+# Lo lanzan la función «ejecutar» de Supabase (botón de MUNE Studio, después de
+# comprobar que quien pulsa es administradora con contraseña + código del
+# móvil) y la función «aviso-subida» (publicación al aprobar la promotora,
+# después de comprobar que esa versión está validada entera). Las dos usan la
+# llave A, que únicamente permite arrancar procesos de este almacén.
 #
 # Llaves que usa:
 #  · ESCAPARATE_TOKEN (llave B, secreto de este almacén): escribir en
@@ -47,10 +50,21 @@ on:
         required: false
         type: string
         default: ''
+      avisar_para:
+        description: publicación al aprobar la promotora · correos de su equipo para el aviso «publicada»
+        required: false
+        type: string
+        default: ''
+      nombre:
+        description: publicación al aprobar la promotora · nombre de la promoción para los avisos
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write
   issues: write   # cerrar el aviso «lista para revisar» al publicar
+  actions: write  # avisos por email de la publicación al aprobar la promotora
 
 # una publicación detrás de otra, nunca dos a la vez
 concurrency:
@@ -132,3 +146,24 @@ jobs:
           for n in $(gh issue list --repo "$REPO" --label revision --state open --search "\"$PROMOCION $VERSION\" in:title" --json number --jq '.[].number'); do
             gh issue close "$n" --repo "$REPO" --comment "Publicada desde MUNE Studio por $POR."
           done
+
+      - name: Avisar de la publicación al aprobar la promotora
+        if: inputs.accion == 'aprobar' && inputs.por == 'Publicación al aprobar la promotora'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PARA: ${{ inputs.avisar_para }}
+          NOMBRE: ${{ inputs.nombre }}
+        run: |
+          nombre="${NOMBRE:-$PROMOCION}"
+          if [[ -n "$PARA" ]]; then
+            gh workflow run aviso-promotora.yml --repo "$REPO" --ref main \
+              -f para="$PARA" \
+              -f asunto="$nombre · $VERSION publicada" \
+              -f texto="Tu equipo ha validado todo lo que el equipo de MUNE preparó para la $VERSION de $nombre, y ya está publicada. En unos minutos la verás en la web." \
+              -f enlace="https://escaparate.mune-projects.workers.dev/$PROMOCION/"
+          fi
+          gh workflow run aviso-mune.yml --repo "$REPO" --ref main \
+            -f asunto="$nombre · $VERSION publicada al aprobar la promotora" \
+            -f texto="La promotora ha validado todo lo enviado de la $VERSION de $nombre y se ha publicado sola. Si hay que deshacerlo, en MUNE Studio pulsa «Volver a una anterior»." \
+            -f enlace="https://panel.mune-projects.workers.dev/#/promocion/$PROMOCION/resumen"

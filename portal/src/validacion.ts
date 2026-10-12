@@ -122,10 +122,20 @@ export function faltanTrasAprobar(e: Elemento, ctx: Contexto): number {
 export async function guardarDecision(id: string, version: string, tipo: TipoValidacion, entregable: number, fila: Record<string, unknown>): Promise<Elemento | undefined> {
 	const { data: v, error } = await sb.from('validaciones').insert({ entregable_id: entregable, ...fila }).select('id').single();
 	if (error) throw error;
-	// aviso por email al equipo de MUNE (si falla, la validación ya está guardada igualmente)
-	void sb.functions.invoke('aviso-subida', { body: { validacion_id: v.id } }).catch(() => undefined);
+	// aviso por email al equipo de MUNE (si falla, la validación ya está guardada igualmente);
+	// si con esta aprobación queda todo validado y la promoción se publica al aprobar, empieza a publicarse
+	publicando = '';
+	const aviso = sb.functions.invoke('aviso-subida', { body: { validacion_id: v.id } })
+		.then(({ data }) => { if ((data as { publicando?: boolean } | null)?.publicando) publicando = version; })
+		.catch(() => undefined);
+	await Promise.race([aviso, new Promise((r) => setTimeout(r, 8000))]);
 	return (await leerValidacion(id, version, tipo)).find((x) => x.id === entregable);
 }
+
+/** Versión que se ha empezado a publicar con la última aprobación (o vacío). */
+let publicando = '';
+export const textoPublicando = () => publicando
+	? ` Está todo validado: la ${publicando} se está publicando y estará en la web en unos minutos.` : '';
 
 /** Mensaje tras aprobar: validado del todo o cuántas aprobaciones faltan. */
 export function mensajeAprobado(e: Elemento | undefined, tipo: TipoValidacion): string {

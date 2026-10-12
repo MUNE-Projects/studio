@@ -11,7 +11,7 @@
 import { alEnviar, esc, sb, traducir } from './comun';
 import {
 	type Contexto, type Elemento, baseVisita, avance, chipEstado, faltanTrasAprobar, guardarDecision, htmlPersonas,
-	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, versionesCon,
+	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, textoPublicando, versionesCon,
 } from './validacion';
 
 export const versionesConPlanos = (id: string) => versionesCon(id, 'planos');
@@ -150,7 +150,7 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
 			return;
 		}
 		const despues = await guardarDecision(id, e.version, 'planos', p.id, { decision: 'aprobado', confirmado: true });
-		alValidar(despues?.estado === 'aprobado' ? `✓ Plano «${p.titulo}» validado.` : `✓ ${mensajeAprobado(despues, 'planos')}`);
+		alValidar((despues?.estado === 'aprobado' ? `✓ Plano «${p.titulo}» validado.` : `✓ ${mensajeAprobado(despues, 'planos')}`) + textoPublicando());
 	});
 	const rechazar = caja.querySelector<HTMLFormElement>('[data-rechazar]');
 	if (rechazar) alEnviar(rechazar, async (d) => {

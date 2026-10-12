@@ -1,18 +1,22 @@
-// Función «aviso-subida» de Supabase: aviso por email a la administradora cada
-// vez que una promotora sube un documento (Etapa 3) o valida un plano
-// comercial o una tipología de la Experiencia 3D (aprueba o pide cambios; con
-// { validacion_id } en lugar de { documento_id }). El aviso de validación dice
-// el avance («1 de 2 aprobaciones»), la zona si la indicó, y si ya se puede
-// publicar (planos comerciales y Experiencia 3D validados).
+// Función «aviso-subida» de Supabase: aviso por email al equipo de MUNE cada
+// vez que una promotora sube un documento o valida un plano comercial o una
+// tipología de la Experiencia 3D (aprueba o pide cambios; con { validacion_id }
+// en lugar de { documento_id }). El aviso de validación dice el avance («1 de
+// 2 aprobaciones»), la zona si la indicó, y si ya está todo validado.
 //
-// 1. La llama el portal justo después de subir el documento, con la sesión de
-//    quien lo ha subido.
-// 2. marcar_aviso_subida (009) comprueba que lo subió esa persona hace menos de
-//    30 minutos y que no se ha avisado ya: cada documento avisa una sola vez.
-// 3. Pide a GitHub que arranque .github/workflows/aviso-documento.yml del
-//    taller, con la llave A (secreto GITHUB_EJECUTOR, la misma del botón
-//    Publicar, que solo permite arrancar procesos del taller). GitHub envía el
-//    email, igual que el aviso «versión lista para revisar».
+// 1. La llama el portal justo después de subir o validar, con la sesión de
+//    quien lo ha hecho.
+// 2. marcar_aviso_subida / marcar_aviso_validacion comprueban que lo hizo esa
+//    persona y que no se ha avisado ya: cada cosa avisa una sola vez.
+// 3. Pide a GitHub que arranque .github/workflows/aviso-mune.yml del taller,
+//    con la llave A (secreto GITHUB_EJECUTOR, que solo permite arrancar
+//    procesos del taller). El email sale del Gmail de MUNE, uno por aviso.
+// 4. Publicación al aprobar la promotora (022): si la promoción está en modo
+//    «automatica» y con esta aprobación queda validado todo lo que MUNE envió
+//    de la versión en revisión, arranca el ejecutor (publicar.yml) con esa
+//    misma versión, como haría el botón «Publicar» de MUNE Studio. El ejecutor
+//    vuelve a comprobar que es la versión revisada, y al terminar avisa por
+//    email al equipo de la promotora y a MUNE.
 //
 // Las funciones de Supabase no pueden enviar email por SMTP (Gmail), por eso
 // el email lo manda GitHub. No usa la clave de servicio.
@@ -23,8 +27,11 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? 'https://iowtdenlkxjqzlpwizgb.supabase.co';
 const CLAVE_PUBLICA = Deno.env.get('CLAVE_PUBLICA') ?? 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR';
-const PROCESO = 'https://api.github.com/repos/MUNE-Projects/taller/actions/workflows/aviso-documento.yml/dispatches';
-const PROCESO_PLANO = 'https://api.github.com/repos/MUNE-Projects/taller/actions/workflows/aviso-plano.yml/dispatches';
+const PROCESO = 'https://api.github.com/repos/MUNE-Projects/taller/actions/workflows/aviso-mune.yml/dispatches';
+const PUBLICAR = 'https://api.github.com/repos/MUNE-Projects/taller/actions/workflows/publicar.yml/dispatches';
+const STUDIO = Deno.env.get('STUDIO_URL') ?? 'https://panel.mune-projects.workers.dev/';
+const REVISION = Deno.env.get('REVISION_ESCAPARATE') ?? 'https://revision-escaparate.mune-projects.workers.dev';
+const ARCHIVO: Record<string, string> = { planos: 'planos/planos.json', experiencia: 'experiencia/experiencia.json' };
 const ORIGENES = [
 	'https://portal.mune-projects.workers.dev',
 	'https://revision-portal.mune-projects.workers.dev',
@@ -102,34 +109,63 @@ Deno.serve(async (req) => {
 		const avance = fila && fila.requeridos > 0
 			? `${fila.aprobados} de ${fila.requeridos} ${fila.requeridos === 1 ? 'aprobación' : 'aprobaciones'}` : '';
 
-		// ¿Ya se puede publicar? Las dos partes validadas (o la otra sin enviar: versión sin esa parte).
+		// ¿Está todo validado? Las dos partes, o la otra sin enviar solo si la versión no la tiene.
 		const lista = async (t: string) => {
 			const { data, error } = await sb.rpc('validacion_lista', { p_promocion: fv.promocion_id, p_version: fv.version, p_tipo: t });
 			return error ? null : String(data);
 		};
-		const [estaParte, otraParte] = await Promise.all([lista(tipo), lista(tipo === 'planos' ? 'experiencia' : 'planos')]);
+		const otra = tipo === 'planos' ? 'experiencia' : 'planos';
+		const [estaParte, otraParte] = await Promise.all([lista(tipo), lista(otra)]);
 		const parteLista = estaParte === 'listos';
-		const todos = parteLista && (otraParte === 'listos' || otraParte === 'sin_enviar');
+		let otraVale = otraParte === 'listos';
+		if (parteLista && otraParte === 'sin_enviar') {
+			const r = await fetch(`${REVISION}/${fv.promocion_id}/${ARCHIVO[otra]}`, { cache: 'no-store' }).catch(() => null);
+			otraVale = r?.status === 404;
+		}
+		const todos = parteLista && otraVale;
 
-		const r = await llamarGitHub(PROCESO_PLANO, {
-			promocion: fv.promocion_id,
-			nombre: corto(fv.promociones?.nombre, 120),
-			plano: corto(fv.entregables?.titulo ?? fv.entregables?.nombre, 160),
-			version: fv.version,
-			decision: fv.decision,
-			comentario: corto(fv.comentario, 500),
-			persona: corto(persona?.nombre, 120),
-			todos: todos ? 'si' : 'no',
-			tipo,
-			zona: corto(fv.zona, 120),
-			avance,
-			completo: fila?.estado === 'aprobado' ? 'si' : 'no',
-			parte: parteLista ? 'si' : 'no',
+		// Publicación al aprobar la promotora (solo la versión en revisión, la que MUNE envió).
+		let publicando = false;
+		if (todos && fv.decision === 'aprobado') {
+			const { data: promo } = await sb.from('promociones').select('publicacion, promotora_id').eq('id', fv.promocion_id).maybeSingle();
+			const enRevision = await fetch(`${REVISION}/${fv.promocion_id}/version.json`, { cache: 'no-store' })
+				.then((r) => r.ok ? r.json() : null).catch(() => null) as { version?: string } | null;
+			if (promo?.publicacion === 'automatica' && enRevision?.version === fv.version) {
+				const { data: equipo } = await sb.rpc('equipo_de_promotora', { p_promotora: promo.promotora_id });
+				const correos = [...new Set(((equipo ?? []) as { email: string; activo: boolean; promocion_id: string | null }[])
+					.filter((m) => m.activo && (m.promocion_id === null || m.promocion_id === fv.promocion_id)).map((m) => m.email))].slice(0, 50);
+				const r = await llamarGitHub(PUBLICAR, {
+					accion: 'aprobar', promocion: fv.promocion_id, version: fv.version, motivo: '',
+					por: 'Publicación al aprobar la promotora', solicitud: crypto.randomUUID(),
+					avisar_para: correos.join(','), nombre: corto(fv.promociones?.nombre, 120),
+				});
+				publicando = !!r?.ok;
+				if (r && !r.ok) console.error('publicar', r.status, await r.text());
+			}
+		}
+
+		const elemento = tipo === 'experiencia'
+			? `Experiencia 3D · ${corto(fv.entregables?.titulo ?? fv.entregables?.nombre, 160)}`
+			: corto(fv.entregables?.titulo ?? fv.entregables?.nombre, 160);
+		const quien = corto(persona?.nombre, 120) || 'Alguien de la promotora';
+		const nombre = corto(fv.promociones?.nombre, 120);
+		const lineas = [fv.decision === 'aprobado'
+			? `${quien} ha aprobado «${elemento}» de la ${fv.version}${avance ? ` (${avance})` : ''}.${fila?.estado === 'aprobado' ? ' Queda validado.' : ''}`
+			: `${quien} pide cambios en «${elemento}» de la ${fv.version}${fv.zona ? ` · ${corto(fv.zona, 120)}` : ''}:\n«${corto(fv.comentario, 500)}»`];
+		if (parteLista && !todos) lineas.push(tipo === 'experiencia' ? `Todas las tipologías de la Experiencia 3D de la ${fv.version} están aprobadas.` : `Todos los planos comerciales de la ${fv.version} están aprobados.`);
+		if (todos) lineas.push(publicando
+			? `Está todo validado: la ${fv.version} se está publicando sola. Te llegará otro email cuando esté en la web.`
+			: `Está todo validado: ya puedes publicar la ${fv.version} desde MUNE Studio.`);
+		const r = await llamarGitHub(PROCESO, {
+			asunto: fv.decision === 'aprobado' ? `${nombre} · ${quien} aprueba «${elemento}» (${fv.version})` : `${nombre} · cambios pedidos en «${elemento}» (${fv.version})`,
+			texto: lineas.join('\n\n'),
+			enlace: `${STUDIO}#/promocion/${fv.promocion_id}/resumen`,
 		});
 		if (!r) return responder(500, { error: 'Falta la llave A (GITHUB_EJECUTOR) en los secretos de Supabase' });
 		if (!r.ok) return responder(502, { error: `GitHub no ha aceptado el aviso (${r.status})` });
-		return responder(200, { ok: true, avisado: true });
+		return responder(200, { ok: true, avisado: true, publicando });
 	}
+
 	if (!Number.isInteger(documento) || documento <= 0) return responder(400, { error: 'Documento no válido' });
 
 	const { data: toca, error: eMarca } = await sb.rpc('marcar_aviso_subida', { p_documento: documento });
@@ -147,14 +183,14 @@ Deno.serve(async (req) => {
 		requisitos: { elemento: string } | null; promociones: { nombre: string; promotoras: { nombre: string } | null } | null;
 	};
 
+	const nombre = corto(fila.promociones?.nombre, 120);
+	const documentoNombre = corto(fila.requisitos?.elemento, 120);
+	const quien = corto(persona?.nombre, 120) || 'Alguien';
+	const promotora = corto(fila.promociones?.promotoras?.nombre, 120);
 	const r = await llamarGitHub(PROCESO, {
-		promocion: fila.promocion_id,
-		nombre: corto(fila.promociones?.nombre, 120),
-		promotora: corto(fila.promociones?.promotoras?.nombre, 120),
-		documento: corto(fila.requisitos?.elemento, 120),
-		archivo: corto(fila.nombre, 200),
-		version: String(fila.version),
-		persona: corto(persona?.nombre, 120),
+		asunto: `${nombre} · documentación nueva: ${documentoNombre}`,
+		texto: `${quien}${promotora ? ` (${promotora})` : ''} ha subido «${corto(fila.nombre, 200)}»${fila.version > 1 ? ` (versión ${fila.version})` : ''} en «${documentoNombre}».\n\nRevísalo en MUNE Studio, en la pestaña Documentación, o pídeme «revisa lo nuevo de ${nombre}».`,
+		enlace: `${STUDIO}#/promocion/${fila.promocion_id}/documentacion`,
 	});
 	if (!r) return responder(500, { error: 'Falta la llave A (GITHUB_EJECUTOR) en los secretos de Supabase' });
 	if (!r.ok) return responder(502, { error: `GitHub no ha aceptado el aviso (${r.status})` });
