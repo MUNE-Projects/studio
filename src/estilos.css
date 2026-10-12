@@ -459,11 +459,17 @@ body.con-etiquetas .etiqueta { opacity: 1; }
 	transition: opacity 400ms var(--salida), visibility 0s linear 400ms;
 }
 body.listo #carga { opacity: 0; visibility: hidden; }
+/* si se pide la vivienda en 3D antes de que esté lista, vuelve la pantalla de carga */
+body.listo.cargando-3d #carga { opacity: 1; visibility: visible; transition: opacity 200ms var(--salida); background: color-mix(in srgb, var(--papel) 92%, transparent); }
 .carga-caja { display: grid; justify-items: center; gap: 14px; }
 .carga-logo svg { display: block; height: 32px; width: auto; }
 .carga-texto { margin: 0; }
 .carga-barra { width: 180px; height: 3px; border-radius: 3px; background: var(--linea); overflow: hidden; }
 .carga-barra span { display: block; height: 100%; width: 0; background: var(--tinta-2); transition: width 200ms linear; }
+/* mientras se descarga y se monta la escena todavía no hay porcentaje: la barra se mueve igual */
+.carga-barra.indeterminada span { width: 30%; animation: carga-indeterminada 1.2s ease-in-out infinite; }
+@keyframes carga-indeterminada { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@media (prefers-reduced-motion: reduce) { .carga-barra.indeterminada span { animation: none; width: 100%; opacity: 0.4; } }
 .calidad { font-size: 11px; color: var(--tinta-2); opacity: 0.8; }
 
 /* ------------------------------------------------ pantallas pequeñas */
