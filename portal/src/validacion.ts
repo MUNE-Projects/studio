@@ -13,6 +13,8 @@ export type TipoValidacion = 'planos' | 'experiencia';
 export interface Voto {
 	user_id: string; nombre: string; decision: 'aprobado' | 'rechazado' | null;
 	comentario: string | null; zona: string | null; momento: string | null; version: string | null;
+	/** Cambios que pidió en una versión anterior (ya no cuentan: la versión nueva los responde). */
+	anterior?: { comentario: string | null; zona: string | null; momento: string | null; version: string | null } | null;
 }
 
 export interface Elemento {
@@ -93,7 +95,9 @@ export function htmlPersonas(e: Elemento, actual: string): string {
 			return `<li class="voto cambios"><span class="voto-quien">${esc(p.nombre)}</span> <span class="voto-marca">✎ Pide cambios</span>${p.momento ? ` · ${esc(dia(p.momento))}` : ''}${otra}
 				${nota ? `<span class="voto-nota">${nota}</span>` : ''}</li>`;
 		}
-		return `<li class="voto"><span class="voto-quien">${esc(p.nombre)}</span> <span class="voto-marca">○ Pendiente</span></li>`;
+		const antes = p.anterior ? [p.anterior.zona, p.anterior.comentario].filter(Boolean).map((x) => esc(x!)).join(' · ') : '';
+		return `<li class="voto"><span class="voto-quien">${esc(p.nombre)}</span> <span class="voto-marca">○ Pendiente de validar</span>
+			${p.anterior ? `<span class="voto-antes">En la ${esc(p.anterior.version ?? '')} pidió cambios${antes ? `: «${antes}»` : ''}. Comprueba que están hechos.</span>` : ''}</li>`;
 	}).join('')}</ul>`;
 }
 

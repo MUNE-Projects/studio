@@ -113,6 +113,7 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
 		${puede ? `<div class="validar">
 			${voto!.decision === 'aprobado' ? '<p class="aviso">Ya has aprobado este plano. Falta que lo aprueben las demás personas. Si ves algo que corregir, todavía puedes pedir cambios.</p>' : ''}
 			${voto!.decision === 'rechazado' ? '<p class="aviso">Has pedido cambios en este plano. Si ya está bien, puedes aprobarlo.</p>' : ''}
+			${voto!.decision === null && voto!.anterior ? `<p class="aviso">En la ${esc(voto!.anterior.version ?? '')} pediste cambios en este plano${voto!.anterior.comentario ? `: «${esc(voto!.anterior.comentario)}»` : ''}. Comprueba que están hechos antes de aprobarlo.</p>` : ''}
 			${voto!.decision !== 'aprobado' ? `<form class="peticion-form" data-aprobar novalidate>
 				<h2>Aprobar</h2>
 				<label class="casilla"><input type="checkbox" name="confirmado"> He revisado las superficies, las cotas y la distribución, y son correctas.</label>

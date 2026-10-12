@@ -24,6 +24,7 @@ type EstadoElemento = 'aprobado' | 'parcial' | 'pendiente' | 'cambios' | 'sin_ap
 interface Persona {
 	user_id: string; nombre: string; decision: 'aprobado' | 'rechazado' | null;
 	comentario: string | null; zona: string | null; momento: string | null; version: string | null;
+	anterior?: { comentario: string | null; zona: string | null; version: string | null } | null;
 }
 export interface Elemento {
 	id: number; clave: string; titulo: string; detalle: string | null; viviendas: string | null; orden: number;
@@ -168,7 +169,8 @@ function lineaPersona(x: Persona, version: string): string {
 	if (x.decision === 'rechazado') {
 		return `<li>✏️ ${esc(x.nombre)} · pidió cambios${cuando}${otra}${x.zona ? ` · ${esc(x.zona)}` : ''}${x.comentario ? `<span class="nota-plano">«${esc(x.comentario)}»</span>` : ''}</li>`;
 	}
-	return `<li class="promo-lugar">${esc(x.nombre)} · pendiente</li>`;
+	const antes = x.anterior ? ` · en la ${esc(x.anterior.version ?? '')} pidió cambios${x.anterior.zona ? ` · ${esc(x.anterior.zona)}` : ''}${x.anterior.comentario ? ` «${esc(x.anterior.comentario)}»` : ''}` : '';
+	return `<li class="promo-lugar">${esc(x.nombre)} · pendiente${antes}</li>`;
 }
 
 function filaElemento(e: Elemento, tipo: Tipo, version: string, revision: string, id: string): string {

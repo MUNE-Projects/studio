@@ -93,6 +93,7 @@ function htmlUnidad(id: string, u: Elemento, version: string, actual: boolean, b
 			<div class="validar">
 				${voto!.decision === 'aprobado' ? '<p class="aviso">Ya has aprobado esta parte. Falta que la aprueben las demás personas. Si ves algo que corregir, todavía puedes pedir cambios.</p>' : ''}
 				${voto!.decision === 'rechazado' ? '<p class="aviso">Has pedido cambios aquí. Si ya está bien, puedes aprobarla.</p>' : ''}
+				${voto!.decision === null && voto!.anterior ? `<p class="aviso">En la ${esc(voto!.anterior.version ?? '')} pediste cambios aquí${voto!.anterior.zona ? ` (${esc(voto!.anterior.zona)})` : ''}${voto!.anterior.comentario ? `: «${esc(voto!.anterior.comentario)}»` : ''}. Comprueba que están hechos antes de aprobarla.</p>` : ''}
 				${voto!.decision !== 'aprobado' ? `<form class="peticion-form" data-aprobar novalidate>
 					<h3 class="subtitulo">Aprobar</h3>
 					<label class="casilla"><input type="checkbox" name="confirmado"> He recorrido esta tipología: distribución, espacios, materiales, acabados, mobiliario, vistas guiadas, exteriores y modo Plano.</label>
