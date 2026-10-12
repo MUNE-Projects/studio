@@ -256,3 +256,8 @@ p.ok { color: var(--acento); }
 .archivo-doc { display: grid; gap: 6px; margin: 8px 0; padding: 8px 0 0 10px; border-top: 1px dashed var(--linea); }
 .resumen-validacion th { text-transform: none; letter-spacing: normal; font-size: 14px; color: var(--tinta); vertical-align: top; }
 .resumen-validacion td { vertical-align: top; }
+
+/* Partes de la promoción y publicación (022) */
+fieldset.modulos { display: grid; gap: 10px; }
+fieldset.modulos .casilla { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; }
+fieldset.modulos .casilla input { margin-top: 3px; flex: none; width: auto; height: auto; }

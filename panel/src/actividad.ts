@@ -23,6 +23,8 @@ const ACCIONES: Record<string, string> = {
 	aprobadores: 'cambia quién valida',
 	textos_legales: 'guarda los textos legales',
 	fase_proyecto: 'cambia la fase del proyecto',
+	modulos: 'cambia las partes de la promoción o su publicación',
+	documento_cubre: 'marca qué incluye un archivo',
 	acceso_dado: 'da un acceso',
 	acceso_cambiado: 'cambia un acceso',
 	'da acceso al portal': 'da acceso a MUNE Portal',
