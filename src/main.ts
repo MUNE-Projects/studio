@@ -464,6 +464,14 @@ async function iniciar() {
 	// abre en cuanto lo esté.
 	let viviendaLista = false;
 	let modoPendiente: Modo | null = null;
+	// barra de la pantalla de carga: se mueve sola hasta que hay un porcentaje real
+	let progreso3D = 0;
+	const ponerBarra = ( f: number ) => {
+
+		$( '.carga-barra' ).classList.toggle( 'indeterminada', f <= 0 );
+		( $( '.carga-barra span' ) as HTMLElement ).style.width = `${ Math.round( f * 100 ) }%`;
+
+	};
 
 	const botonesModo = [ ...document.querySelectorAll<HTMLButtonElement>( '.modos [data-modo]' ) ];
 	const barraVistas = $( '.vistas' );
@@ -631,7 +639,10 @@ async function iniciar() {
 		if ( m !== 'plano' && ! viviendaLista ) {
 
 			modoPendiente = m;
-			avisar( 'Preparando la vivienda en 3D…' );
+			// pantalla de carga con su barra hasta que la vivienda esté lista
+			$( '.carga-texto' ).textContent = 'Preparando la vivienda en 3D…';
+			ponerBarra( progreso3D );
+			document.body.classList.add( 'cargando-3d' );
 			return;
 
 		}
@@ -1436,9 +1447,8 @@ async function iniciar() {
 		}
 
 	};
-	const barra = $( '.carga-barra span' );
 	// 1. plano: solo lo visible en planta (pocos programas, sin efectos de imagen)
-	await compilar( { destino: escenaPlano.renderTarget, mrt: null }, false, ( f ) => ( barra.style.width = `${ Math.round( f * 100 ) }%` ), false, true );
+	await compilar( { destino: escenaPlano.renderTarget, mrt: null }, false, ponerBarra, false, true );
 	preparado = true;
 	despertar();
 	await new Promise( requestAnimationFrame );
@@ -1450,7 +1460,12 @@ async function iniciar() {
 		try {
 
 			// 2. vivienda 3D, mientras se mira el plano
-			await compilar( { destino: escenaPass.renderTarget, mrt: escenaPass.getMRT() }, false );
+			await compilar( { destino: escenaPass.renderTarget, mrt: escenaPass.getMRT() }, false, ( f ) => {
+
+				progreso3D = f;
+				if ( modoPendiente ) ponerBarra( f );
+
+			} );
 			precalentarEfectos = true;
 			despertar();
 			await new Promise( requestAnimationFrame );
@@ -1460,6 +1475,7 @@ async function iniciar() {
 			// la pide (si la pidió antes de estar lista, se abre ahora)
 			const destino = modoPendiente;
 			modoPendiente = null;
+			document.body.classList.remove( 'cargando-3d' );
 			if ( destino && ( modo as Modo ) === 'plano' ) irModo( destino );
 
 			// 3. luces de ventana y plano completo, solo en los momentos sin interacción
@@ -1475,6 +1491,10 @@ async function iniciar() {
 			console.warn( 'Compilación en segundo plano:', e );
 			viviendaLista = true;
 			ventanasListas = true;
+			document.body.classList.remove( 'cargando-3d' );
+			const pendiente = modoPendiente;
+			modoPendiente = null;
+			if ( pendiente ) irModo( pendiente );
 
 		} finally {
 
