@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
 	let texto = '';
 	let enlace = '';
 	const { data: doc, error: eDoc } = tipo === 'rechazado'
-		? await servicio.from('documentos').select('id, promocion_id, estado, nota, version, nombre, contenido, requisitos(elemento)').eq('id', Number(cuerpo.documento_id)).maybeSingle()
+		? await servicio.from('documentos').select('id, promocion_id, estado, nota, version, nombre, contenido, requisitos!documentos_requisito_id_fkey(elemento)').eq('id', Number(cuerpo.documento_id)).maybeSingle()
 		: { data: null, error: null };
 	if (eDoc) {
 		console.error('documento', eDoc);
