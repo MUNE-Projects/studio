@@ -1152,6 +1152,20 @@ await caso( DEBE_FUNCIONAR, 'Fase del proyecto: el equipo la cambia (con histori
 
 } );
 
+await caso( DEBE_FUNCIONAR, 'Planos: los cambios pedidos en una versión no cuentan en la siguiente (vuelve a estar pendiente, con la petición a la vista)', async () => {
+
+	const v40 = await exigir( enviarPlanos( 'v40', [ [ 'c', 'geometria-c' ] ] ), 'planos v40' );
+	await exigir( gestorA.from( 'validaciones' ).insert( { entregable_id: plano( v40, 'c' ), decision: 'rechazado', comentario: 'Falta la terraza' } ), 'pedir cambios c v40' );
+	const enV4 = ( await exigir( gestorA.rpc( 'validacion_de_version', { p_promocion: 'prueba-a', p_version: 'v40', p_tipo: 'planos' } ), 'v40' ) )[ 0 ];
+	// v41 con el mismo contenido: la petición de la v40 ya no cuenta, pero se ve
+	await exigir( enviarPlanos( 'v41', [ [ 'c', 'geometria-c' ] ] ), 'planos v5' );
+	const enV5 = ( await exigir( gestorA.rpc( 'validacion_de_version', { p_promocion: 'prueba-a', p_version: 'v41', p_tipo: 'planos' } ), 'v41' ) )[ 0 ];
+	const suyo = enV5.personas.find( ( p ) => p.user_id === gestorAId );
+	return enV4.estado === 'cambios' && enV5.estado === 'pendiente' && suyo.decision === null
+		&& suyo.anterior?.version === 'v40' && suyo.anterior?.comentario === 'Falta la terraza';
+
+} );
+
 // ─── Resumen ────────────────────────────────────────────────────────────────
 
 const fallidos = resultados.filter( ( r ) => ! r.ok );
