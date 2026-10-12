@@ -78,7 +78,9 @@ async function entrar() {
 const anotar = ( token, accion, detalle ) => pedir( '/rest/v1/registro', { metodo: 'POST', token, cuerpo: { accion, detalle }, prefer: 'return=minimal' } );
 const fecha = ( iso ) => iso.slice( 0, 16 ).replace( 'T', ' ' );
 const tamano = ( b ) => b >= 1048576 ? `${ ( b / 1048576 ).toFixed( 1 ) } MB` : `${ Math.max( 1, Math.round( b / 1024 ) ) } KB`;
-const CAMPOS = 'id,promocion_id,version,nombre,tamano,estado,nota,subido_en,revisado_en,huella,ruta,requisitos(bloque,elemento)';
+const CAMPOS = 'id,promocion_id,version,nombre,tamano,estado,nota,subido_en,revisado_en,huella,ruta,requisitos!documentos_requisito_id_fkey(bloque,elemento),documento_cubre(requisitos(elemento))';
+// (documento_cubre, 022: los otros documentos de la lista que incluye el mismo archivo)
+const incluye = ( d ) => ( d.documento_cubre ?? [] ).map( ( c ) => c.requisitos?.elemento ).filter( Boolean );
 
 async function pendientes( token, promocion ) {
 
@@ -91,6 +93,7 @@ async function pendientes( token, promocion ) {
 
 		if ( d.promocion_id !== actual ) console.log( `\n■ ${ ( actual = d.promocion_id ) }` );
 		console.log( `  #${ d.id } · ${ d.requisitos?.bloque } › ${ d.requisitos?.elemento } · v${ d.version } · ${ d.nombre } (${ tamano( d.tamano ) }) · ${ fecha( d.subido_en ) }` );
+		if ( incluye( d ).length ) console.log( `      también incluye: ${ incluye( d ).join( ', ' ) }` );
 
 	}
 	console.log( `\nPara descargar uno: node herramientas/documentos.mjs bajar <id>` );
@@ -110,6 +113,7 @@ async function bajar( token, id ) {
 	writeFileSync( destino, contenido );
 	console.log( `✓ ${ destino.slice( destino.indexOf( 'salida' ) ) }` );
 	console.log( `  ${ d.requisitos?.bloque } › ${ d.requisitos?.elemento } · v${ d.version } · ${ tamano( contenido.length ) }` );
+	if ( incluye( d ).length ) console.log( `  También incluye: ${ incluye( d ).join( ', ' ) }` );
 	console.log( huella === d.huella ? '  ✓ La huella coincide: es exactamente el archivo que subió la promotora.'
 		: `  ✗ ¡La huella NO coincide! (registrada ${ d.huella.slice( 0, 12 ) }…, descargada ${ huella.slice( 0, 12 ) }…). Avisa a la administradora.` );
 	await anotar( token, 'robot descarga un documento', { promocion: d.promocion_id, documento: d.id } );

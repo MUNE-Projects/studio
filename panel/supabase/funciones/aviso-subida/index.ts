@@ -173,7 +173,7 @@ Deno.serve(async (req) => {
 	if (toca !== true) return responder(200, { ok: true, avisado: false });
 
 	const { data: d } = await sb.from('documentos')
-		.select('nombre, version, promocion_id, requisitos(elemento), promociones(nombre, promotoras(nombre))')
+		.select('nombre, version, promocion_id, requisitos!documentos_requisito_id_fkey(elemento), promociones(nombre, promotoras(nombre))')
 		.eq('id', documento).maybeSingle();
 	const { data: { user } } = await sb.auth.getUser();
 	const { data: persona } = await sb.from('miembros').select('nombre').eq('user_id', user?.id ?? '').limit(1).maybeSingle();
