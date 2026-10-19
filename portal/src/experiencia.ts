@@ -9,7 +9,7 @@
 import { ESCAPARATE, REVISION, alEnviar, esc } from './comun';
 import {
 	type Contexto, type Elemento, avance, baseVisita, chipEstado, faltanTrasAprobar, guardarDecision, htmlPersonas,
-	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, numVersion, tituloUnidad, versionPublicada, versionesCon,
+	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, textoPublicando, numVersion, tituloUnidad, versionPublicada, versionesCon,
 } from './validacion';
 
 export const versionesConExperiencia = (id: string) => versionesCon(id, 'experiencia');
@@ -65,7 +65,7 @@ export async function pintarExperiencia(caja: HTMLElement, id: string, extra: st
 				return;
 			}
 			const despues = await guardarDecision(id, version, 'experiencia', u.id, { decision: 'aprobado', confirmado: true });
-			alValidar(`✓ ${mensajeAprobado(despues, 'experiencia')}`, version);
+			alValidar(`✓ ${mensajeAprobado(despues, 'experiencia')}${textoPublicando()}`, version);
 		});
 		const rechazar = raiz.querySelector<HTMLFormElement>('[data-rechazar]');
 		if (rechazar) alEnviar(rechazar, async (d) => {

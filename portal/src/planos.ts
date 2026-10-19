@@ -11,7 +11,7 @@
 import { alEnviar, esc, sb, traducir } from './comun';
 import {
 	type Contexto, type Elemento, baseVisita, avance, chipEstado, faltanTrasAprobar, guardarDecision, htmlPersonas,
-	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, versionesCon,
+	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, textoPublicando, versionesCon,
 } from './validacion';
 
 export const versionesConPlanos = (id: string) => versionesCon(id, 'planos');
@@ -116,7 +116,7 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
 			${voto!.decision === null && voto!.anterior ? `<p class="aviso">En la ${esc(voto!.anterior.version ?? '')} pediste cambios en este plano${voto!.anterior.comentario ? `: «${esc(voto!.anterior.comentario)}»` : ''}. Comprueba que están hechos antes de aprobarlo.</p>` : ''}
 			${voto!.decision !== 'aprobado' ? `<form class="peticion-form" data-aprobar novalidate>
 				<h2>Aprobar</h2>
-				<label class="casilla"><input type="checkbox" name="confirmado"> He revisado las superficies, las cotas y la distribución, y son correctas.</label>
+				<label class="casilla"><input type="checkbox" name="confirmado"> He revisado la distribución, las superficies y los datos del plano, y son correctos.</label>
 				<p class="error" role="alert"></p>
 				<div class="acciones"><button class="boton" type="submit">Aprobar este plano</button></div>
 			</form>` : ''}
@@ -150,7 +150,7 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
 			return;
 		}
 		const despues = await guardarDecision(id, e.version, 'planos', p.id, { decision: 'aprobado', confirmado: true });
-		alValidar(despues?.estado === 'aprobado' ? `✓ Plano «${p.titulo}» validado.` : `✓ ${mensajeAprobado(despues, 'planos')}`);
+		alValidar((despues?.estado === 'aprobado' ? `✓ Plano «${p.titulo}» validado.` : `✓ ${mensajeAprobado(despues, 'planos')}`) + textoPublicando());
 	});
 	const rechazar = caja.querySelector<HTMLFormElement>('[data-rechazar]');
 	if (rechazar) alEnviar(rechazar, async (d) => {

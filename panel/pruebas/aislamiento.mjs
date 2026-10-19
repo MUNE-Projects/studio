@@ -445,7 +445,7 @@ await caso( DEBE_FUNCIONAR, 'Lista estándar de documentos: solo la administrado
 	await exigir( admin.from( 'requisitos' ).update( { activo: false } ).eq( 'id', lista.at( -1 ).id ), 'quitar' );
 	const quitarIntruso = await aprobA.from( 'requisitos' ).update( { activo: false } ).eq( 'id', lista[ 0 ].id ).select();
 	const vista = ( await aprobA.from( 'requisitos' ).select( 'id' ).eq( 'promocion_id', 'prueba-a3' ) ).data;
-	return falla( intruso ) && falla( repetida ) && n === 10 && lista.some( ( r ) => r.plantilla === '/plantillas/tabla-viviendas.xlsx' )
+	return falla( intruso ) && falla( repetida ) && n === 10 && lista.every( ( r ) => r.plantilla === null )
 		&& ( falla( quitarIntruso ) || vacio( quitarIntruso ) ) && vista.length === lista.length - 1;
 
 } );
@@ -1163,6 +1163,59 @@ await caso( DEBE_FUNCIONAR, 'Planos: los cambios pedidos en una versión no cuen
 	const suyo = enV5.personas.find( ( p ) => p.user_id === gestorAId );
 	return enV4.estado === 'cambios' && enV5.estado === 'pendiente' && suyo.decision === null
 		&& suyo.anterior?.version === 'v40' && suyo.anterior?.comentario === 'Falta la terraza';
+
+} );
+
+// ─── Módulos de la promoción, modo de publicación y documentos que cubren varios requisitos (022) ──
+
+await caso( DEBE_FALLAR, '37. Módulos: la promotora activa o desactiva partes, cambia el modo de publicación o marca lo que cubre un documento ajeno; con el acceso de compradores apagado se crean códigos o se entra con uno', async () => {
+
+	const modulos = ( sb ) => sb.rpc( 'guardar_modulos', { p_promocion: 'prueba-a', p_experiencia_publica: true, p_acceso_comprador: true, p_personalizacion: false, p_publicacion: 'manual' } );
+	const otroReq = ( await exigir( admin.from( 'requisitos' ).insert( { promocion_id: 'prueba-a', bloque: 'Planos', elemento: 'Alzados (prueba 022)', descripcion: '', obligatorio: false, orden: 99 } ).select( 'id' ), 'requisito extra' ) )[ 0 ].id;
+	const docA = await exigir( gestorA.from( 'documentos' ).select( 'id' ).eq( 'promocion_id', 'prueba-a' ).limit( 1 ), 'documento A' );
+	// un código válido antes de apagar el acceso
+	const codigo = ( await exigir( generar( admin, 'Prueba 022' ), 'código antes' ) );
+	await exigir( admin.rpc( 'guardar_modulos', { p_promocion: 'prueba-a', p_experiencia_publica: true, p_acceso_comprador: false, p_personalizacion: true, p_publicacion: 'automatica' } ), 'apagar acceso' );
+	const r = {
+		promotora: await modulos( aprobA ),
+		directo: await aprobA.from( 'promociones' ).update( { publicacion: 'manual' } ).eq( 'id', 'prueba-a' ).select( 'id' ),
+		otraPromotora: await aprobB.rpc( 'cubrir_requisitos', { p_documento: docA[ 0 ].id, p_requisitos: [ otroReq ] } ),
+		requisitoAjeno: await gestorA.rpc( 'cubrir_requisitos', { p_documento: docA[ 0 ].id, p_requisitos: [ req[ 'prueba-b' ] ] } ),
+		codigoSinAcceso: await generar( admin, 'Prueba 022 bis' ),
+	};
+	const entra = await entrarComprador( String( codigo ) );
+	await exigir( admin.rpc( 'guardar_modulos', { p_promocion: 'prueba-a', p_experiencia_publica: true, p_acceso_comprador: true, p_personalizacion: true, p_publicacion: 'automatica' } ), 'encender acceso' );
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	if ( entra.data ) throw new Error( 'se entra con el acceso de compradores apagado' );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Módulos y documentos: MUNE Studio cambia los módulos y el modo de publicación; un archivo cubre varios requisitos y su versión nueva cubre lo mismo', async () => {
+
+	await exigir( admin.rpc( 'guardar_modulos', { p_promocion: 'prueba-a', p_experiencia_publica: false, p_acceso_comprador: true, p_personalizacion: false, p_publicacion: 'manual' } ), 'módulos' );
+	const promo = await filaDe( 'promociones', 'prueba-a' );
+	const visto = ( await gestorA.from( 'promociones' ).select( 'modulos, publicacion' ).eq( 'id', 'prueba-a' ).single() ).data;
+	await exigir( admin.rpc( 'guardar_modulos', { p_promocion: 'prueba-a', p_experiencia_publica: true, p_acceso_comprador: true, p_personalizacion: true, p_publicacion: 'automatica' } ), 'módulos de vuelta' );
+	const otroReq = ( await exigir( admin.from( 'requisitos' ).select( 'id' ).eq( 'promocion_id', 'prueba-a' ).eq( 'elemento', 'Alzados (prueba 022)' ), 'requisito extra' ) )[ 0 ].id;
+	const doc = await subirDocumento( gestorA, pA.id, 'prueba-a', 'documento completo 022' );
+	if ( doc.error ) throw doc.error;
+	await exigir( gestorA.rpc( 'cubrir_requisitos', { p_documento: doc.data.id, p_requisitos: [ otroReq, req[ 'prueba-a' ] ] } ), 'cubrir' );
+	const cubre = ( await gestorA.from( 'documento_cubre' ).select( 'requisito_id' ).eq( 'documento_id', doc.data.id ) ).data ?? [];
+	// versión nueva del mismo archivo: cubre lo mismo
+	const contenido = pdf( 'documento completo 022 v2' );
+	const ruta = `${ pA.id }/prueba-a/${ req[ 'prueba-a' ] }/${ Date.now() }-completo.pdf`;
+	await exigir( gestorA.storage.from( 'documentos' ).upload( ruta, contenido, { contentType: 'application/pdf' } ), 'subir v2' );
+	const nueva = await exigir( gestorA.from( 'documentos' ).insert( { promocion_id: 'prueba-a', requisito_id: req[ 'prueba-a' ], nombre: 'completo.pdf', ruta,
+		tipo: 'application/pdf', tamano: contenido.length, huella: huella( contenido ), reemplaza_a: doc.data.id } ).select( 'id' ).single(), 'versión nueva' );
+	const cubreNueva = ( await gestorA.from( 'documento_cubre' ).select( 'requisito_id' ).eq( 'documento_id', nueva.id ) ).data ?? [];
+	const ajeno = await aprobB.from( 'documento_cubre' ).select( 'requisito_id' ).eq( 'documento_id', doc.data.id );
+	return promo.publicacion === 'manual' && promo.modulos.experiencia_publica === false && promo.modulos.personalizacion === false
+		&& visto?.publicacion === 'manual'
+		&& cubre.length === 1 && cubre[ 0 ].requisito_id === otroReq
+		&& cubreNueva.length === 1 && cubreNueva[ 0 ].requisito_id === otroReq
+		&& ( falla( ajeno ) || vacio( ajeno ) );
 
 } );
 
