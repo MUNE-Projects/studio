@@ -99,8 +99,8 @@ Ahora la web pública está en **v7**, y la **v8** (de prueba, idéntica) sigue 
 **Pendientes conocidos:**
 
 - Las llaves del ejecutor caducan el **7/10/2027**:
-  - llave A: `GITHUB_EJECUTOR` en Supabase, con *Actions: read/write* sobre `taller`;
-  - llave B: `ESCAPARATE_TOKEN` en los secretos del taller, con *Contents: read/write* sobre `escaparate`.
+  - llave A: `GITHUB_EJECUTOR` en Supabase, con *Actions: read/write* sobre `studio` (antes `taller`);
+  - llave B: `ESCAPARATE_TOKEN` en los secretos de `studio`, con *Contents: read/write* sobre `experience` (antes `escaparate`); conserva su nombre hasta la renovación.
 
   MUNE Studio avisa en Inicio a 60 y 30 días, y la vigilancia manda email a 30 días (receta 19). Al renovarlas, apuntar la fecha en *Sistema → Ya la he renovado*.
 - La protección de ramas en almacenes privados es de pago: no está activada.
@@ -118,6 +118,6 @@ Ahora la web pública está en **v7**, y la **v8** (de prueba, idéntica) sigue 
 7. copias en el almacén privado `copias` de GitHub y simulacro (receta 18);
 8. alta de promoción (receta 1) y ensayo con una promotora ficticia.
 
-**Desde el 12/10/2026 se sigue la lista maestra** de `docs/arquitectura-mune.md` (apartado 10): paso 1 (prueba real del flujo) ✔; paso 2 (documentación, módulos de cada promoción y publicación al aprobar la promotora, `022_modulos_y_documentos.sql`) ✔; paso 3 (nombres definitivos: `studio`, `experience`, `app/`, `supabase/`) en propuesta. Las direcciones antiguas `panel.…` y `escaparate.…` se mantienen una semana tras el cambio y después se borran. Las etapas 7 y 8 de arriba quedan dentro de esa lista (copias = paso 4; ensayo ficticio = paso 7).
+**Desde el 12/10/2026 se sigue la lista maestra** de `docs/arquitectura-mune.md` (apartado 10): paso 1 (prueba real del flujo) ✔; paso 2 (documentación, módulos de cada promoción y publicación al aprobar la promotora, `022_modulos_y_documentos.sql`) ✔; paso 3 (nombres definitivos: `studio`, `experience`, `app/`, `supabase/`) ✔ el 20/10/2026. Las direcciones antiguas `panel.…` y `escaparate.…` (Workers `panel` y `escaparate`) se borran a partir del 27/10/2026. Las etapas 7 y 8 de arriba quedan dentro de esa lista (copias = paso 4; ensayo ficticio = paso 7).
 
 Cada etapa es una propuesta con su OK. Decisiones clave: Supabase gratuito hasta el primer cliente; promotoras con usuario y contraseña; emails con un Gmail dedicado; la prueba de aislamiento corre en un Supabase local dentro de GitHub (sin segundo proyecto ni llaves).
