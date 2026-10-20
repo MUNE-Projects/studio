@@ -9,6 +9,7 @@ import { ESCAPARATE, REVISION, INACTIVIDAD_MAX, MIN_CLAVE, CABECERA, alEnviar, a
 import { pintarCompradores } from './compradores';
 import { COLUMNAS_DOCUMENTO, COLUMNAS_REQUISITO, type Documento, type Requisito, leerCubre, pintarDocumentacion, resumenDocumentos } from './documentos';
 import { pintarEquipo } from './equipo';
+import { pintarEstados } from './estado';
 import { pintarExperiencia, versionesConExperiencia } from './experiencia';
 import { type Miembro, type Permisos, permisosDe } from './permisos';
 import { htmlLista, leerPlanos, pintarDetalle, versionesConPlanos } from './planos';
@@ -243,12 +244,6 @@ function conectarFiscal(guardar: (d: FormData) => PromiseLike<{ error: unknown }
 
 // ── Inicio: promociones ───────────────────────────────────────────────────
 
-const ESTADOS_PROMO: Record<string, [string, string]> = {
-	documentacion: ['Recogiendo documentación', 'pendiente'],
-	en_produccion: ['En producción', 'pendiente'],
-	en_validacion: ['En validación', 'pendiente'],
-	publicada: ['Publicada', 'al-dia'],
-};
 
 async function pantallaInicio(): Promise<void> {
 	const { data, error } = await sb.from('promociones').select('id, nombre, ubicacion, estado').order('nombre');
@@ -261,10 +256,9 @@ async function pantallaInicio(): Promise<void> {
 		<section class="tarjeta">
 			<h2>Tus promociones</h2>
 			${lista.length ? `<div class="lista-promos">${lista.map((p) => {
-				const [etiqueta, clase] = ESTADOS_PROMO[p.estado] ?? [p.estado, ''];
 				return `<a class="promo-enlace" href="#/promocion/${esc(p.id)}">
 					<span><strong>${esc(p.nombre)}</strong><br><span class="promo-lugar">${esc(p.ubicacion)}</span></span>
-					<span class="estado ${clase}">${esc(etiqueta)}</span>
+					<span class="estado" data-estado-promo="${esc(p.id)}">…</span>
 				</a>`;
 			}).join('')}</div>` : '<p class="vacio">Todavía no hay promociones. Cuando el equipo de MUNE dé de alta la primera, aparecerá aquí.</p>'}
 		</section>
@@ -274,6 +268,7 @@ async function pantallaInicio(): Promise<void> {
 			${formFiscal(acceso?.promotora ?? { razon_social: null, cif: null, domicilio_fiscal: null }, true, false)}
 		</section>` : ''}
 	</div>`);
+	pintarEstados(app, sb, ESCAPARATE);
 	app.querySelector('[data-salir]')!.addEventListener('click', () => void salir());
 	if (adminPromotora) conectarFiscal((d) => sb.rpc('guardar_datos_promotora', {
 		p_promotora: acceso!.promotora!.id, p_razon_social: String(d.get('razon_social')), p_cif: String(d.get('cif')),
@@ -371,9 +366,8 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 	const caja = app.querySelector<HTMLElement>('[data-pestana]')!;
 
 	if (actual === 'resumen') {
-		const [etiqueta, clase] = ESTADOS_PROMO[p.estado] ?? [p.estado, ''];
 		caja.innerHTML = `
-			<div class="promo-cabeza"><h2>Resumen</h2><span class="estado ${clase}">${esc(etiqueta)}</span></div>
+			<div class="promo-cabeza"><h2>Resumen</h2><span class="estado" data-estado-promo="${esc(id)}">…</span></div>
 			<p class="promo-versiones" data-publicada>Comprobando la versión publicada…</p>
 			${htmlValidacionEnCurso(id, enCurso, per.puede('planos') ? planosCurso : null, expCurso)}
 			<div class="lista-promos separado">
@@ -385,6 +379,7 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 				${visibles.some(([k]) => k === 'personalizacion') ? `<a class="promo-enlace" href="#/promocion/${esc(id)}/personalizacion"><span><strong>Personalización</strong><br>
 					<span class="promo-lugar">A quién envía el comprador su documento de selección y los datos para la transferencia</span></span></a>` : ''}
 			</div>`;
+		pintarEstados(caja, sb, ESCAPARATE);
 		void pintarPublicada(p.id);
 	}
 
