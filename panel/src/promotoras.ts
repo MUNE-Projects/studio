@@ -21,6 +21,7 @@ import { exportarPromocion, exportarPromotora, type Resultado } from './exportar
 import { pintarPeticiones } from './peticiones';
 import { ESCAPARATE, REVISION, estadoVersiones, etiquetaVersiones, pintarVersiones } from './versiones';
 import { pintarCompradores } from './compradores';
+import { pintarEstados } from './estado';
 import { ADMIN_PROMOCION, ADMIN_PROMOTORA, TODAS_LAS_CAPACIDADES, conectarPersonas, formAcceso, insignias, invitar, leerAccesos, tablaPersonas } from './equipo';
 
 interface DatosFiscales { razon_social: string | null; cif: string | null; domicilio_fiscal: string | null }
@@ -70,12 +71,6 @@ const guardarModulos = (promocion: string, m: Modulos, publicacion: string) => s
 	p_personalizacion: m.personalizacion, p_publicacion: publicacion === 'manual' ? 'manual' : 'automatica',
 });
 
-const ESTADOS: Record<string, string> = {
-	documentacion: 'Recogiendo documentación',
-	en_produccion: 'En producción',
-	en_validacion: 'En validación',
-	publicada: 'Publicada',
-};
 
 const PESTANAS: [string, string][] = [
 	['resumen', 'Resumen y versiones'],
@@ -341,7 +336,8 @@ export async function pantallaPromotora(destino: HTMLElement, id: string): Promi
 		<section class="tarjeta">
 			<h2>Promociones</h2>
 			<div class="lista-enlaces">${promociones.map((p) => `<a class="fila-enlace" href="#/promocion/${esc(p.id)}">
-				<span><strong>${esc(p.nombre)}</strong><br><span class="promo-lugar">${esc(p.ubicacion)}${p.ubicacion ? ' · ' : ''}${esc(ESTADOS[p.estado] ?? p.estado)} · ${esc(textoFase(p.fase_proyecto))}</span></span>
+				<span><strong>${esc(p.nombre)}</strong><br><span class="promo-lugar">${esc(p.ubicacion)}${p.ubicacion ? ' · ' : ''}${esc(textoFase(p.fase_proyecto))}</span></span>
+				<span class="estado" data-estado-promo="${esc(p.id)}">…</span>
 				<span data-version="${esc(p.id)}">${p.activa ? '' : chipActiva(false)}</span>
 			</a>`).join('') || '<p class="vacio">Esta promotora todavía no tiene promociones.</p>'}</div>
 			<div class="acciones"><button class="boton secundario pequeno" type="button" data-abrir="promocion">Nueva promoción</button></div>
@@ -398,6 +394,7 @@ export async function pantallaPromotora(destino: HTMLElement, id: string): Promi
 		</section>`;
 
 	conectarPlegables(destino);
+	pintarEstados(destino, sb, ESCAPARATE);
 	conectarPersonas(destino, accesos, id, recargar, avisador(destino));
 	conectarExportar(destino, destino.querySelector<HTMLButtonElement>('[data-exportar]')!, (progreso) => exportarPromotora(id, progreso));
 	const zonaBorrar = destino.querySelector<HTMLElement>('[data-borrar]');
@@ -645,9 +642,8 @@ export async function pantallaPromocion(destino: HTMLElement, id: string, pestan
 				<div class="acciones"><button class="boton pequeno" type="submit">Guardar</button></div>
 			</form>
 			<h2 class="separado">Estado</h2>
-			<label class="en-linea">Estado que ve la promotora
-				<select data-estado-promo>${Object.entries(ESTADOS).map(([e, t]) => `<option value="${e}" ${p.estado === e ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
-			</label>
+			<p class="en-linea">Estado que ve la promotora: <span class="estado" data-estado-promo="${esc(id)}">…</span></p>
+			<p class="ayuda">Se calcula solo: «En preparación», «En validación» (has enviado una versión a validar) o «Publicada».</p>
 			<p class="promo-versiones">${resumenFicha(p)}</p>
 			<div class="acciones">
 				<button class="boton secundario pequeno" type="button" data-exportar>Exportar todo (ZIP)</button>
@@ -664,14 +660,7 @@ export async function pantallaPromocion(destino: HTMLElement, id: string, pestan
 			await recargar();
 			avisador(destino)('✓ Partes de la promoción y publicación guardadas.');
 		});
-		caja.querySelector<HTMLSelectElement>('[data-estado-promo]')!.addEventListener('change', async (ev) => {
-			const sel = ev.target as HTMLSelectElement;
-			const { error: e } = await sb.from('promociones').update({ estado: sel.value }).eq('id', id);
-			if (e) { sel.value = p.estado; avisador(destino)(traducir(e), true); return; }
-			await anotar('cambia el estado de una promoción', { promocion: id, estado: sel.value });
-			p.estado = sel.value;
-			avisador(destino)(`✓ Estado cambiado a «${ESTADOS[sel.value]}».`);
-		});
+		pintarEstados(caja, sb, ESCAPARATE);
 		caja.querySelector('[data-activa-promo]')!.addEventListener('click', async () => {
 			if (p.activa && !confirm(`¿Desactivar ${p.nombre}?\n\nDesde este momento, su equipo dejará de verla en MUNE Portal. La experiencia publicada no cambia.\n\nSi quieres una copia de todo, cancela y pulsa antes «Exportar todo (ZIP)».`)) return;
 			const { error: e } = await sb.from('promociones').update({ activa: !p.activa }).eq('id', id);

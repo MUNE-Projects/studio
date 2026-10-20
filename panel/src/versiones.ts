@@ -6,7 +6,7 @@
 
 import { alEnviar, anotar, esc, fallo, fecha, sb } from './comun';
 import { avisarPromotora } from './avisos';
-import { leerValidacion, listaParaPublicar, motivoNoPublicar, pintarValidacion, tomarRecienEnviada, type Validacion } from './validacion';
+import { leerValidacion, listaParaPublicar, motivoNoPublicar, pintarValidacion, type Validacion } from './validacion';
 
 export const ESCAPARATE: string = import.meta.env.VITE_ESCAPARATE ?? 'https://escaparate.mune-projects.workers.dev';
 export const REVISION: string = import.meta.env.VITE_REVISION ?? 'https://revision-escaparate.mune-projects.workers.dev';
@@ -152,15 +152,6 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 	const repintar = () => void pintarVersiones(destino, p);
 	anotarEnlaces(destino);
 	if (validacion) void pintarValidacion(destino.querySelector<HTMLElement>('[data-validacion]')!, REVISION, p, validacion, repintar);
-
-	// Recién enviada a validar y ya validada entera (nada cambiaba respecto a la anterior):
-	// en «Publicar al aprobar la promotora» se publica ahora, igual que con la última aprobación.
-	if (tomarRecienEnviada() === rev?.version && pendiente && validacion && listaParaPublicar(validacion) && p.publicacion !== 'manual') {
-		destino.querySelector<HTMLButtonElement>('[data-publicar]')?.setAttribute('disabled', '');
-		void ejecutar(aviso, id, { accion: 'aprobar', promocion: id, version: rev.version }, rev.version, repintar).then((ok) => {
-			if (ok) aviso.textContent = `No había nada nuevo que validar: todo estaba aprobado desde la versión anterior. ${aviso.textContent}`;
-		});
-	}
 
 	destino.querySelector<HTMLButtonElement>('[data-publicar]')?.addEventListener('click', async (ev) => {
 		const b = ev.currentTarget as HTMLButtonElement;

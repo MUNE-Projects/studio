@@ -264,13 +264,6 @@ async function enviarExperiencia(id: string, m: ManifiestoExperiencia): Promise<
 /** Frase que se muestra una vez, al repintar tras enviar a validar. */
 let trasEnviar = '';
 
-/**
- * Versión que se acaba de enviar a validar. Si no cambia nada que validar
- * (todo heredado de la anterior), ya está validada al enviarla: en modo
- * «Publicar al aprobar la promotora», Versiones la publica en ese momento.
- */
-let recienEnviada = '';
-export const tomarRecienEnviada = () => { const v = recienEnviada; recienEnviada = ''; return v; };
 
 /**
  * Bloque «Validación de vN» dentro de Versiones: enviar a validar, cómo va cada
@@ -365,7 +358,6 @@ export async function pintarValidacion(caja: HTMLElement, revision: string, p: {
 		const sinExperiencia = hecho.includes('planos') && !v.manifiestoExperiencia && !v.experiencia.elementos.length
 			? ' La vista previa no tiene Experiencia 3D de esta versión para validar: se han enviado solo los planos comerciales.' : '';
 		trasEnviar = `✓ Enviado a validar: ${hecho.map((t) => (t === 'planos' ? 'planos comerciales' : 'Experiencia 3D')).join(' y ')}.${sinExperiencia} ${avisos.join(' ')}`;
-		recienEnviada = v.version;
 		alCambiar();
 	});
 }
