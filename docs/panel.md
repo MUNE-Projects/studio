@@ -85,10 +85,10 @@ Muebles, materiales y texturas disponibles, con la **licencia registrada** de ca
 ## Piezas técnicas
 
 - Código: `panel/` (TypeScript sin frameworks + `@supabase/supabase-js`). Web estática en Cloudflare Workers (`panel`), con vista previa por cada propuesta desde la rama `revision`.
-- Base de datos y reglas: `panel/supabase/00N_*.sql`, ejecutados en orden en el SQL Editor de Supabase.
-- Portal (Fase 1): `panel/supabase/005_portal.sql` crea miembros (desde `007_equipos.sql`, por promoción o a todas y sin roles), requisitos, documentos, entregables, validaciones y los almacenes privados `documentos` y `entregables`, con las reglas de aislamiento.
-- Portal de promotoras: `portal/` (TypeScript sin frameworks + supabase-js), proyecto `portal` de Cloudflare Workers. Accesos desde la sección *Promotoras* del Panel con la función `invitar` (`panel/supabase/funciones/invitar`) y `006_accesos.sql`.
-- Prueba de aislamiento: `panel/pruebas/aislamiento.mjs`, sobre un Supabase local (`bash panel/pruebas/lanzar.sh`), y en cada propuesta con `.github/workflows/aislamiento.yml`. Si sale en rojo, la propuesta no se aprueba.
+- Base de datos y reglas: `supabase/00N_*.sql`, ejecutados en orden en el SQL Editor de Supabase.
+- Portal (Fase 1): `supabase/005_portal.sql` crea miembros (desde `007_equipos.sql`, por promoción o a todas y sin roles), requisitos, documentos, entregables, validaciones y los almacenes privados `documentos` y `entregables`, con las reglas de aislamiento.
+- Portal de promotoras: `portal/` (TypeScript sin frameworks + supabase-js), proyecto `portal` de Cloudflare Workers. Accesos desde la sección *Promotoras* del Panel con la función `invitar` (`supabase/funciones/invitar`) y `006_accesos.sql`.
+- Prueba de aislamiento: `supabase/pruebas/aislamiento.mjs`, sobre un Supabase local (`bash supabase/pruebas/lanzar.sh`), y en cada propuesta con `.github/workflows/aislamiento.yml`. Si sale en rojo, la propuesta no se aprueba.
 - Herramienta del robot: `herramientas/peticiones.mjs` (`listar`, `fotos <id>`, `estado <id> …`), con credenciales en las variables del entorno de Claude (`ROBOT_EMAIL`, `ROBOT_CLAVE`).
 
 ## Brazo ejecutor (Publicar y Volver)
@@ -99,7 +99,7 @@ Panel (botón) → función «ejecutar» de Supabase → GitHub Actions «public
 
 | Pieza | Dónde | Qué comprueba o permite |
 |---|---|---|
-| Función `ejecutar` | `panel/supabase/funciones/ejecutar/index.ts`, en Supabase → Edge Functions | Que quien pulsa es administradora con doble verificación (`es_admin()`); valida la orden; para publicar exige `validacion_lista` = `listos` en planos comerciales y Experiencia 3D (salvo versiones sin esa parte en la vista previa); anota en el registro |
+| Función `ejecutar` | `supabase/funciones/ejecutar/index.ts`, en Supabase → Edge Functions | Que quien pulsa es administradora con doble verificación (`es_admin()`); valida la orden; para publicar exige `validacion_lista` = `listos` en planos comerciales y Experiencia 3D (salvo versiones sin esa parte en la vista previa); anota en el registro |
 | Llave A `GITHUB_EJECUTOR` | Secreto de Supabase (Edge Functions → Secrets) | Solo arrancar procesos del almacén `taller` (Actions: lectura y escritura). Caduca el 7/10/2027: aviso en Inicio y por email un mes antes (receta 19) |
 | Proceso `publicar.yml` | `.github/workflows/publicar.yml` | Ejecuta `herramientas/publicacion.mjs aprobar` o `volver`; uno detrás de otro, nunca dos a la vez |
 | Llave B `ESCAPARATE_TOKEN` | Secreto del almacén `taller` (Settings → Secrets → Actions) | Solo escribir en `escaparate` (Contents: lectura y escritura). Caduca el 7/10/2027: aviso en Inicio y por email un mes antes (receta 19) |

@@ -1242,7 +1242,7 @@ Lo que ya funciona, y dónde vive cada pieza:
 | Código del Panel | `panel/` en el taller | TypeScript sin frameworks + `@supabase/supabase-js` |
 | Web del Panel | Cloudflare Workers, proyecto `panel` | Solo archivos estáticos. Vista previa por cada propuesta del taller (pestaña «Base de vistas previas»: compilación `npm run build`, directorio `/panel`) |
 | Entrada | Supabase Auth (UE, Irlanda) | Correo + contraseña + código del móvil (TOTP). Alta de usuarios cerrada: solo a mano |
-| Reglas de datos | `panel/supabase/*.sql` | Todo exige doble verificación (`aal2`) y estar en `administradores` |
+| Reglas de datos | `supabase/*.sql` | Todo exige doble verificación (`aal2`) y estar en `administradores` |
 | Registro de actividad | Tabla `registro` | Solo añadir; no se edita ni se borra |
 | Promotoras y promociones | Tablas `promotoras` y `promociones` | Privadas. En Fase 1, cada promotora verá solo las suyas |
 | Versiones | `/<promoción>/version.json` del escaparate | El Panel compara producción y vista previa. No existe lista pública de promociones |

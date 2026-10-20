@@ -1,13 +1,13 @@
 // Prueba automática de aislamiento entre promotoras.
 //
 // Levanta una base de datos de Supabase local y vacía (con `supabase start`,
-// nunca la real), le aplica los archivos de panel/supabase en orden, como
+// nunca la real), le aplica los archivos de supabase en orden, como
 // se hace en el SQL Editor, crea dos promotoras inventadas (A y B) y
 // comprueba, con la misma clave pública que usan las páginas, que:
 //  · todos los intentos de saltarse las reglas FALLAN;
 //  · el uso normal SIGUE FUNCIONANDO.
 //
-// Uso (desde panel/, con el Supabase local en marcha en panel/pruebas):
+// Uso (desde supabase/, con el Supabase local en marcha en supabase/pruebas):
 //   node pruebas/aislamiento.mjs
 // Variables: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY, DB_URL
 // (las imprime `supabase status -o env`). Por seguridad, solo acepta
@@ -35,7 +35,7 @@ if ( ! local( SUPABASE_URL ) || ! local( DB_URL ) ) {
 
 }
 
-const SQL = join( dirname( fileURLToPath( import.meta.url ) ), '..', 'supabase' );
+const SQL = join( dirname( fileURLToPath( import.meta.url ) ), '..' );
 const CLAVE = 'prueba-aislamiento-123';
 const opciones = { auth: { persistSession: false, autoRefreshToken: false } };
 const servicio = createClient( SUPABASE_URL, SUPABASE_SERVICE_KEY, opciones );

@@ -51,7 +51,7 @@ biblioteca/                   biblioteca compartida del producto (activos de mob
 | `node herramientas/publicacion.mjs volver <id> vN --motivo "…" [--confirmar]` | Vuelve a una versión anterior; la vigente queda como «retirada», nunca se borra |
 | `node herramientas/publicacion.mjs estado <id>` | Historial de versiones de la promoción |
 
-El escaparate (`MUNE-Projects/escaparate`) contiene solo lo publicado: `publico/<id>/`, una carpeta por promoción, que Cloudflare sirve tal cual.
+El escaparate (`MUNE-Projects/experience`) contiene solo lo publicado: `publico/<id>/`, una carpeta por promoción, que Cloudflare sirve tal cual.
 
 - **Una tipología por geometría distinta,** no un modelo por vivienda. Las viviendas que comparten geometría cargan la misma tipología.
 - **Viviendas simétricas** (`"espejo": true`): se espejan los datos al cargar (muros, huecos, giros de puerta, mobiliario, alternativas, cámaras y piscina) en lugar de crear otro modelo.
@@ -60,7 +60,7 @@ El escaparate (`MUNE-Projects/escaparate`) contiene solo lo publicado: `publico/
 
 ## Acceso de comprador sin base de datos
 
-- Cada vivienda tiene un código privado de comprador. Lo generan la promotora (portal) o la administradora (Panel), pestaña *Compradores*; se comprueba en Supabase (`panel/supabase/014_codigos_comprador.sql`) y no va en la web pública.
+- Cada vivienda tiene un código privado de comprador. Lo generan la promotora (portal) o la administradora (Panel), pestaña *Compradores*; se comprueba en Supabase (`supabase/014_codigos_comprador.sql`) y no va en la web pública.
 - En `promocion.json` solo se guarda el **hash SHA-256** de cada código, nunca el código en claro.
 - Los enlaces para entregar a cada comprador se escriben en `accesos-privados.csv`, fuera del control de versiones.
 - El enlace es `<url>#c-xxxxxxxxxxxxxxxx`. También se puede pegar el código en "Entra para personalizar tu vivienda".

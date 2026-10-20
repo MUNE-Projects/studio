@@ -1,9 +1,9 @@
 {
-  "name": "panel",
+  "name": "mune-studio",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Panel de administración interno de MUNE.",
+  "description": "MUNE Studio: la aplicación interna de MUNE.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

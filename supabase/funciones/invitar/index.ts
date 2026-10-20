@@ -27,6 +27,9 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? 'https://iowtdenlkxjqzlpwiz
 const CLAVE_PUBLICA = Deno.env.get('CLAVE_PUBLICA') ?? 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR';
 const PORTAL = Deno.env.get('PORTAL_URL') ?? 'https://portal.mune-projects.workers.dev/';
 const ORIGENES = [
+	'https://studio.mune-projects.workers.dev',
+	'https://revision-studio.mune-projects.workers.dev',
+	// las direcciones antiguas de MUNE Studio, mientras dura el cambio de nombre (se retiran en una semana)
 	'https://panel.mune-projects.workers.dev',
 	'https://revision-panel.mune-projects.workers.dev',
 	'https://portal.mune-projects.workers.dev',

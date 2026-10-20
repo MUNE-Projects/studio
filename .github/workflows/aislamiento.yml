@@ -3,7 +3,7 @@
 # Cada vez que una propuesta cambia las reglas de la base de datos o la propia
 # prueba, levanta un Supabase vacío dentro de GitHub (con datos inventados,
 # sin tocar el real ni usar ninguna llave), aplica los archivos de
-# panel/supabase en orden y comprueba que ninguna promotora puede ver ni tocar
+# supabase en orden y comprueba que ninguna promotora puede ver ni tocar
 # lo de otra. Si sale en rojo, esa propuesta NO se aprueba.
 #
 # El resultado, con la lista de comprobaciones, aparece en la pestaña
@@ -14,14 +14,12 @@ name: Prueba de aislamiento
 on:
   pull_request:
     paths:
-      - panel/supabase/**
-      - panel/pruebas/**
+      - supabase/**
       - .github/workflows/aislamiento.yml
   push:
     branches: [main]
     paths:
-      - panel/supabase/**
-      - panel/pruebas/**
+      - supabase/**
       - .github/workflows/aislamiento.yml
   workflow_dispatch:
 
@@ -37,9 +35,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Instalar dependencias del Panel
-        working-directory: panel
+      - name: Instalar dependencias de las pruebas
+        working-directory: supabase
         run: npm ci --no-audit --no-fund
       - name: Supabase local y comprobaciones
-        working-directory: panel
+        working-directory: supabase
         run: bash pruebas/lanzar.sh

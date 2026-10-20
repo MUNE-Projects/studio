@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Prueba de aislamiento en local: Supabase vacío → archivos SQL → comprobaciones.
-# Uso, desde panel/: bash pruebas/lanzar.sh   (necesita Docker y psql)
+# Uso, desde supabase/: bash pruebas/lanzar.sh   (necesita Docker y psql)
 set -euo pipefail
 cd "$(dirname "$0")"
 CLI="npx --yes supabase@2.120.0"
 $CLI stop --no-backup >/dev/null 2>&1 || true
-# Las funciones de Supabase se prueban tal cual están en panel/supabase/funciones.
-rm -rf supabase/functions && cp -r ../supabase/funciones supabase/functions
+# Las funciones de Supabase se prueban tal cual están en supabase/funciones.
+rm -rf supabase/functions && cp -r ../funciones supabase/functions
 $CLI start >/dev/null
 eval "$($CLI status -o env 2>/dev/null)"
 cd ..

@@ -29,9 +29,12 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? 'https://iowtdenlkxjqzlpwizgb.supabase.co';
 const CLAVE_PUBLICA = Deno.env.get('CLAVE_PUBLICA') ?? 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR';
 const PORTAL = Deno.env.get('PORTAL_URL') ?? 'https://portal.mune-projects.workers.dev/';
-const ESCAPARATE = Deno.env.get('ESCAPARATE_URL') ?? 'https://escaparate.mune-projects.workers.dev';
-const PROCESO = 'https://api.github.com/repos/MUNE-Projects/taller/actions/workflows/aviso-promotora.yml/dispatches';
+const ESCAPARATE = Deno.env.get('ESCAPARATE_URL') ?? 'https://experience.mune-projects.workers.dev';
+const PROCESO = 'https://api.github.com/repos/MUNE-Projects/studio/actions/workflows/aviso-promotora.yml/dispatches';
 const ORIGENES = [
+	'https://studio.mune-projects.workers.dev',
+	'https://revision-studio.mune-projects.workers.dev',
+	// las direcciones antiguas de MUNE Studio, mientras dura el cambio de nombre (se retiran en una semana)
 	'https://panel.mune-projects.workers.dev',
 	'https://revision-panel.mune-projects.workers.dev',
 	...(Deno.env.get('ORIGENES_EXTRA')?.split(',') ?? []),

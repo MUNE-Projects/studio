@@ -1,19 +1,19 @@
-// Vistas previas del Panel en Cloudflare.
+// Vistas previas de MUNE Studio en Cloudflare.
 //
-// La configuración principal del Panel está en panel/wrangler.jsonc (producción
-// se construye desde /panel). Las vistas previas de Cloudflare (función en beta)
-// se ejecutan desde la raíz del taller sin compilar, así que este archivo les
-// indica cómo construir el Panel y dónde está el resultado. Mismo Worker «panel».
+// La configuración principal de MUNE Studio está en app/wrangler.jsonc
+// (producción se construye desde /app). Las vistas previas de Cloudflare se
+// ejecutan desde la raíz del almacén sin compilar, así que este archivo les
+// indica cómo construir MUNE Studio y dónde está el resultado. Mismo Worker «studio».
 {
-  "$schema": "panel/node_modules/wrangler/config-schema.json",
-  "name": "panel",
+  "$schema": "app/node_modules/wrangler/config-schema.json",
+  "name": "studio",
   "compatibility_date": "2026-10-01",
   "previews": {},
   "build": {
-    "command": "cd panel && npm ci --no-audit --no-fund && npm run build"
+    "command": "cd app && npm ci --no-audit --no-fund && npm run build"
   },
   "assets": {
-    "directory": "./panel/dist",
+    "directory": "./app/dist",
     "not_found_handling": "single-page-application"
   }
 }

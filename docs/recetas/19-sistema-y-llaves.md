@@ -22,7 +22,7 @@ Las dos son *fine-grained tokens* de GitHub.
 4. Copia la llave nueva. No la pegues en ningún chat.
 5. Guárdala donde estaba la anterior:
    - **llave A:** https://supabase.com/dashboard/project/iowtdenlkxjqzlpwizgb/functions/secrets → en `GITHUB_EJECUTOR`, el lápiz → pega → **Save**;
-   - **llave B:** https://github.com/MUNE-Projects/taller/settings/secrets/actions → `ESCAPARATE_TOKEN` → el lápiz → pega → **Update secret**.
+   - **llave B:** https://github.com/MUNE-Projects/studio/settings/secrets/actions → `ESCAPARATE_TOKEN` → el lápiz → pega → **Update secret**.
 6. En el Panel, **Sistema** → en esa llave, **Ya la he renovado** → la fecha nueva → **Guardar**.
 7. Cierra el aviso de GitHub, si lo había.
 
@@ -30,6 +30,6 @@ Para comprobar que funciona: la próxima vez que publiques, o con *Actions* → 
 
 ## Piezas
 
-- `panel/supabase/015_sistema.sql`: `llaves`, `renovar_llave`, `latido` (lo llama la vigilancia con la clave pública, sin sesión; solo apunta la hora y devuelve cuántos días faltan para la primera caducidad), `avisos_sistema` y `estado_sistema` (solo la administradora).
-- `panel/src/sistema.ts` (Inicio y Sistema) y `panel/src/inicio.ts`.
+- `supabase/015_sistema.sql`: `llaves`, `renovar_llave`, `latido` (lo llama la vigilancia con la clave pública, sin sesión; solo apunta la hora y devuelve cuántos días faltan para la primera caducidad), `avisos_sistema` y `estado_sistema` (solo la administradora).
+- `app/src/sistema.ts` (Inicio y Sistema) y `app/src/inicio.ts`.
 - `.github/workflows/vigilancia.yml`.

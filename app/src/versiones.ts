@@ -8,8 +8,8 @@ import { alEnviar, anotar, esc, fallo, fecha, sb } from './comun';
 import { avisarPromotora } from './avisos';
 import { leerValidacion, listaParaPublicar, motivoNoPublicar, pintarValidacion, type Validacion } from './validacion';
 
-export const ESCAPARATE: string = import.meta.env.VITE_ESCAPARATE ?? 'https://escaparate.mune-projects.workers.dev';
-export const REVISION: string = import.meta.env.VITE_REVISION ?? 'https://revision-escaparate.mune-projects.workers.dev';
+export const ESCAPARATE: string = import.meta.env.VITE_ESCAPARATE ?? 'https://experience.mune-projects.workers.dev';
+export const REVISION: string = import.meta.env.VITE_REVISION ?? 'https://revision-experience.mune-projects.workers.dev';
 
 export interface Version { version: string; fecha: string }
 export interface EstadoVersiones { pub: Version | null; rev: Version | null; pendiente: boolean; sinComprobar: boolean }

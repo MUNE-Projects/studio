@@ -4,7 +4,7 @@
 //   · Publicada: lo último enviado ya está en la web (o no hay nada pendiente).
 //   · En preparación: todavía no hay ninguna versión enviada ni publicada.
 //
-// Este archivo es igual en panel/src y portal/src: si cambias uno, copia el otro.
+// Este archivo es igual en app/src y portal/src: si cambias uno, copia el otro.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 

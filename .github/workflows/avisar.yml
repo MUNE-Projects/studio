@@ -42,8 +42,8 @@ jobs:
           [[ ${#CAMBIOS} -le 2000 ]] || { echo "::error::Texto de cambios demasiado largo"; exit 1; }
           cuerpo=$(printf '%s\n' \
             "## 👉 Revisa antes de publicar" "" \
-            "**Vista previa:** https://revision-escaparate.mune-projects.workers.dev/$PROMOCION/" "" \
-            "**Publícala o pide cambios en MUNE Studio:** https://panel.mune-projects.workers.dev" "" \
+            "**Vista previa:** https://revision-experience.mune-projects.workers.dev/$PROMOCION/" "" \
+            "**Publícala o pide cambios en MUNE Studio:** https://studio.mune-projects.workers.dev" "" \
             "## Qué cambia" "" "$CAMBIOS" "" \
             "_Este aviso se cierra solo cuando publiques $VERSION desde MUNE Studio._")
           gh issue create --repo "$REPO" --label revision \

@@ -5,14 +5,14 @@ import { createClient } from '@supabase/supabase-js';
 // Cada persona entra con su correo y su contraseña
 // (la elige al aceptar la invitación) y solo ve las promociones de su
 // promotora: lo comprueban las reglas de la base de datos
-// (panel/supabase/005_portal.sql), no esta página.
+// (supabase/005_portal.sql), no esta página.
 //
 // Datos públicos del proyecto de Supabase: la clave «publishable» está pensada
 // para ir en el navegador y por sí sola no da acceso a nada.
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? 'https://iowtdenlkxjqzlpwizgb.supabase.co';
 const SUPABASE_CLAVE_PUBLICA = import.meta.env.VITE_SUPABASE_CLAVE ?? 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR';
-export const ESCAPARATE: string = import.meta.env.VITE_ESCAPARATE ?? 'https://escaparate.mune-projects.workers.dev';
-export const REVISION: string = import.meta.env.VITE_REVISION ?? 'https://revision-escaparate.mune-projects.workers.dev';
+export const ESCAPARATE: string = import.meta.env.VITE_ESCAPARATE ?? 'https://experience.mune-projects.workers.dev';
+export const REVISION: string = import.meta.env.VITE_REVISION ?? 'https://revision-experience.mune-projects.workers.dev';
 
 // La sesión vive solo en esta pestaña y caduca tras un rato sin actividad.
 export const INACTIVIDAD_MAX = 60 * 60 * 1000;

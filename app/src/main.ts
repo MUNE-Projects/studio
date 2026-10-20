@@ -63,7 +63,7 @@ async function pantallaAlta(pendientes: Factor[]): Promise<void> {
 	// Un alta a medias (QR que no se llegó a confirmar) impide crear otra.
 	for (const f of pendientes) await sb.auth.mfa.unenroll({ factorId: f.id });
 
-	const { data, error } = await sb.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'Móvil', issuer: 'MUNE Panel' });
+	const { data, error } = await sb.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'Móvil', issuer: 'MUNE Studio' });
 	if (error) throw error;
 
 	pintar(`<form class="caja" novalidate>
@@ -72,7 +72,7 @@ async function pantallaAlta(pendientes: Factor[]): Promise<void> {
 		<p>Cada vez que entres, además de la contraseña, necesitarás un código del móvil. Para activarlo:</p>
 		<p>1. Abre <strong>Google Authenticator</strong> (o Microsoft Authenticator) en el móvil.<br>
 		2. Pulsa <strong>+</strong> y elige <strong>Escanear código QR</strong>.<br>
-		3. Escribe aquí el código de 6 cifras que aparece en <strong>MUNE Panel</strong>.</p>
+		3. Escribe aquí el código de 6 cifras que aparece en <strong>MUNE Studio</strong>.</p>
 		<div class="qr"><img alt="Código QR para la app de verificación" src="${esc(data.totp.qr_code)}"></div>
 		<p class="secreto">¿No puedes escanear el código? Escribe esta clave a mano en la app: ${esc(data.totp.secret)}</p>
 		${CAMPO_CODIGO}
@@ -95,7 +95,7 @@ function pantallaCodigo(factor: Factor): void {
 	pintar(`<form class="caja" novalidate>
 		${CABECERA}
 		<h1>Código del móvil</h1>
-		<p>Abre la app de verificación del móvil y escribe el código de 6 cifras que aparece en <strong>MUNE Panel</strong>.</p>
+		<p>Abre la app de verificación del móvil y escribe el código de 6 cifras que aparece en <strong>MUNE Studio</strong> (o «MUNE Panel», si aún no lo has cambiado).</p>
 		${CAMPO_CODIGO}
 		<p class="error" role="alert"></p>
 		<button class="boton" type="submit">Verificar</button>

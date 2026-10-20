@@ -19,9 +19,13 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const SUPABASE_URL = 'https://iowtdenlkxjqzlpwizgb.supabase.co';
 const SUPABASE_CLAVE_PUBLICA = 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR';
-const ORIGENES = ['https://panel.mune-projects.workers.dev', 'https://revision-panel.mune-projects.workers.dev'];
-const PROCESO = 'https://api.github.com/repos/MUNE-Projects/taller/actions/workflows/publicar.yml/dispatches';
-const REVISION = Deno.env.get('REVISION_ESCAPARATE') ?? 'https://revision-escaparate.mune-projects.workers.dev';
+const ORIGENES = [
+	'https://studio.mune-projects.workers.dev', 'https://revision-studio.mune-projects.workers.dev',
+	// las direcciones antiguas de MUNE Studio, mientras dura el cambio de nombre (se retiran en una semana)
+	'https://panel.mune-projects.workers.dev', 'https://revision-panel.mune-projects.workers.dev',
+];
+const PROCESO = 'https://api.github.com/repos/MUNE-Projects/studio/actions/workflows/publicar.yml/dispatches';
+const REVISION = Deno.env.get('REVISION_ESCAPARATE') ?? 'https://revision-experience.mune-projects.workers.dev';
 const PARTES = {
 	planos: { que: 'los planos comerciales', archivo: 'planos/planos.json' },
 	experiencia: { que: 'la Experiencia 3D', archivo: 'experiencia/experiencia.json' },

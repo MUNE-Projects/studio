@@ -18,7 +18,7 @@
 // previa, estado «en_revision»); «aprobar» la copia a «main» (producción, estado
 // «publicada»). «volver» restaura en «main» una versión anterior.
 //
-// Opciones comunes: --escaparate <ruta> (por defecto ../escaparate).
+// Opciones comunes: --escaparate <ruta> (por defecto ../experience, o ../escaparate si aún se llama así).
 // Sin --confirmar, publicar y volver solo muestran lo que harían (no cambian nada).
 //
 // Reglas que garantiza:
@@ -108,7 +108,8 @@ const leerRegistro = ( id ) => leerJSON( rutaRegistro( id ), { promocion: id, ve
 
 function rutaEscaparate() {
 
-	const ruta = resolve( opcion( 'escaparate' ) ?? join( RAIZ, '..', 'escaparate' ) );
+	// el almacén «experience» (antes «escaparate»), junto al de MUNE Studio
+	const ruta = resolve( opcion( 'escaparate' ) ?? [ 'experience', 'escaparate' ].map( ( n ) => join( RAIZ, '..', n ) ).find( ( r ) => existsSync( r ) ) ?? join( RAIZ, '..', 'experience' ) );
 	if ( ! existsSync( join( ruta, '.git' ) ) ) fallo( `No encuentro el escaparate en ${ ruta } (usa --escaparate <ruta>)` );
 	return ruta;
 

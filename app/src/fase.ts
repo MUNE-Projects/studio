@@ -4,7 +4,7 @@
 // proyecto básico o proyecto de ejecución. Cada documento que se sube queda
 // marcado con la fase de ese momento. Cada cambio queda en el historial.
 //
-// Este archivo es igual en panel/src y portal/src: si cambias uno, copia el otro.
+// Este archivo es igual en app/src y portal/src: si cambias uno, copia el otro.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 

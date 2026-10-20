@@ -27,10 +27,10 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? 'https://iowtdenlkxjqzlpwizgb.supabase.co';
 const CLAVE_PUBLICA = Deno.env.get('CLAVE_PUBLICA') ?? 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR';
-const PROCESO = 'https://api.github.com/repos/MUNE-Projects/taller/actions/workflows/aviso-mune.yml/dispatches';
-const PUBLICAR = 'https://api.github.com/repos/MUNE-Projects/taller/actions/workflows/publicar.yml/dispatches';
-const STUDIO = Deno.env.get('STUDIO_URL') ?? 'https://panel.mune-projects.workers.dev/';
-const REVISION = Deno.env.get('REVISION_ESCAPARATE') ?? 'https://revision-escaparate.mune-projects.workers.dev';
+const PROCESO = 'https://api.github.com/repos/MUNE-Projects/studio/actions/workflows/aviso-mune.yml/dispatches';
+const PUBLICAR = 'https://api.github.com/repos/MUNE-Projects/studio/actions/workflows/publicar.yml/dispatches';
+const STUDIO = Deno.env.get('STUDIO_URL') ?? 'https://studio.mune-projects.workers.dev/';
+const REVISION = Deno.env.get('REVISION_ESCAPARATE') ?? 'https://revision-experience.mune-projects.workers.dev';
 const ARCHIVO: Record<string, string> = { planos: 'planos/planos.json', experiencia: 'experiencia/experiencia.json' };
 const ORIGENES = [
 	'https://portal.mune-projects.workers.dev',

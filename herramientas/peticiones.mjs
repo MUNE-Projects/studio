@@ -10,7 +10,7 @@
 // en el chat, y este script nunca las imprime.
 //
 // El robot es un usuario normal de Supabase (sin clave maestra). Sus permisos
-// los fijan las reglas de panel/supabase/003_peticiones.sql: leer peticiones y
+// los fijan las reglas de supabase/003_peticiones.sql: leer peticiones y
 // promociones, cambiar estado/nota/enlace de una petición y anotar en el
 // registro. No puede borrar, crear peticiones, publicar ni cambiar reglas.
 

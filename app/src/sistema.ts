@@ -8,6 +8,7 @@
 
 import { pintarActividad } from './actividad';
 import { esc, fecha, sb, traducir } from './comun';
+import { pintarMovil } from './movil';
 
 export interface AvisoSistema { clave: string; nivel: 'alerta' | 'aviso' | 'info'; titulo: string; detalle: string; enlace: string | null }
 
@@ -54,6 +55,7 @@ function barra(titulo: string, usado: number, limite: number): string {
 export async function pantallaSistema(destino: HTMLElement): Promise<void> {
 	destino.innerHTML = `
 		<section class="tarjeta" data-estado-sistema><h2>Estado del sistema</h2><p class="vacio">Cargando…</p></section>
+		<section class="tarjeta" data-movil-caja><h2>Código del móvil</h2><p class="vacio">Cargando…</p></section>
 		<section class="tarjeta">
 			<h2>Registro de actividad completo</h2>
 			<p class="ayuda">Todo lo que ha pasado, de todas las promotoras y promociones, y tus entradas en MUNE Studio. Lo de cada promoción también está en su pestaña «Actividad».</p>
@@ -61,6 +63,7 @@ export async function pantallaSistema(destino: HTMLElement): Promise<void> {
 		</section>`;
 	const caja = destino.querySelector<HTMLElement>('[data-estado-sistema]')!;
 	void pintarActividad(destino.querySelector<HTMLElement>('[data-actividad]')!, {}, 100);
+	void pintarMovil(destino.querySelector<HTMLElement>('[data-movil-caja]')!);
 	await pintarEstado(caja);
 }
 

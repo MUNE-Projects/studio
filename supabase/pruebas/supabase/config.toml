@@ -1,4 +1,4 @@
-# Supabase local, solo para la prueba de aislamiento (panel/pruebas).
+# Supabase local, solo para la prueba de aislamiento (supabase/pruebas).
 # Se levanta dentro de GitHub Actions (o en el ordenador de quien desarrolla)
 # con datos inventados. No tiene nada que ver con el proyecto real, y sus
 # claves son las de ejemplo que trae Supabase para trabajar en local.
@@ -20,7 +20,7 @@ verify_enabled = true
 [local_smtp]
 enabled = true
 
-# Funciones de panel/supabase/funciones (lanzar.sh las copia a functions/).
+# Funciones de supabase/funciones (lanzar.sh las copia a functions/).
 [edge_runtime]
 enabled = true
 
