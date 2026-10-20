@@ -65,6 +65,9 @@ Cloudflare Workers Builds, Worker `studio` (almacén `studio`, antes `taller`):
 - Base de vistas previas (activadas): directorio raíz `/app`, `npm run build` y
   `npx wrangler preview`. La rama `revision` se ve en
   https://revision-studio.mune-projects.workers.dev.
+- En Configuración → Dominios y rutas, «URL de vista previa» tiene que estar
+  habilitada (en los Workers nuevos viene deshabilitada); si no, la vista
+  previa se construye pero no tiene dirección.
 
 La experiencia pública es el Worker `experience` (almacén `experience`, antes
 `escaparate`): directorio raíz `/`, sin comando de compilación, `npx wrangler
