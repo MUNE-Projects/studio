@@ -58,6 +58,17 @@ npm run dev
 
 ## Publicación
 
-Cloudflare Workers Builds (almacén `taller`, directorio raíz `panel`):
-`npm run build` y `npx wrangler deploy`. Cada propuesta de GitHub recibe su
-vista previa; la versión definitiva sale al aprobar la propuesta en `main`.
+Cloudflare Workers Builds, Worker `studio` (almacén `studio`, antes `taller`):
+
+- Producción (rama `main`): directorio raíz `/app`, `npm run build` y
+  `npx wrangler deploy`.
+- Base de vistas previas (activadas): directorio raíz `/app`, `npm run build` y
+  `npx wrangler preview`. La rama `revision` se ve en
+  https://revision-studio.mune-projects.workers.dev.
+
+La experiencia pública es el Worker `experience` (almacén `experience`, antes
+`escaparate`): directorio raíz `/`, sin comando de compilación, `npx wrangler
+deploy` (vistas previas con `npx wrangler preview`).
+
+Cada propuesta de GitHub recibe su vista previa; la versión definitiva sale al
+aprobar la propuesta en `main`.
