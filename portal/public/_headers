@@ -4,4 +4,4 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://iowtdenlkxjqzlpwizgb.supabase.co; connect-src 'self' https://iowtdenlkxjqzlpwizgb.supabase.co https://escaparate.mune-projects.workers.dev https://revision-escaparate.mune-projects.workers.dev; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://iowtdenlkxjqzlpwizgb.supabase.co; connect-src 'self' https://iowtdenlkxjqzlpwizgb.supabase.co https://experience.mune-projects.workers.dev https://revision-experience.mune-projects.workers.dev; frame-ancestors 'none'; base-uri 'none'; form-action 'self'

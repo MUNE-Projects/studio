@@ -1,5 +1,5 @@
 // Pestaña «Compradores» de una promoción (Etapa 5, 014_codigos_comprador.sql).
-// El mismo archivo está en el Panel (panel/src) y en el portal (portal/src):
+// El mismo archivo está en el Panel (app/src) y en el portal (portal/src):
 // si cambias uno, copia el otro.
 //
 // Un código por vivienda. Solo se ve al generarlo (en Supabase queda su huella):

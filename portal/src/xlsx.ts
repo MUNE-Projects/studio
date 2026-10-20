@@ -1,7 +1,7 @@
 // Excel (.xlsx) mínimo, sin dependencias: una hoja con una fila de títulos en
 // negrita y filas de texto. Un .xlsx es un ZIP con unos pocos XML (formato
 // Office Open XML); se monta con el ZIP de zip.ts.
-// El mismo archivo está en el Panel (panel/src) y en el portal (portal/src).
+// El mismo archivo está en el Panel (app/src) y en el portal (portal/src).
 
 import { Zip } from './zip';
 

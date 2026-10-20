@@ -10,7 +10,7 @@
 #
 # Llaves que usa:
 #  · ESCAPARATE_TOKEN (llave B, secreto de este almacén): escribir en
-#    MUNE-Projects/escaparate y nada más.
+#    MUNE-Projects/experience (antes «escaparate») y nada más.
 #  · GITHUB_TOKEN (automática de GitHub, solo dura este proceso): guardar el
 #    registro de versiones en este almacén.
 #
@@ -102,7 +102,7 @@ jobs:
       - name: Escaparate
         uses: actions/checkout@v4
         with:
-          repository: MUNE-Projects/escaparate
+          repository: MUNE-Projects/experience
           ref: main
           fetch-depth: 0
           path: escaparate
@@ -161,9 +161,9 @@ jobs:
               -f para="$PARA" \
               -f asunto="$nombre · $VERSION publicada" \
               -f texto="Tu equipo ha validado todo lo que el equipo de MUNE preparó para la $VERSION de $nombre, y ya está publicada. En unos minutos la verás en la web." \
-              -f enlace="https://escaparate.mune-projects.workers.dev/$PROMOCION/"
+              -f enlace="https://experience.mune-projects.workers.dev/$PROMOCION/"
           fi
           gh workflow run aviso-mune.yml --repo "$REPO" --ref main \
             -f asunto="$nombre · $VERSION publicada al aprobar la promotora" \
             -f texto="La promotora ha validado todo lo enviado de la $VERSION de $nombre y se ha publicado sola. Si hay que deshacerlo, en MUNE Studio pulsa «Volver a una anterior»." \
-            -f enlace="https://panel.mune-projects.workers.dev/#/promocion/$PROMOCION/resumen"
+            -f enlace="https://studio.mune-projects.workers.dev/#/promocion/$PROMOCION/resumen"

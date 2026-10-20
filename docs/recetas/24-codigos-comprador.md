@@ -21,7 +21,7 @@
 - *Copiar mensaje para el comprador* copia un texto listo para pegar en WhatsApp o en un email: el código, la dirección de la web y el enlace directo.
 
 ## Piezas
-- `panel/supabase/014_codigos_comprador.sql`: códigos (huella), selecciones formalizadas de cada comprador, intentos, `generar_codigo_comprador`, `codigos_de_promocion`, `entrar_comprador` (la llama la web pública, sin sesión).
+- `supabase/014_codigos_comprador.sql`: códigos (huella), selecciones formalizadas de cada comprador, intentos, `generar_codigo_comprador`, `codigos_de_promocion`, `entrar_comprador` (la llama la web pública, sin sesión).
 - La web pública ya no lleva códigos ni selecciones (`vite.config.ts` los quita siempre). Lista pública de viviendas: `viviendas.json`, que genera `publicacion.mjs` en cada versión.
 - Lo formalizado por cada comprador vive en `selecciones_comprador` (por ahora lo registra la administradora; su pantalla llegará con las personalizaciones, Fase 2).
 

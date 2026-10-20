@@ -59,10 +59,10 @@ jobs:
           asunto = os.environ['ASUNTO'].replace('\n', ' ')[:200]
           texto = os.environ['TEXTO'][:3000]
           enlace = os.environ['ENLACE']
-          if not re.fullmatch(r'https://(portal|escaparate)\.mune-projects\.workers\.dev/[^\s"<>]*', enlace):
+          if not re.fullmatch(r'https://(portal|experience|escaparate)\.mune-projects\.workers\.dev/[^\s"<>]*', enlace):
               sys.exit('::error::Enlace no válido')
 
-          etiqueta = 'Ver la experiencia publicada' if '//escaparate.' in enlace else 'Abrir MUNE Portal'
+          etiqueta = 'Ver la experiencia publicada' if ('//experience.' in enlace or '//escaparate.' in enlace) else 'Abrir MUNE Portal'
           parrafos = ''.join(f'<p style="margin:0 0 14px">{html.escape(p).replace(chr(10), "<br>")}</p>' for p in texto.split('\n\n'))
           cuerpo_html = f'''<!doctype html><html lang="es"><body style="margin:0;background:#f5f3ef;font-family:Helvetica,Arial,sans-serif;color:#1c1c1a">
             <div style="max-width:560px;margin:0 auto;padding:28px 20px">

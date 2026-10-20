@@ -1,0 +1,13 @@
+// MUNE Studio: solo archivos estáticos. Los datos viven en Supabase
+// y solo se entregan a una sesión con contraseña + código del móvil (aal2).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "studio",
+  "compatibility_date": "2026-10-01",
+  // Cada propuesta en GitHub recibe su propia vista previa para revisarla antes de aprobar.
+  "previews": {},
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}

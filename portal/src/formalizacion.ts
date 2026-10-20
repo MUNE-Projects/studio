@@ -5,7 +5,7 @@
 // en MUNE Studio) y solo llegan a la experiencia pública cuando el comprador
 // entra con un código válido.
 //
-// Este archivo es igual en panel/src y portal/src: si cambias uno, copia el otro.
+// Este archivo es igual en app/src y portal/src: si cambias uno, copia el otro.
 
 export interface Formalizacion {
 	contacto?: { nombre?: string; email?: string; telefono?: string };

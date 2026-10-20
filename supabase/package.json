@@ -1,0 +1,13 @@
+{
+  "name": "supabase-mune",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Base de datos y funciones de MUNE en Supabase, y su prueba de aislamiento (pruebas/).",
+  "scripts": {
+    "aislamiento": "bash pruebas/lanzar.sh"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.117.2"
+  }
+}

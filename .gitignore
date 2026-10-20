@@ -6,3 +6,4 @@ accesos-privados*.csv
 dist-artefacto/
 salida/
 deno.lock
+supabase/pruebas/supabase/functions/
