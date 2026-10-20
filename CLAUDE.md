@@ -103,7 +103,7 @@ Ahora la web pública está en **v7**, y la **v8** (de prueba, idéntica) sigue 
 
   El Panel avisa en Inicio a 60 y 30 días, y la vigilancia manda email a 30 días (receta 19). Al renovarlas, apuntar la fecha en *Sistema → Ya la he renovado*.
 - La protección de ramas en almacenes privados es de pago: no está activada.
-- **Antes del primer cliente real:** sustituir el remitente `hello.muneprojects@gmail.com` por una dirección con dominio propio de MUNE (tiene coste: consultar antes).
+- **Antes del primer cliente real:** sustituir el remitente `hello.muneprojects@gmail.com` por una dirección con dominio propio de MUNE (tiene coste: consultar antes). En ese momento, **recordarle** que cambie también a dónde llegan sus avisos de MUNE (secreto `AVISOS_MUNE_PARA` de GitHub; hoy sin crear, así que llegan a hello.muneprojects@gmail.com) y que hará una dirección para las promotoras.
 - El plan gratuito de Supabase se duerme tras 7 días sin uso; `vigilancia.yml` lo mantiene despierto. Si aun así se duerme, se despierta gratis desde el panel de Supabase.
 
 **Ahora: Fase 1 · Portal seguro**, aprobada por etapas (decisiones 17–25 de `docs/arquitectura.md`, que prevalecen):

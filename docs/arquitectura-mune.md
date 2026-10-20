@@ -445,7 +445,7 @@ Sustituye al orden de pasos 0–5 anterior (los pasos 0, 2 y 3 de equipos y vali
 ### E. Antes del primer cliente
 
 1. Decidir y comprar el dominio principal de MUNE (solo ese; tiene coste: consultar antes), antes de repartir ninguna URL real. Después, los subdominios de producción.
-2. Remitente de email con ese dominio (coste: consultar antes).
+2. Remitente de email con ese dominio (coste: consultar antes). Al hacerlo, **recordar a la administradora** que cambie también a dónde le llegan los avisos de MUNE: el secreto `AVISOS_MUNE_PARA` de GitHub (hoy no existe y llegan a hello.muneprojects@gmail.com). Ella creará una dirección propia para las promotoras.
 3. Valorar Supabase de pago (coste: consultar antes).
 4. Decidir si las peticiones se revisan solas.
 5. Bloque B terminado y probado.
