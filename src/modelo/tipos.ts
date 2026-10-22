@@ -180,7 +180,7 @@ export interface ViviendaPromocion {
 	 * packs cuyo periodo ha finalizado. Viven en Supabase (selecciones_comprador)
 	 * y solo llegan al navegador al entrar con el código de la vivienda.
 	 */
-	selecciones?: Record<string, { fecha: string; opciones: Record<string, string> }>;
+	selecciones?: Record<string, { fecha: string; opciones: Record<string, string>; estado?: 'seleccionada' | 'cerrada'; importe?: number }>;
 	/** Contacto y datos de pago de la formalización: solo llegan con el código de la vivienda. */
 	formalizacion?: Formalizacion;
 }

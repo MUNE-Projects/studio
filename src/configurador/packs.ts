@@ -50,8 +50,18 @@ export interface PackVivienda {
 	pack: Pack;
 	estado: EstadoPack;
 	categorias: Categoria[];
-	/** Selección formalizada (histórico), si la hay. */
+	/** Selección cerrada (histórico), si la hay. */
 	formalizada: { fecha: string; opciones: Record<string, string> } | null;
+	/** Selección guardada en un pack aún abierto (se puede cambiar hasta que cierre). */
+	guardada: { fecha: string; opciones: Record<string, string> } | null;
+}
+
+/** Lo guardado de un pack: cerrado (histórico) o seleccionado (aún se puede cambiar). Sin estado, es de antes: cerrado. */
+function seleccionDe( v: ViviendaPromocion, pack: string ) {
+
+	const s = v.selecciones?.[ pack ] ?? null;
+	return { formalizada: s && s.estado !== 'seleccionada' ? s : null, guardada: s?.estado === 'seleccionada' ? s : null };
+
 }
 
 /**
@@ -69,14 +79,14 @@ export function packsDeVivienda( promocion: Promocion, v: ViviendaPromocion, cat
 		const cats = p.categorias.map( ( id ) => categorias.find( ( c ) => c.id === id ) ).filter( ( c ): c is Categoria => !! c );
 		cats.forEach( ( c ) => usadas.add( c.id ) );
 		if ( ! cats.length ) continue;
-		out.push( { pack: p, estado: estadoPack( p, fecha ), categorias: cats, formalizada: v.selecciones?.[ p.id ] ?? null } );
+		out.push( { pack: p, estado: estadoPack( p, fecha ), categorias: cats, ...seleccionDe( v, p.id ) } );
 
 	}
 
 	const sueltas = categorias.filter( ( c ) => ! usadas.has( c.id ) );
 	if ( sueltas.length ) out.push( {
 		pack: { id: 'personalizacion', titulo: 'Personalización', descripcion: '', desde: '2000-01-01', hasta: '2100-12-31', categorias: sueltas.map( ( c ) => c.id ) },
-		estado: 'disponible', categorias: sueltas, formalizada: v.selecciones?.personalizacion ?? null,
+		estado: 'disponible', categorias: sueltas, ...seleccionDe( v, 'personalizacion' ),
 	} );
 	return out;
 

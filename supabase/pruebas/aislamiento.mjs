@@ -767,8 +767,8 @@ await caso( DEBE_FUNCIONAR, 'Códigos de comprador: la promotora genera y cambia
 
 	const c1 = await exigir( generar( gestorA, 'Bajo A' ), 'generar' );
 	if ( ! /^c-[0-9a-f]{12}$/.test( c1 ) ) throw new Error( `código raro: ${ c1 }` );
-	// lo formalizado por el primer comprador (lo registra la administradora)
-	await exigir( admin.from( 'selecciones_comprador' ).insert( { promocion_id: 'prueba-a', vivienda_ref: 'Bajo A', comprador: 1, pack: 'cocinas', opciones: { cocina: 'nogal' }, fecha: '2026-10-01' } ), 'selección' );
+	// lo cerrado por el primer comprador (desde 025 nadie escribe en la tabla: se pone directamente en la base de datos de prueba)
+	execFileSync( 'psql', [ DB_URL, '-q', '-c', "insert into public.selecciones_comprador (promocion_id, vivienda_ref, comprador, pack, opciones, fecha) values ('prueba-a', 'Bajo A', 1, 'cocinas', '{\"cocina\": \"nogal\"}', '2026-10-01')" ] );
 	const bien = ( await entrarComprador( c1 ) ).data;
 	const escrito = ( await entrarComprador( ` ${ c1.toUpperCase().replace( 'C-', 'c ' ).replace( /(.{6})/, '$1-' ) } ` ) ).data; // con espacios, guiones y mayúsculas
 	const mal = await entrarComprador( 'c-000000000000' );
@@ -1329,6 +1329,58 @@ await caso( DEBE_FUNCIONAR, 'Datos privados: el robot guarda los de una versión
 		&& entra.datos.tipologia?.id === 'a'
 		&& lista.length === 2 && lista[ 0 ].ref === 'Bajo A' && ! ( 'opciones' in lista[ 0 ] )
 		&& filas.some( ( f ) => f.version === 'v90' );
+
+} );
+
+// ─── Selecciones: Seleccionada → Cerrada (025_selecciones.sql, paso 5b) ─────
+
+const guardarComoComprador = ( codigo, pack, opciones, version = 'v90' ) => anonimo.rpc( 'guardar_seleccion', { p_promocion: 'prueba-a', p_codigo: codigo, p_version: version, p_pack: pack, p_opciones: opciones } );
+const guardarComoEquipo = ( sb, vivienda, opciones ) => sb.rpc( 'guardar_seleccion_equipo', { p_promocion: 'prueba-a', p_vivienda: vivienda, p_pack: 'acabados', p_opciones: opciones } );
+const codigoSel = String( await exigir( generar( admin, 'Bajo A', true ), 'código Bajo A (selecciones)' ) );
+
+await caso( DEBE_FUNCIONAR, 'Selecciones: el comprador guarda la suya (Seleccionada, con el importe calculado por Supabase) y la cambia; el equipo con «personalización» guarda otra en nombre de un comprador y lo ve todo', async () => {
+
+	const primera = await exigir( guardarComoComprador( codigoSel, 'acabados', { suelo: 'base' } ), 'guardar' );
+	const cambio = await exigir( guardarComoComprador( codigoSel, 'acabados', { suelo: 'nogal' } ), 'cambiar' );
+	const equipo = await exigir( guardarComoEquipo( gestorA, 'Bajo B', { suelo: 'nogal' } ), 'equipo' );
+	const lista = await exigir( gestorA.rpc( 'personalizacion_de_promocion', { p_promocion: 'prueba-a' } ), 'lista' );
+	const deA = lista.selecciones.find( ( s ) => s.vivienda === 'Bajo A' );
+	const deB = lista.selecciones.find( ( s ) => s.vivienda === 'Bajo B' );
+	const { data: entra } = await anonimo.rpc( 'entrar_comprador', { p_promocion: 'prueba-a', p_codigo: codigoSel, p_version: 'v90' } );
+	return primera.estado === 'seleccionada' && Number( primera.importe ) === 0
+		&& Number( cambio.importe ) === 1900 && cambio.opciones.suelo === 'nogal'
+		&& Number( equipo.importe ) === 1900 && deA?.estado === 'seleccionada' && deA.hecho_por === 'comprador'
+		&& deB?.hecho_por === 'equipo' && deA.detalle[ 0 ]?.nombre === 'Nogal'
+		&& entra?.selecciones?.acabados?.estado === 'seleccionada';
+
+} );
+
+await caso( DEBE_FALLAR, '39. Selecciones: MUNE, otra promotora, el robot o alguien sin sesión guardan una; el comprador elige fuera de su pack, una opción que no existe o un precio inventado; se escribe directamente en la tabla; se cambia una selección cerrada', async () => {
+
+	const r = {
+		mune: await guardarComoEquipo( admin, 'Bajo A', { suelo: 'base' } ),
+		otraPromotora: await guardarComoEquipo( aprobB, 'Bajo A', { suelo: 'base' } ),
+		robot: await guardarComoEquipo( robot, 'Bajo A', { suelo: 'base' } ),
+		anonimoEquipo: await guardarComoEquipo( anonimo, 'Bajo A', { suelo: 'base' } ),
+		otraCategoria: await guardarComoComprador( codigoSel, 'acabados', { cocina: 'nogal' } ),
+		noExiste: await guardarComoComprador( codigoSel, 'acabados', { suelo: 'marmol' } ),
+		otroPack: await guardarComoComprador( codigoSel, 'extras', {} ),
+		directa: await admin.from( 'selecciones_comprador' ).insert( { promocion_id: 'prueba-a', vivienda_ref: 'Bajo A', pack: 'x', opciones: {}, fecha: '2026-01-01' } ),
+		cambiaImporte: await admin.from( 'selecciones_comprador' ).update( { importe: 1 } ).eq( 'promocion_id', 'prueba-a' ).select( 'id' ),
+	};
+	const codigoFalso = await guardarComoComprador( 'c-000000000000', 'acabados', { suelo: 'base' } );
+	if ( codigoFalso.data ) r.codigoFalso = { error: null, data: [ 1 ] };
+	// el periodo termina (versión nueva con el pack cerrado ayer): pasa a Cerrada y ya no cambia
+	const ayer = new Date( Date.now() - 86_400_000 ).toISOString().slice( 0, 10 );
+	await exigir( anonimo.rpc( 'entrar_comprador', { p_promocion: 'prueba-a', p_codigo: codigoSel, p_version: 'v90' } ), 'entra' );
+	await exigir( robot.rpc( 'guardar_datos_privados', { p_promocion: 'prueba-a', p_version: 'v91', p_contenido: { ...datosPrueba, packs: [ { ...datosPrueba.packs[ 0 ], hasta: ayer } ] } } ), 'datos v91' );
+	r.cerrada = await guardarComoComprador( codigoSel, 'acabados', { suelo: 'base' } );
+	r.cerradaEquipo = await guardarComoEquipo( gestorA, 'Bajo A', { suelo: 'base' } );
+	const lista = await exigir( admin.rpc( 'personalizacion_de_promocion', { p_promocion: 'prueba-a' } ), 'lista' );
+	if ( lista.selecciones.find( ( s ) => s.vivienda === 'Bajo A' )?.estado !== 'cerrada' ) throw new Error( 'no pasa a Cerrada' );
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
 
 } );
 
