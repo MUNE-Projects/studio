@@ -166,6 +166,29 @@ const SUPABASE_CLAVE: string = import.meta.env.VITE_SUPABASE_CLAVE ?? 'sb_publis
 /** Vivienda del comprador; null si el código no vale; o por qué no se pudo comprobar. */
 export type ResultadoAcceso = ViviendaPromocion | null | 'sin-conexion' | 'bloqueado';
 
+/** Datos privados que recibe el comprador con su código (024_datos_privados.sql). */
+interface DatosComprador {
+	catalogo: Configuracion;
+	packs: Promocion[ 'packs' ];
+	tipologia: { id: string; opciones: Promocion[ 'tipologias' ][ number ][ 'opciones' ] } | null;
+	vivienda: ViviendaPromocion;
+}
+
+/**
+ * La web pública lleva el catálogo sin precios y sin packs (paso 5a). Con el
+ * código llegan los de la versión de esta web: se completan aquí, y todo lo
+ * que ya usa CATALOGO y PROMOCION los ve igual que antes.
+ */
+function aplicarDatos( d: DatosComprador ) {
+
+	Object.assign( CATALOGO, d.catalogo );
+	PROMOCION.packs = d.packs;
+	const t = d.tipologia && PROMOCION.tipologias.find( ( x ) => x.id === d.tipologia!.id );
+	if ( t ) t.opciones = d.tipologia!.opciones;
+	else if ( d.tipologia ) PROMOCION.tipologias.push( d.tipologia as Promocion[ 'tipologias' ][ number ] );
+
+}
+
 /**
  * Comprueba el código en Supabase (entrar_comprador, con límite de intentos) y
  * devuelve su vivienda con lo que el comprador ya tiene formalizado.
@@ -181,11 +204,14 @@ export async function resolverAcceso( codigo: string ): Promise<ResultadoAcceso>
 		const r = await fetch( `${ SUPABASE_URL }/rest/v1/rpc/entrar_comprador`, {
 			method: 'POST',
 			headers: { apikey: SUPABASE_CLAVE, 'Content-Type': 'application/json' },
-			body: JSON.stringify( { p_promocion: PROMOCION.id, p_codigo: c } ),
+			body: JSON.stringify( { p_promocion: PROMOCION.id, p_codigo: c, p_version: __VERSION__ } ),
 		} );
 		if ( ! r.ok ) return /Demasiados intentos/.test( await r.text() ) ? 'bloqueado' : 'sin-conexion';
-		const d = await r.json() as { vivienda: string; selecciones: ViviendaPromocion[ 'selecciones' ]; formalizacion?: ViviendaPromocion[ 'formalizacion' ] } | null;
-		const v = d && PROMOCION.viviendas.find( ( x ) => x.ref === d.vivienda );
+		const d = await r.json() as { vivienda: string; selecciones: ViviendaPromocion[ 'selecciones' ]; formalizacion?: ViviendaPromocion[ 'formalizacion' ]; datos?: DatosComprador | null } | null;
+		if ( ! d ) return null;
+		// la web pública solo lleva una vivienda de muestra por unidad: la del comprador llega con su código
+		if ( d.datos ) aplicarDatos( d.datos );
+		const v = d.datos?.vivienda ?? PROMOCION.viviendas.find( ( x ) => x.ref === d.vivienda );
 		return v ? { ...v, selecciones: d.selecciones ?? {}, formalizacion: d.formalizacion ?? {} } : null;
 
 	} catch {

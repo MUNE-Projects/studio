@@ -26,8 +26,14 @@ interface Vivienda { ref: string; portal: string | null; planta: string; tipolog
 interface Codigo { vivienda_ref: string; comprador: number; creado_en: string; ultimo_acceso: string | null; accesos: number }
 interface Promo { id: string; nombre: string }
 
-/** Lista pública de viviendas de la última versión preparada (o de la publicada). */
+/**
+ * Viviendas de la última versión preparada: desde el paso 5a están en Supabase
+ * (datos privados, viviendas_de_promocion). Las versiones anteriores las
+ * publicaban en viviendas.json: se usa mientras no haya una versión nueva.
+ */
 async function leerViviendas(d: Dependencias, id: string): Promise<Vivienda[] | null> {
+	const { data } = await d.sb.rpc('viviendas_de_promocion', { p_promocion: id });
+	if (Array.isArray(data) && data.length) return data as Vivienda[];
 	for (const base of [d.revision, d.escaparate]) {
 		try {
 			const r = await fetch(`${base}/${encodeURIComponent(id)}/viviendas.json`, { cache: 'no-store' });

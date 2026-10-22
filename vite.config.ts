@@ -36,6 +36,40 @@ const sinDatosDeStudio = (): Plugin => ( {
 			delete v.precioBase;
 
 		}
+		// datos privados (paso 5a): packs, lo que admite cada tipología y la lista de
+		// viviendas se guardan en Supabase con cada versión; el comprador recibe lo
+		// suyo con su código. Aquí queda una vivienda de muestra por unidad (tipología
+		// y variante, o cada vivienda en una unifamiliar), sin sus opciones.
+		delete datos.packs;
+		for ( const t of datos.tipologias ?? [] ) delete t.opciones;
+		const unidades = new Set<string>();
+		datos.viviendas = ( datos.viviendas ?? [] ).filter( ( v: { ref: string; tipologia: string; espejo?: boolean } ) => {
+
+			const clave = datos.promocion?.tipo === 'unifamiliar' ? v.ref : `${ v.tipologia }${ v.espejo ? '-espejo' : '' }`;
+			if ( unidades.has( clave ) ) return false;
+			unidades.add( clave );
+			return true;
+
+		} ).map( ( { opciones, nota, ...v }: Record<string, unknown> ) => v );
+		return { code: JSON.stringify( datos ), map: null };
+
+	},
+} );
+
+/**
+ * Catálogo en la web pública (paso 5a): solo la opción incluida de cada categoría
+ * (la que se ve sin personalizar), sin precios. El catálogo completo llega al
+ * comprador con su código (Supabase, datos privados de la versión).
+ */
+const catalogoSinPrecios = (): Plugin => ( {
+	name: 'catalogo-sin-precios',
+	enforce: 'pre',
+	transform( codigo, id ) {
+
+		if ( ! /promociones[\\/][^\\/]+[\\/]catalogo\.json$/.test( id ) ) return null;
+		const datos = JSON.parse( codigo );
+		delete datos.nota;
+		for ( const c of datos.categorias ?? [] ) c.opciones = ( c.opciones ?? [] ).slice( 0, 1 ).map( ( o: Record<string, unknown> ) => ( { ...o, precio: 0 } ) );
 		return { code: JSON.stringify( datos ), map: null };
 
 	},
@@ -86,12 +120,17 @@ export default defineConfig( ( { mode } ) => {
 	const carpeta = resolve( import.meta.dirname, 'promociones', promocion );
 	if ( ! existsSync( resolve( carpeta, 'promocion.json' ) ) ) throw new Error( `No existe la promoción «${ promocion }» (promociones/${ promocion }/promocion.json)` );
 	const studio = mode === 'studio';
+	// «planos»: los planos comerciales de cada versión (herramientas/planos.mjs) se
+	// generan con todos los datos (todas las viviendas y distribuciones), sin Studio;
+	// son PDF e imágenes, no la web pública
+	const completo = studio || mode === 'planos';
 
 	return {
 		base: './',
 		resolve: { alias: { '@promocion': carpeta } },
-		define: { __STUDIO__: JSON.stringify( studio ) },
-		plugins: [ conTextosLegales( textosLegales() ), ...( studio ? [] : [ sinDatosDeStudio() ] ) ],
+		// versión de la web (la pone «publicacion.mjs preparar»): con ella pide el comprador sus datos
+		define: { __STUDIO__: JSON.stringify( studio ), __VERSION__: JSON.stringify( process.env.VERSION_PUBLICA ?? null ) },
+		plugins: [ conTextosLegales( textosLegales() ), ...( completo ? [] : [ sinDatosDeStudio(), catalogoSinPrecios() ] ) ],
 		build: { target: 'es2022', chunkSizeWarningLimit: 2000, outDir: process.env.SALIDA || 'dist' },
 	};
 

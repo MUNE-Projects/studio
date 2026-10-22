@@ -1285,6 +1285,53 @@ await caso( DEBE_FUNCIONAR, 'Copias: el usuario «copias» lee toda la base de d
 
 } );
 
+// ─── Datos privados de cada versión (024_datos_privados.sql, paso 5a) ───────
+
+const datosPrueba = {
+	catalogo: { moneda: 'EUR', categorias: [ { id: 'suelo', nombre: 'Suelo', opciones: [ { id: 'base', nombre: 'Base', precio: 0 }, { id: 'nogal', nombre: 'Nogal', precio: 1900 } ] } ] },
+	packs: [ { id: 'acabados', titulo: 'Acabados', desde: '2026-01-01', hasta: '2030-12-31', categorias: [ 'suelo' ] } ],
+	tipologias: [ { id: 'a', opciones: { suelo: [ 'base', 'nogal' ] } } ],
+	viviendas: [ { ref: 'Bajo A', planta: 'Baja', tipologia: 'a', espejo: false }, { ref: 'Bajo B', planta: 'Baja', tipologia: 'a', espejo: true } ],
+};
+const guardarDatos = ( sb, version, promocion = 'prueba-a' ) => sb.rpc( 'guardar_datos_privados', { p_promocion: promocion, p_version: version, p_contenido: datosPrueba } );
+
+await caso( DEBE_FALLAR, '38. Datos privados: la promotora o alguien sin sesión guardan o leen los de una versión; se cambian los de una versión ya enviada a validar; otra promotora ve sus viviendas', async () => {
+
+	await exigir( guardarDatos( robot, 'v90' ), 'datos v90' );
+	const r = {
+		promotoraGuarda: await guardarDatos( gestorA, 'v91' ),
+		anonimoGuarda: await guardarDatos( anonimo, 'v91' ),
+		yaEnviada: await guardarDatos( robot, 'v1' ),
+		promotoraLee: await gestorA.from( 'datos_privados' ).select( 'version' ),
+		anonimoLee: await anonimo.from( 'datos_privados' ).select( 'version' ),
+		otraVeViviendas: await aprobB.rpc( 'viviendas_de_promocion', { p_promocion: 'prueba-a' } ),
+		anonimoVeViviendas: await anonimo.rpc( 'viviendas_de_promocion', { p_promocion: 'prueba-a' } ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Datos privados: el robot guarda los de una versión; el comprador recibe, con su código, el catálogo con precios y solo su vivienda; el equipo ve la lista de viviendas', async () => {
+
+	await exigir( guardarDatos( robot, 'v90' ), 'datos v90 otra vez (repetible)' );
+	const codigo = await exigir( generar( admin, 'Bajo B', true ), 'código Bajo B' );
+	const { data: sinVersion } = await entrarComprador( String( codigo ) );
+	const { data: entra, error } = await anonimo.rpc( 'entrar_comprador', { p_promocion: 'prueba-a', p_codigo: String( codigo ), p_version: 'v90' } );
+	if ( error ) throw error;
+	const lista = await exigir( gestorA.rpc( 'viviendas_de_promocion', { p_promocion: 'prueba-a' } ), 'viviendas' );
+	const filas = await exigir( admin.from( 'datos_privados' ).select( 'version, huella' ).eq( 'promocion_id', 'prueba-a' ), 'admin lee' );
+	const texto = JSON.stringify( entra.datos );
+	return sinVersion?.vivienda === 'Bajo B' && sinVersion.datos === null
+		&& entra.datos?.vivienda?.ref === 'Bajo B' && ! texto.includes( 'Bajo A' )
+		&& entra.datos.catalogo.categorias[ 0 ].opciones[ 1 ].precio === 1900 && entra.datos.packs.length === 1
+		&& entra.datos.tipologia?.id === 'a'
+		&& lista.length === 2 && lista[ 0 ].ref === 'Bajo A' && ! ( 'opciones' in lista[ 0 ] )
+		&& filas.some( ( f ) => f.version === 'v90' );
+
+} );
+
 // ─── Resumen ────────────────────────────────────────────────────────────────
 
 const fallidos = resultados.filter( ( r ) => ! r.ok );
