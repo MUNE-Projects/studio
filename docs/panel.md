@@ -17,7 +17,7 @@ Menú fijo arriba: **Inicio · Promotoras · Sistema · Salir**, y arriba de cad
 - `#/promotoras` **Promotoras**: la lista y el alta.
 - `#/promotora/<id>` **Una promotora**: sus promociones, quién tiene acceso a todas, sus datos y su actividad (la suya y la de todas sus promociones).
 - `#/promocion/<id>/<pestaña>` **Una promoción**, con pestañas: *Resumen y versiones* (publicar, volver atrás, estado), *Equipo*, *Documentación*, *Ficha y datos*, *Compradores* (códigos de comprador, receta 24), *Peticiones de cambios* y *Actividad*.
-- `#/sistema` **Sistema**: llaves con su caducidad (*Ya la he renovado*), espacio usado del plan gratuito, última señal de la vigilancia automática y el registro de actividad completo (auditoría). Más adelante, copias (Etapa 7).
+- `#/sistema` **Sistema**: llaves con su caducidad (*Ya la he renovado*), espacio usado del plan gratuito, última señal de la vigilancia automática y el registro de actividad completo (auditoría). Y las copias de seguridad: la última copia de la noche y el último simulacro de recuperación (receta 18).
 
 ## Secciones
 
@@ -29,7 +29,7 @@ Bandeja con lo pendiente de todas las promociones:
 - documentación nueva subida por promotoras;
 - versiones pendientes con el estado de su validación (planos comerciales y Experiencia 3D): *Enviar a validar*, *Sin aprobadores definidos*, *Esperando aprobaciones: 1 de 2*, *Cambios pedidos* o *Lista para publicar*;
 - peticiones a Claude terminadas;
-- avisos del sistema (Etapa 6, receta 19): llaves a punto de caducar, espacio casi lleno, vigilancia automática parada, invitaciones sin aceptar y accesos sin uso. Las copias llegan en la Etapa 7.
+- avisos del sistema (Etapa 6, receta 19): llaves a punto de caducar, espacio casi lleno, vigilancia automática parada, invitaciones sin aceptar y accesos sin uso. Y las copias: falta la de una noche, falla el simulacro o toca uno (receta 18).
 
 ### 2. Promotoras
 

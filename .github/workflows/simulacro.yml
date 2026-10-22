@@ -1,0 +1,122 @@
+# Simulacro de recuperación (lista maestra, paso 4; receta 18).
+#
+# Una copia que nunca se ha probado a recuperar no es fiable. Cada tres meses
+# (y cuando se lance a mano), este proceso:
+#  1. levanta dentro de GitHub un Supabase vacío (nunca el real);
+#  2. le aplica la estructura de MUNE (supabase/0NN_*.sql);
+#  3. recupera en él la última copia de MUNE-Projects/copias: datos, usuarios y
+#     archivos, comprobando la huella de cada archivo;
+#  4. comprueba que hay exactamente lo mismo que en la copia;
+#  5. lo apunta en MUNE Studio (Sistema). Si falla, te llega un email.
+# Sin coste: minutos gratuitos de GitHub Actions. Se puede lanzar a mano:
+# Actions → «Simulacro de recuperación» → Run workflow.
+
+name: Simulacro de recuperación
+run-name: simulacro
+
+on:
+  schedule:
+    - cron: '41 3 2 1,4,7,10 *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: copias
+  cancel-in-progress: false
+
+jobs:
+  simulacro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: https://iowtdenlkxjqzlpwizgb.supabase.co
+      CLAVE_PUBLICA: sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR
+      COPIAS_CUENTA: hello.muneprojects+copias@gmail.com
+      COPIAS_CUENTA_CLAVE: ${{ secrets.COPIAS_CUENTA_CLAVE }}
+      COPIAS_CIFRADO: ${{ secrets.COPIAS_CIFRADO }}
+      LLAVE_B: ${{ secrets.ESCAPARATE_TOKEN }}
+      COPIAS: ${{ github.workspace }}/copias-almacen
+      RESULTADO: /tmp/resultado-simulacro.json
+    steps:
+      - name: ¿Está configurado?
+        id: listo
+        run: |
+          for v in COPIAS_CUENTA_CLAVE COPIAS_CIFRADO LLAVE_B; do
+            if [[ -z "${!v}" ]]; then
+              echo "::notice::Las copias aún no están configuradas (falta $v). Sigue la receta 18."
+              echo "si=no" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+          done
+          echo "si=si" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.listo.outputs.si == 'si'
+
+      - uses: actions/checkout@v4
+        if: steps.listo.outputs.si == 'si'
+        with:
+          repository: MUNE-Projects/copias
+          token: ${{ secrets.ESCAPARATE_TOKEN }}
+          path: copias-almacen
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        if: steps.listo.outputs.si == 'si'
+        with:
+          node-version: 22
+
+      - name: Supabase vacío, de prueba
+        if: steps.listo.outputs.si == 'si'
+        working-directory: supabase/copias/simulacro
+        run: |
+          npx --yes supabase@2.120.0 start >/dev/null
+          npx --yes supabase@2.120.0 status -o env | grep -E '^(DB_URL|API_URL|SERVICE_ROLE_KEY)=' | tr -d '"' >> "$GITHUB_ENV"
+
+      - name: Estructura de MUNE
+        if: steps.listo.outputs.si == 'si'
+        working-directory: supabase
+        run: bash copias/estructura.sh
+
+      - name: Recuperar la última copia y comprobarla
+        if: steps.listo.outputs.si == 'si'
+        working-directory: supabase
+        run: |
+          SUPABASE_URL="$API_URL" SUPABASE_SERVICE_KEY="$SERVICE_ROLE_KEY" \
+            node copias/restaurar.mjs --bd "$DB_URL" --archivos --comprobar --forzar
+          node -e 'const r = require(process.env.RESULTADO); console.log(`| Copia | Tablas | Filas | Archivos |\n|---|---|---|---|\n| ${r.copia} | ${r.tablas} | ${r.filas} | ${r.archivos} |`)' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apuntarlo en MUNE Studio
+        if: steps.listo.outputs.si == 'si'
+        run: node supabase/copias/registrar.mjs simulacro bien "$RESULTADO"
+
+      - name: Avisar si ha fallado
+        if: failure() && steps.listo.outputs.si == 'si'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TITULO: ⚠️ El simulacro de recuperación ha fallado
+        run: |
+          node supabase/copias/registrar.mjs simulacro mal "$RESULTADO" || true
+          gh label create sistema --repo "$REPO" --color 9B2C2C --description "Avisos del sistema (vigilancia automática)" 2>/dev/null || true
+          abierto=$(gh issue list --repo "$REPO" --label sistema --state open --limit 100 --json number,title \
+            --jq '.[] | select(.title == $ENV.TITULO) | .number' | head -n1)
+          [[ -n "$abierto" ]] || gh issue create --repo "$REPO" --label sistema --title "$TITULO" --body "$(printf '%s\n' \
+            "El simulacro no ha podido recuperar la última copia de seguridad tal cual." "" \
+            "Los datos de MUNE están bien: lo que hay que revisar son las copias. Díselo a Claude." "" \
+            "Detalle: $GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID" "" \
+            "_Este aviso se cierra solo la próxima vez que el simulacro funcione._")"
+
+      - name: Cerrar el aviso si ya funciona
+        if: success() && steps.listo.outputs.si == 'si'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TITULO: ⚠️ El simulacro de recuperación ha fallado
+        run: |
+          for n in $(gh issue list --repo "$REPO" --label sistema --state open --limit 100 --json number,title \
+            --jq '.[] | select(.title == $ENV.TITULO) | .number'); do
+            gh issue close "$n" --repo "$REPO" --comment "Resuelto: el simulacro de hoy ha ido bien."
+          done

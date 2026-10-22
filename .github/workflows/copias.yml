@@ -1,0 +1,125 @@
+# Copias de seguridad (lista maestra, paso 4; receta 18; 023_copias.sql).
+#
+# Cada noche guarda en el almacén privado MUNE-Projects/copias, cifrado con
+# una contraseña que solo tiene la administradora:
+#  · la base de datos (datos de MUNE y usuarios), con el usuario «copias» de
+#    la base de datos, que solo puede leer;
+#  · los archivos nuevos (documentación, entregables y fotos de referencia), con
+#    la cuenta «copias» de MUNE, que solo puede verlos.
+# Después lo apunta en Supabase: MUNE Studio lo enseña en Sistema y avisa en
+# Inicio si una noche falta. Si falla, además te llega un email (un aviso de
+# GitHub). Sin coste: minutos gratuitos de GitHub Actions.
+#
+# Necesita (receta 18): la variable SUPABASE_POOLER y los secretos
+# COPIAS_BD_CLAVE, COPIAS_CUENTA_CLAVE y COPIAS_CIFRADO; y que la llave B
+# (ESCAPARATE_TOKEN) tenga permiso sobre el almacén copias. Mientras falte
+# algo, no hace nada. Se puede lanzar a mano: Actions → «Copias de seguridad» → Run workflow.
+
+name: Copias de seguridad
+run-name: copia
+
+on:
+  schedule:
+    - cron: '23 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: copias
+  cancel-in-progress: false
+
+jobs:
+  copiar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: https://iowtdenlkxjqzlpwizgb.supabase.co
+      CLAVE_PUBLICA: sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR
+      COPIAS_CUENTA: hello.muneprojects+copias@gmail.com
+      SUPABASE_POOLER: ${{ vars.SUPABASE_POOLER }}
+      COPIAS_BD_CLAVE: ${{ secrets.COPIAS_BD_CLAVE }}
+      COPIAS_CUENTA_CLAVE: ${{ secrets.COPIAS_CUENTA_CLAVE }}
+      COPIAS_CIFRADO: ${{ secrets.COPIAS_CIFRADO }}
+      LLAVE_B: ${{ secrets.ESCAPARATE_TOKEN }}
+      DESTINO: ${{ github.workspace }}/copias-almacen
+      DETALLE: /tmp/detalle-copia.json
+    steps:
+      - name: ¿Está configurado?
+        id: listo
+        run: |
+          for v in SUPABASE_POOLER COPIAS_BD_CLAVE COPIAS_CUENTA_CLAVE COPIAS_CIFRADO LLAVE_B; do
+            if [[ -z "${!v}" ]]; then
+              echo "::notice::Las copias aún no están configuradas (falta $v). Sigue la receta 18."
+              echo "si=no" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+          done
+          echo "si=si" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.listo.outputs.si == 'si'
+        with:
+          sparse-checkout: supabase/copias
+
+      - uses: actions/checkout@v4
+        if: steps.listo.outputs.si == 'si'
+        with:
+          repository: MUNE-Projects/copias
+          token: ${{ secrets.ESCAPARATE_TOKEN }}
+          path: copias-almacen
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        if: steps.listo.outputs.si == 'si'
+        with:
+          node-version: 22
+
+      - name: Copiar la base de datos y los archivos nuevos
+        if: steps.listo.outputs.si == 'si'
+        run: node supabase/copias/copiar.mjs
+
+      - name: Guardar en el almacén de copias
+        if: steps.listo.outputs.si == 'si'
+        working-directory: copias-almacen
+        run: |
+          git config user.name "Copias de MUNE"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "Nada nuevo"; exit 0; fi
+          git commit -q -m "Copia del $(TZ=Europe/Madrid date +%F)"
+          git push -q
+
+      - name: Apuntarlo en MUNE Studio
+        if: steps.listo.outputs.si == 'si'
+        run: node supabase/copias/registrar.mjs copia bien "$DETALLE"
+
+      - name: Avisar si ha fallado
+        if: failure() && steps.listo.outputs.si == 'si'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TITULO: ⚠️ La copia de seguridad ha fallado
+        run: |
+          node supabase/copias/registrar.mjs copia mal "$DETALLE" || true
+          gh label create sistema --repo "$REPO" --color 9B2C2C --description "Avisos del sistema (vigilancia automática)" 2>/dev/null || true
+          abierto=$(gh issue list --repo "$REPO" --label sistema --state open --limit 100 --json number,title \
+            --jq '.[] | select(.title == $ENV.TITULO) | .number' | head -n1)
+          [[ -n "$abierto" ]] || gh issue create --repo "$REPO" --label sistema --title "$TITULO" --body "$(printf '%s\n' \
+            "La copia de seguridad de esta noche no se ha podido hacer." "" \
+            "Los datos de MUNE están bien: solo falta la copia. Díselo a Claude para que mire qué ha pasado." "" \
+            "Detalle: $GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID" "" \
+            "_Este aviso se cierra solo la próxima vez que la copia funcione._")"
+
+      - name: Cerrar el aviso si ya funciona
+        if: success() && steps.listo.outputs.si == 'si'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TITULO: ⚠️ La copia de seguridad ha fallado
+        run: |
+          for n in $(gh issue list --repo "$REPO" --label sistema --state open --limit 100 --json number,title \
+            --jq '.[] | select(.title == $ENV.TITULO) | .number'); do
+            gh issue close "$n" --repo "$REPO" --comment "Resuelto: la copia de hoy ha ido bien."
+          done
