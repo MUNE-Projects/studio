@@ -1384,6 +1384,37 @@ await caso( DEBE_FALLAR, '39. Selecciones: MUNE, otra promotora, el robot o algu
 
 } );
 
+// ─── Puerta general del comprador (026_puerta_comprador.sql, paso 5c) ───────
+
+const buscar = ( codigo ) => anonimo.rpc( 'buscar_vivienda_comprador', { p_codigo: codigo } );
+
+await caso( DEBE_FUNCIONAR, 'Puerta del comprador: con un código válido (escrito de cualquier forma) dice de qué promoción es, y nada más', async () => {
+
+	const codigo = String( await exigir( generar( gestorA, 'Bajo A' ), 'código' ) );
+	const { data, error } = await buscar( ` ${ codigo.toUpperCase() } ` );
+	if ( error ) throw error;
+	return data?.promocion === 'prueba-a' && Object.keys( data ).length === 1;
+
+} );
+
+await caso( DEBE_FALLAR, '40. Puerta del comprador: un código cambiado, de una promoción sin acceso de compradores o inventado da algo; probar códigos al azar no se bloquea', async () => {
+
+	const viejo = String( await exigir( generar( gestorA, 'Bajo B' ), 'código B' ) );
+	await exigir( generar( gestorA, 'Bajo B' ), 'cambio del código B' );
+	await exigir( admin.rpc( 'guardar_modulos', { p_promocion: 'prueba-a2', p_experiencia_publica: true, p_acceso_comprador: true, p_personalizacion: true, p_publicacion: 'automatica' } ), 'acceso A2' );
+	const deA2 = String( await exigir( generar( admin, 'Bajo A', false, 'prueba-a2' ), 'código A2' ) );
+	await exigir( admin.rpc( 'guardar_modulos', { p_promocion: 'prueba-a2', p_experiencia_publica: true, p_acceso_comprador: false, p_personalizacion: true, p_publicacion: 'automatica' } ), 'sin acceso A2' );
+	const r = { viejo: ( await buscar( viejo ) ).data, sinAcceso: ( await buscar( deA2 ) ).data, inventado: ( await buscar( 'c-000000000000' ) ).data };
+	await exigir( admin.rpc( 'guardar_modulos', { p_promocion: 'prueba-a2', p_experiencia_publica: true, p_acceso_comprador: true, p_personalizacion: true, p_publicacion: 'automatica' } ), 'acceso A2 de vuelta' );
+	let bloqueado = false;
+	for ( let i = 0; i < 12 && ! bloqueado; i ++ ) bloqueado = /Demasiados intentos/.test( ( await buscar( `c-00000000000${ i % 10 }` ) ).error?.message ?? '' );
+	const dan = Object.keys( r ).filter( ( k ) => r[ k ] );
+	if ( dan.length ) throw new Error( `dan algo: ${ dan.join( ', ' ) }` );
+	if ( ! bloqueado ) throw new Error( 'no se bloquea' );
+	return true;
+
+} );
+
 // ─── Resumen ────────────────────────────────────────────────────────────────
 
 const fallidos = resultados.filter( ( r ) => ! r.ok );
