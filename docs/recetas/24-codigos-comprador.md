@@ -6,7 +6,7 @@
 ## Cómo funciona
 - **Un código por vivienda** (`c-` y 12 cifras). Solo se ve **al generarlo**: en Supabase queda su huella, nunca el código (decidido el 10/10/2026: si un comprador lo olvida, se cambia, no se busca).
 - **Todos a la vez:** «Generar los códigos de todas las viviendas y descargar el Excel» crea los que faltan y descarga un **Excel (.xlsx)** con vivienda, portal, planta, código y enlace directo. También uno a uno, con *Copiar código*, *Copiar mensaje para el comprador* y *Descargar en Excel*. Hay un buscador de viviendas.
-- Se lo da la promotora o el comercial al comprador. Con él entra en la web pública: «¿Ya eres comprador? Entra para personalizar tu vivienda», o directamente con el enlace `…/<promoción>/#c-…`.
+- Se lo da la promotora o el comercial al comprador. Con él entra de tres formas: en la **puerta general** `https://experience.mune-projects.workers.dev/acceso/` («Accede a tu vivienda»: escribe el código y MUNE lo lleva a su promoción; `026_puerta_comprador.sql`), en la web de su promoción («¿Ya eres comprador? Entra para personalizar tu vivienda») o directamente con el enlace `…/<promoción>/#c-…`. Cada código es único en todo MUNE.
 - **Cambiar código** pregunta para quién es:
   - **mismo comprador** (lo ha perdido): conserva lo que tenía seleccionado y cerrado;
   - **comprador nuevo** (venta cancelada y vendida a otra persona): empieza de cero; lo del anterior queda en el historial (solo MUNE y la promotora).

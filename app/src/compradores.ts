@@ -163,7 +163,7 @@ function mostrarCodigo(destino: HTMLElement, d: Dependencias, p: Promo, datos: M
 	const { esc } = d;
 	const enlace = enlaceDe(d, p, codigo);
 	const mensaje = `Hola: este es tu código de comprador de ${p.nombre} (vivienda ${ref}): ${codigo}\n\n`
-		+ `Entra en ${d.escaparate}/${p.id}/ y pulsa «¿Ya eres comprador?», o abre directamente este enlace: ${enlace}\n\n`
+		+ `Abre directamente este enlace: ${enlace}\n\nO entra en ${d.escaparate}/acceso/ y escribe tu código.\n\n`
 		+ 'Guárdalo: es personal y te da acceso a tu vivienda y a su personalización.';
 	destino.innerHTML = `<div class="codigo-nuevo" role="status">
 		<p><strong>Código de ${esc(ref)}</strong> · cópialo o descárgalo ahora: no se podrá volver a ver.</p>
