@@ -52,7 +52,8 @@ export async function generarPlanos( id, version, salida = join( RAIZ, 'salida',
 	const { chromium } = await import( 'playwright-core' );
 
 	process.env.PROMOCION = id;
-	const servidor = await createServer( { root: RAIZ, logLevel: 'error', server: { port: 0, host: '127.0.0.1' } } );
+	// modo «planos»: con todas las viviendas y distribuciones (vite.config.ts)
+	const servidor = await createServer( { root: RAIZ, mode: 'planos', logLevel: 'error', server: { port: 0, host: '127.0.0.1' } } );
 	await servidor.listen();
 	const navegador = await chromium.launch( CHROMIUM ? { executablePath: CHROMIUM } : {} );
 	try {

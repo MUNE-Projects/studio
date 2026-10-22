@@ -68,8 +68,8 @@ No cambia la llave ni su fecha de caducidad, así que no hay que guardarla en ni
 
 ### 6. La dirección de la base de datos
 
-1. En Supabase, pulsa **Connect**, arriba.
-2. En **Session pooler**, copia la dirección. Empieza por `postgresql://postgres.iowtdenlkxjqzlpwizgb:[YOUR-PASSWORD]@`. No lleva ninguna contraseña: deja `[YOUR-PASSWORD]` tal cual.
+1. En Supabase, pulsa **Connect**, arriba, y luego el recuadro **Direct** («Connection string»).
+2. En el desplegable del tipo de conexión, elige **Session pooler** y copia la dirección. Empieza por `postgresql://postgres.iowtdenlkxjqzlpwizgb:[YOUR-PASSWORD]@`. No lleva ninguna contraseña: deja `[YOUR-PASSWORD]` tal cual.
 3. Entra en https://github.com/MUNE-Projects/studio/settings/variables/actions/new
 4. En **Name**, escribe `SUPABASE_POOLER`. En **Value**, pega la dirección.
 5. Pulsa **Add variable**.

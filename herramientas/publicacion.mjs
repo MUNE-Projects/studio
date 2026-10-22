@@ -31,6 +31,11 @@
 //  - publicar exige el taller sin cambios pendientes (lo publicado = lo guardado);
 //  - no se envía nada a GitHub: el envío (push) es un paso aparte y explícito.
 //
+// Datos privados (paso 5a, 024_datos_privados.sql): el catálogo con precios, los
+// packs y las viviendas no van en la web pública. «preparar» los guarda en Supabase
+// con el robot de Claude (ROBOT_EMAIL y ROBOT_CLAVE, obligatorias) y el comprador
+// los recibe al entrar con su código.
+//
 // Textos legales: los escribe la promotora en MUNE Portal (promociones.textos_legales
 // en Supabase). «preparar» los lee como el robot de Claude (variables ROBOT_EMAIL y
 // ROBOT_CLAVE) y la construcción los pone en lugar de los de promocion.json
@@ -185,18 +190,14 @@ function construir( id ) {
 
 	ok( `Sin Studio y sin secretos · ${ archivos.length } archivos · ${ ( total / 1048576 ).toFixed( 1 ) } MB` );
 
-	// lista pública de viviendas (sin códigos ni selecciones): la usan el Panel y
-	// el portal para gestionar los códigos de comprador
-	const { viviendas = [] } = JSON.parse( readFileSync( join( RAIZ, 'promociones', id, 'promocion.json' ), 'utf8' ) );
-	escribirJSON( join( destino, 'viviendas.json' ), viviendas.map( ( v ) => ( { ref: v.ref, portal: v.portal ?? null, planta: v.planta, tipologia: v.tipologia, espejo: !! v.espejo } ) ) );
 	return { destino, archivos: archivos.length, bytes: total };
 
 }
 
 // ---------------------------------------------------------------- publicar
 
-// El Panel y el portal leen, desde otra dirección, los planos de cada versión
-// y la lista de viviendas: el escaparate tiene que permitirlo (en las dos ramas).
+// El Panel y el portal leen, desde otra dirección, los planos y la Experiencia 3D
+// de cada versión: el escaparate tiene que permitirlo (en las dos ramas).
 function asegurarCabeceras( esc ) {
 
 	const cabeceras = join( esc, PUBLICO, '_headers' );
@@ -204,7 +205,6 @@ function asegurarCabeceras( esc ) {
 	const reglas = [
 		[ '/:promocion/planos/*', 'Planos comerciales de cada versión: el Panel los copia para enviarlos a la promotora.' ],
 		[ '/:promocion/experiencia/*', 'Unidades de la Experiencia 3D de cada versión: el Panel y el portal las usan para validarla.' ],
-		[ '/*/viviendas.json', 'Lista de viviendas (sin datos privados): la usan el Panel y el portal para los códigos de comprador.' ],
 	];
 	let cambia = false;
 	// Cloudflare solo admite un «*» por regla: las reglas antiguas con dos no se aplicaban.
@@ -231,24 +231,34 @@ function asegurarCabeceras( esc ) {
 
 const LEGALES = [ 'planos', 'renders', 'experiencia', 'personalizacion' ];
 
-/** Textos legales que la promotora ha escrito en MUNE Portal; null si no se pueden leer. */
-async function textosLegales( id ) {
+/** Sesión del robot de Claude en Supabase (ROBOT_EMAIL y ROBOT_CLAVE); null sin esas variables. */
+async function entrarRobot() {
 
 	const email = process.env.ROBOT_EMAIL;
 	const password = process.env.ROBOT_CLAVE;
-	if ( ! email || ! password ) {
+	if ( ! email || ! password ) return null;
+	const r = await fetch( `${ SUPABASE_URL }/auth/v1/token?grant_type=password`, {
+		method: 'POST', headers: { apikey: SUPABASE_CLAVE_PUBLICA, 'Content-Type': 'application/json' }, body: JSON.stringify( { email, password } ),
+	} );
+	if ( ! r.ok ) throw new Error( `la entrada del robot respondió ${ r.status }` );
+	const { access_token: token } = await r.json();
+	return { apikey: SUPABASE_CLAVE_PUBLICA, 'Content-Type': 'application/json', Authorization: `Bearer ${ token }` };
 
-		console.warn( '⚠ Sin ROBOT_EMAIL y ROBOT_CLAVE: no se leen los textos legales de MUNE Portal. Se usan los de promocion.json.' );
-		return null;
+}
 
-	}
+/** Textos legales que la promotora ha escrito en MUNE Portal; null si no se pueden leer. */
+async function textosLegales( id ) {
+
 	try {
 
-		const cabeceras = { apikey: SUPABASE_CLAVE_PUBLICA, 'Content-Type': 'application/json' };
-		const r = await fetch( `${ SUPABASE_URL }/auth/v1/token?grant_type=password`, { method: 'POST', headers: cabeceras, body: JSON.stringify( { email, password } ) } );
-		if ( ! r.ok ) throw new Error( `la entrada del robot respondió ${ r.status }` );
-		const { access_token: token } = await r.json();
-		const p = await fetch( `${ SUPABASE_URL }/rest/v1/promociones?id=eq.${ encodeURIComponent( id ) }&select=textos_legales`, { headers: { ...cabeceras, Authorization: `Bearer ${ token }` } } );
+		const cabeceras = await entrarRobot();
+		if ( ! cabeceras ) {
+
+			console.warn( '⚠ Sin ROBOT_EMAIL y ROBOT_CLAVE: no se leen los textos legales de MUNE Portal. Se usan los de promocion.json.' );
+			return null;
+
+		}
+		const p = await fetch( `${ SUPABASE_URL }/rest/v1/promociones?id=eq.${ encodeURIComponent( id ) }&select=textos_legales`, { headers: cabeceras } );
 		if ( ! p.ok ) throw new Error( `Supabase respondió ${ p.status } al leer la promoción` );
 		const [ fila ] = await p.json();
 		if ( ! fila ) throw new Error( 'la promoción no está en Supabase' );
@@ -267,6 +277,39 @@ async function textosLegales( id ) {
 		return null;
 
 	}
+
+}
+
+// ---------------------------------------------------------------- datos privados (paso 5a, 024)
+
+/**
+ * Lo que no va en la web pública: catálogo con precios, packs, lo que admite
+ * cada tipología y los datos de cada vivienda. Se guarda en Supabase con cada
+ * versión; el comprador recibe lo suyo al entrar con su código.
+ */
+function datosPrivados( id ) {
+
+	const leer = ( f ) => JSON.parse( readFileSync( join( RAIZ, 'promociones', id, f ), 'utf8' ) );
+	const promocion = leer( 'promocion.json' );
+	return {
+		catalogo: leer( 'catalogo.json' ),
+		packs: promocion.packs ?? [],
+		tipologias: ( promocion.tipologias ?? [] ).map( ( t ) => ( { id: t.id, opciones: t.opciones ?? {} } ) ),
+		// los códigos, lo seleccionado y el precio de venta nunca salen del taller
+		viviendas: ( promocion.viviendas ?? [] ).map( ( { acceso, selecciones, precioBase, ...v } ) => v ),
+	};
+
+}
+
+async function guardarDatosPrivados( id, version ) {
+
+	const cabeceras = await entrarRobot();
+	if ( ! cabeceras ) fallo( 'Faltan ROBOT_EMAIL y ROBOT_CLAVE: sin ellas no se pueden guardar los datos privados de la versión (catálogo, packs y viviendas).' );
+	const r = await fetch( `${ SUPABASE_URL }/rest/v1/rpc/guardar_datos_privados`, {
+		method: 'POST', headers: cabeceras, body: JSON.stringify( { p_promocion: id, p_version: version, p_contenido: datosPrivados( id ) } ),
+	} );
+	if ( ! r.ok ) fallo( `No se han podido guardar los datos privados en Supabase (${ r.status }): ${ ( await r.text() ).slice( 0, 200 ) }` );
+	ok( `Datos privados de ${ version } en Supabase (catálogo, packs y viviendas; huella ${ String( await r.json() ).slice( 0, 12 ) })` );
 
 }
 
@@ -300,6 +343,8 @@ async function preparar( id ) {
 	if ( textos ) ok( `Textos legales de MUNE Portal: ${ Object.keys( textos ).join( ', ' ) || 'ninguno escrito (se usan los de promocion.json)' }` );
 	// la construcción y los planos (mismo proceso) usan los textos de MUNE Portal
 	process.env.TEXTOS_LEGALES = textos ? JSON.stringify( textos ) : '';
+	// la web sabe su versión: con ella pide al entrar el comprador los datos privados de esa versión
+	process.env.VERSION_PUBLICA = version;
 	const { destino } = construir( id );
 	// planos comerciales de esta versión, para que la promotora los valide (Etapa 4)
 	console.log( 'Generando los planos comerciales…' );
@@ -312,6 +357,9 @@ async function preparar( id ) {
 		return;
 
 	}
+
+	// datos privados de la versión (catálogo, packs y viviendas), antes de tocar el escaparate
+	await guardarDatosPrivados( id, version );
 
 	// escaparate: sustituye la carpeta de la promoción por la nueva versión
 	const carpeta = join( esc, PUBLICO, id );
