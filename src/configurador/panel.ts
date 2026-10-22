@@ -105,13 +105,15 @@ export class Panel {
 			}
 
 			seccion.append( lista, h( 'p', { class: 'nota-pack' }, pv.formalizada
-				? `Selección formalizada el ${ fmtFecha( pv.formalizada.fecha ) }. Ya no se puede cambiar.`
+				? `Selección cerrada (${ fmtFecha( pv.formalizada.fecha ) }). Ya no se puede cambiar.`
 				: 'No se formalizó ninguna mejora en este pack. Se mantiene lo incluido en tu vivienda.' ) );
 			return seccion;
 
 		}
 
 		for ( const c of pv.categorias ) seccion.append( this.seccionCategoria( c.id, true ) );
+		if ( pv.guardada ) seccion.append( h( 'p', { class: 'nota-pack' },
+			`Tu selección está guardada (${ fmtFecha( pv.guardada.fecha ) }).${ pack.hasta < '2100' ? ` Puedes cambiarla hasta el ${ fmtFecha( pack.hasta, true ) }` : ' Puedes cambiarla' }: vuelve a descargar el documento.` ) );
 		const pie = h( 'div', { class: 'pie-pack' } );
 		this.piesPack.set( pack.id, pie );
 		seccion.append( pie );
@@ -246,7 +248,7 @@ export class Panel {
 
 			} else {
 
-				quitar = h( 'span', { class: 'cerrada', title: 'Mejora ya formalizada en un pack cerrado' } );
+				quitar = h( 'span', { class: 'cerrada', title: 'Mejora de un pack cerrado' } );
 				quitar.innerHTML = CANDADO;
 
 			}

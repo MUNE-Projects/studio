@@ -29,8 +29,8 @@ import { construirPiscina, validarPiscina } from './escena/piscina';
 import { aplicarAlternativa, fmtM2 } from './configurador/alternativas';
 import { Configurador, fmtEuros, fmtPrecio, type Seleccion } from './configurador/configurador';
 import { Panel } from './configurador/panel';
-import { packsDeVivienda } from './configurador/packs';
-import { CATALOGO, PROMOCION, accesoProfesional, cargarModelo, catalogoPara, extraerCodigo, resolverAcceso, viviendaDeUnidad, viviendaPublica, type Modelo } from './promocion/promocion';
+import { fmtFecha, packsDeVivienda } from './configurador/packs';
+import { CATALOGO, PROMOCION, accesoProfesional, cargarModelo, catalogoPara, extraerCodigo, guardarSeleccion as guardarEnSupabase, resolverAcceso, viviendaDeUnidad, viviendaPublica, type Modelo } from './promocion/promocion';
 import { aplicarMarca } from './promocion/marca';
 import { generarPDF } from './documento/pdf';
 import { planoPDF, planoPNG, type DatosPlano } from './documento/plano';
@@ -828,6 +828,8 @@ async function iniciar() {
 				if ( s ) conf.restaurar( s );
 
 			} catch { /* selección ilegible: se empieza desde lo incluido */ }
+			// lo guardado en Supabase (desde cualquier dispositivo) manda sobre lo de este navegador
+			for ( const pv of conf.packs ) if ( pv.estado === 'disponible' && pv.guardada ) conf.restaurar( pv.guardada.opciones );
 
 		}
 
@@ -933,7 +935,7 @@ async function iniciar() {
 				<p><strong>Importe de la transferencia: ${ fmtEuros( total ) }</strong></p>
 				<p>${ escapar( pg.titular ?? '' ) } · ${ escapar( pg.iban ) }<br>Concepto: ${ escapar( conceptoPago( pv.pack.titulo ) ) }</p>
 			</div>` : '' }
-			<ol class="pasos"><li>Descarga el documento.</li><li>Fírmalo.</li>${ total ? '<li>Haz la transferencia.</li>' : '' }<li>Envía el documento firmado${ total ? ' y el justificante' : '' } a ${ destino }.</li></ol>`;
+			<ol class="pasos"><li>Descarga el documento. Tu selección queda guardada${ comprador && pv.pack.hasta < '2100' ? ` y puedes cambiarla hasta el ${ fmtFecha( pv.pack.hasta, true ) }` : '' }.</li><li>Fírmalo.</li>${ total ? '<li>Haz la transferencia.</li>' : '' }<li>Envía el documento firmado${ total ? ' y el justificante' : '' } a ${ destino }.</li></ol>`;
 		dialogo.showModal();
 
 	};
@@ -986,6 +988,17 @@ async function iniciar() {
 		try {
 
 			const pv = conf.packs.find( ( p ) => p.pack.id === packResumen )!;
+			// al descargar el documento, la selección queda guardada como «Seleccionada» (025_selecciones.sql)
+			const guardada = await guardarEnSupabase( pv.pack.id, Object.fromEntries( pv.categorias.map( ( c ) => [ c.id, conf.seleccion[ c.id ] ] ) ) );
+			if ( typeof guardada === 'string' ) avisar( guardada );
+			else {
+
+				const s = { fecha: guardada.fecha, opciones: guardada.opciones, estado: guardada.estado, importe: guardada.importe };
+				fichaVivienda.selecciones = { ...fichaVivienda.selecciones, [ pv.pack.id ]: s };
+				pv.guardada = s;
+				avisar( pv.pack.hasta < '2100' ? `Tu selección queda guardada. Puedes cambiarla hasta el ${ fmtFecha( pv.pack.hasta, true ) }.` : 'Tu selección queda guardada.' );
+
+			}
 			const comprador = datosComprador();
 			// imagen: la vista de la primera categoría del pack (o la general)
 			const vistaPack = pv.categorias.map( ( c ) => vistaDeCategoria( c.id ) ).find( ( x ) => x ) ?? 'aerea';

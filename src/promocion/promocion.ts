@@ -189,6 +189,47 @@ function aplicarDatos( d: DatosComprador ) {
 
 }
 
+/** Código válido del comprador que ha entrado (para guardar su selección). */
+let codigoComprador = '';
+
+/** Lo que queda guardado de un pack; o un texto con el motivo si no se ha podido guardar. */
+export type SeleccionGuardada = { estado: 'seleccionada' | 'cerrada'; importe: number; fecha: string; opciones: Record<string, string>; hasta: string | null };
+
+/**
+ * Guarda en Supabase la selección de un pack como «Seleccionada» (paso 5b,
+ * 025_selecciones.sql). Supabase comprueba el código, que el pack esté abierto
+ * y las opciones, y calcula el importe con los precios de esta versión.
+ */
+export async function guardarSeleccion( pack: string, opciones: Record<string, string> ): Promise<SeleccionGuardada | string> {
+
+	if ( ! codigoComprador ) return 'Entra con tu código para guardar tu selección.';
+	try {
+
+		const r = await fetch( `${ SUPABASE_URL }/rest/v1/rpc/guardar_seleccion`, {
+			method: 'POST',
+			headers: { apikey: SUPABASE_CLAVE, 'Content-Type': 'application/json' },
+			body: JSON.stringify( { p_promocion: PROMOCION.id, p_codigo: codigoComprador, p_version: __VERSION__, p_pack: pack, p_opciones: opciones } ),
+		} );
+		if ( ! r.ok ) {
+
+			const t = await r.text();
+			console.error( 'guardar_seleccion', t );
+			return /periodo/.test( t ) ? 'El periodo de selección de este pack no está abierto.'
+				: /cerrada/.test( t ) ? 'Tu selección de este pack ya está cerrada.'
+					: 'No se ha podido guardar tu selección ahora mismo. Inténtalo de nuevo en unos minutos.';
+
+		}
+		const d = await r.json() as SeleccionGuardada | null;
+		return d ?? 'Tu código ya no es válido. Vuelve a entrar con el código que te dio la promotora.';
+
+	} catch {
+
+		return 'No se ha podido guardar tu selección ahora mismo. Revisa tu conexión y vuelve a intentarlo.';
+
+	}
+
+}
+
 /**
  * Comprueba el código en Supabase (entrar_comprador, con límite de intentos) y
  * devuelve su vivienda con lo que el comprador ya tiene formalizado.
@@ -209,6 +250,7 @@ export async function resolverAcceso( codigo: string ): Promise<ResultadoAcceso>
 		if ( ! r.ok ) return /Demasiados intentos/.test( await r.text() ) ? 'bloqueado' : 'sin-conexion';
 		const d = await r.json() as { vivienda: string; selecciones: ViviendaPromocion[ 'selecciones' ]; formalizacion?: ViviendaPromocion[ 'formalizacion' ]; datos?: DatosComprador | null } | null;
 		if ( ! d ) return null;
+		codigoComprador = c;
 		// la web pública solo lleva una vivienda de muestra por unidad: la del comprador llega con su código
 		if ( d.datos ) aplicarDatos( d.datos );
 		const v = d.datos?.vivienda ?? PROMOCION.viviendas.find( ( x ) => x.ref === d.vivienda );

@@ -21,6 +21,7 @@ import { exportarPromocion, exportarPromotora, type Resultado } from './exportar
 import { pintarPeticiones } from './peticiones';
 import { ESCAPARATE, REVISION, estadoVersiones, etiquetaVersiones, pintarVersiones } from './versiones';
 import { pintarCompradores } from './compradores';
+import { pintarPersonalizacion } from './personalizacion';
 import { pintarEstados } from './estado';
 import { ADMIN_PROMOCION, ADMIN_PROMOTORA, TODAS_LAS_CAPACIDADES, conectarPersonas, formAcceso, insignias, invitar, leerAccesos, tablaPersonas } from './equipo';
 
@@ -78,6 +79,7 @@ const PESTANAS: [string, string][] = [
 	['documentacion', 'Documentación'],
 	['ficha', 'Ficha y datos'],
 	['compradores', 'Compradores'],
+	['personalizacion', 'Personalización'],
 	['peticiones', 'Peticiones de cambios'],
 	['actividad', 'Actividad'],
 ];
@@ -741,6 +743,12 @@ export async function pantallaPromocion(destino: HTMLElement, id: string, pestan
 		caja.innerHTML = '<h2>Compradores</h2><p class="vacio">Esta promoción no tiene activado el acceso de compradores. Actívalo en «Resumen y versiones» → «Partes de la promoción» si lo necesita.</p>';
 	} else if (actual === 'compradores') {
 		await pintarCompradores(caja, { sb, esc, fecha, traducir, escaparate: ESCAPARATE, revision: REVISION, modo: 'administradora' }, p);
+	}
+
+	if (actual === 'personalizacion' && p.modulos?.personalizacion === false) {
+		caja.innerHTML = '<h2>Personalización</h2><p class="vacio">Esta promoción no tiene activada la personalización. Actívala en «Resumen y versiones» → «Partes de la promoción» si la necesita.</p>';
+	} else if (actual === 'personalizacion') {
+		await pintarPersonalizacion(caja, { sb, esc, fecha, traducir, modo: 'administradora' }, p);
 	}
 
 	if (actual === 'peticiones') {

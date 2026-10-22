@@ -261,3 +261,9 @@ p.ok { color: var(--acento); }
 fieldset.modulos { display: grid; gap: 10px; }
 fieldset.modulos .casilla { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; }
 fieldset.modulos .casilla input { margin-top: 3px; flex: none; width: auto; height: auto; }
+
+/* Personalización (paso 5b): elección de cada vivienda por pack */
+.personalizacion details.eleccion summary { cursor: pointer; font-size: 13px; color: var(--acento, #2f5d50); }
+.personalizacion details.eleccion ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+.personalizacion form.eleccion-equipo { display: grid; gap: 10px; max-width: 560px; padding: 8px 0; }
+.personalizacion form.eleccion-equipo label { display: grid; gap: 4px; }

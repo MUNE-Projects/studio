@@ -261,3 +261,9 @@ details.desactivado { opacity: 0.45; pointer-events: none; }
 .incluye { margin-top: 6px; font-size: 0.92em; }
 .incluye > summary { cursor: pointer; color: var(--tinta-2); list-style: none; }
 .incluye > summary::-webkit-details-marker { display: none; }
+
+/* Personalización (paso 5b): elección de cada vivienda por pack */
+.personalizacion details.eleccion summary { cursor: pointer; font-size: 13px; color: var(--acento, #2f5d50); }
+.personalizacion details.eleccion ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+.personalizacion form.eleccion-equipo { display: grid; gap: 10px; max-width: 560px; padding: 8px 0; }
+.personalizacion form.eleccion-equipo label { display: grid; gap: 4px; }
