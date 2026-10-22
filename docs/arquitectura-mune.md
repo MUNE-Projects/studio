@@ -413,6 +413,7 @@ Sustituye al orden de pasos 0–5 anterior (los pasos 0, 2 y 3 de equipos y vali
 - **Sin plantillas MUNE obligatorias.** La lista de documentos es de información, no de archivos: un archivo puede cubrir varios requisitos y un requisito puede ir en varios archivos.
 - **Las fases del proyecto son fases, no documentos** (anteproyecto, proyecto básico, proyecto de ejecución).
 - **MUNE Experience no es la web comercial de la promotora:** precios de venta, disponibilidad, formularios y CRM siguen en su web; MUNE es la capa visual.
+- **La Experience pública siempre invita a personalizar** (22/10/2026): con la Experience pública y el Acceso comprador activos, la web pública (también insertada en la web de la promotora) lleva siempre una llamada visible a «Personaliza tu vivienda» para el comprador, porque es un reclamo comercial; al pulsarla se pasa a la parte privada con el código. La web pública nunca lleva opciones, packs ni precios.
 - **Un motor, tres contextos:** público (si Experience pública está activa), comprador (si Acceso comprador está activo) y profesional (siempre, en MUNE Portal).
 - **Alcance cerrado:** promoción; tipología ↔ promoción; vivienda del comprador ↔ promoción. Nunca catálogo ni selector de tipologías.
 - **Personalización con dos estados:** Seleccionada (el comprador descarga el PDF) y Cerrada (termina el periodo; queda bloqueada como histórico). Cada fase o grupo por separado. Sin «formalizada» ni validación manual del comercial.
