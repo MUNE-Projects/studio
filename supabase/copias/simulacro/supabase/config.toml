@@ -1,0 +1,27 @@
+# Supabase local, solo para el simulacro de recuperación (simulacro.yml).
+# Se levanta vacío dentro de GitHub Actions, se le aplican los archivos SQL y
+# se recupera en él la última copia. No tiene nada que ver con el proyecto real,
+# y sus claves son las de ejemplo que trae Supabase para trabajar en local.
+project_id = "simulacro-copias"
+
+[auth]
+enable_signup = false
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[edge_runtime]
+enabled = false
+
+[studio]
+enabled = false
+
+[realtime]
+enabled = false
+
+[analytics]
+enabled = false
+
+[inbucket]
+enabled = false

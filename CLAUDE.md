@@ -54,6 +54,7 @@ Claude se usa **solo en producción** (preparar, interpretar, revisar), **nunca 
 | Pieza | Dónde |
 |---|---|
 | Código (MUNE Studio en `app/`, MUNE Portal en `portal/`, base de datos en `supabase/`), datos de promociones, recetas | GitHub `MUNE-Projects/studio` (privado, antes `taller`), este almacén |
+| Copias de seguridad | GitHub `MUNE-Projects/copias` (privado): cada noche, datos, usuarios y archivos cifrados (receta 18) |
 | Solo lo publicado | GitHub `MUNE-Projects/experience` (privado, antes `escaparate`): `main` = producción, `revision` = vista previa |
 | Web pública | https://experience.mune-projects.workers.dev/residencial-demo/ |
 | Vista previa | https://revision-experience.mune-projects.workers.dev/residencial-demo/ |
@@ -100,7 +101,7 @@ Ahora la web pública está en **v7**, y la **v8** (de prueba, idéntica) sigue 
 
 - Las llaves del ejecutor caducan el **7/10/2027**:
   - llave A: `GITHUB_EJECUTOR` en Supabase, con *Actions: read/write* sobre `studio` (antes `taller`);
-  - llave B: `ESCAPARATE_TOKEN` en los secretos de `studio`, con *Contents: read/write* sobre `experience` (antes `escaparate`); conserva su nombre hasta la renovación.
+  - llave B: `ESCAPARATE_TOKEN` en los secretos de `studio`, con *Contents: read/write* sobre `experience` (antes `escaparate`) y `copias`; conserva su nombre hasta la renovación.
 
   MUNE Studio avisa en Inicio a 60 y 30 días, y la vigilancia manda email a 30 días (receta 19). Al renovarlas, apuntar la fecha en *Sistema → Ya la he renovado*.
 - La protección de ramas en almacenes privados es de pago: no está activada.
@@ -115,9 +116,9 @@ Ahora la web pública está en **v7**, y la **v8** (de prueba, idéntica) sigue 
 4. ✔ validación de planos (decisión 34): `herramientas/planos.mjs` (planos de cada versión, al preparar), *Enviar los planos a la promotora* en el Panel, pestaña *Planos* del portal, `011_planos.sql`, aviso por email de cada validación (`aviso-mune.yml`); solo se publica con todos aprobados. Avisos por email a la promotora (decisión 35): función `avisar-promotora`, `aviso-promotora.yml` (Gmail de MUNE, secreto `AVISOS_GMAIL_CLAVE`), `012_avisos_promotora.sql` y `013_permisos_funciones.sql` (en el proyecto real, la cuenta `service_role` de las funciones necesita `grant` explícito en cada tabla que use);
 5. ✔ códigos de comprador (receta 24, decisión 36): pestaña *Compradores* del Panel y del portal, `014_codigos_comprador.sql` (`entrar_comprador` desde el botón de la web pública); la web pública ya no lleva códigos ni selecciones. Sin precio de la vivienda ni datos personales del comprador (decisión 37): el comprador solo ve el total de su personalización, y su nombre y DNI van solo al PDF;
 6. ✔ bandeja de Inicio y avisos del sistema (receta 19, decisión 38): `015_sistema.sql` (llaves con caducidad, `latido`, `avisos_sistema`, `estado_sistema`), `app/src/sistema.ts`, `vigilancia.yml` (cada 3 días: mantiene despierto Supabase y avisa por email de llaves y caídas);
-7. copias en el almacén privado `copias` de GitHub y simulacro (receta 18);
+7. copias en el almacén privado `copias` de GitHub y simulacro (receta 18): paso 4 de la lista maestra, en propuesta (`023_copias.sql`, `supabase/copias/`, `copias.yml`, `simulacro.yml`);
 8. alta de promoción (receta 1) y ensayo con una promotora ficticia.
 
-**Desde el 12/10/2026 se sigue la lista maestra** de `docs/arquitectura-mune.md` (apartado 10): paso 1 (prueba real del flujo) ✔; paso 2 (documentación, módulos de cada promoción y publicación al aprobar la promotora, `022_modulos_y_documentos.sql`) ✔; paso 3 (nombres definitivos: `studio`, `experience`, `app/`, `supabase/`) ✔ el 20/10/2026. Las direcciones antiguas `panel.…` y `escaparate.…` (Workers `panel` y `escaparate`) se borran a partir del 27/10/2026. Las etapas 7 y 8 de arriba quedan dentro de esa lista (copias = paso 4; ensayo ficticio = paso 7).
+**Desde el 12/10/2026 se sigue la lista maestra** de `docs/arquitectura-mune.md` (apartado 10): paso 1 (prueba real del flujo) ✔; paso 2 (documentación, módulos de cada promoción y publicación al aprobar la promotora, `022_modulos_y_documentos.sql`) ✔; paso 3 (nombres definitivos: `studio`, `experience`, `app/`, `supabase/`) ✔ el 20/10/2026; paso 4 (copias y simulacro, `023_copias.sql`) en propuesta. Las direcciones antiguas `panel.…` y `escaparate.…` (Workers `panel` y `escaparate`) se borran a partir del 27/10/2026. Las etapas 7 y 8 de arriba quedan dentro de esa lista (copias = paso 4; ensayo ficticio = paso 7).
 
 Cada etapa es una propuesta con su OK. Decisiones clave: Supabase gratuito hasta el primer cliente; promotoras con usuario y contraseña; emails con un Gmail dedicado; la prueba de aislamiento corre en un Supabase local dentro de GitHub (sin segundo proyecto ni llaves).

@@ -2,7 +2,8 @@
 //
 // · Inicio enseña arriba los avisos (llaves a punto de caducar, espacio casi
 //   lleno, vigilancia parada, invitaciones sin aceptar, accesos sin uso).
-// · Sistema enseña las llaves con su caducidad («Ya la he renovado»), el
+// · Sistema enseña las llaves con su caducidad («Ya la he renovado»), las
+//   copias de seguridad y el simulacro (023_copias.sql), el
 //   espacio usado del plan gratuito y la última señal de la vigilancia
 //   automática (vigilancia.yml), además del registro de actividad.
 
@@ -13,7 +14,11 @@ import { pintarMovil } from './movil';
 export interface AvisoSistema { clave: string; nivel: 'alerta' | 'aviso' | 'info'; titulo: string; detalle: string; enlace: string | null }
 
 interface Llave { id: string; nombre: string; para_que: string; donde: string; caduca: string; renovada_en: string | null }
-interface Estado { datos: number; datos_limite: number; archivos: number; archivos_limite: number; latido: string | null; llaves: Llave[] }
+interface Copia { tipo: 'copia' | 'simulacro'; momento: string; correcta: boolean; detalle: { archivos?: number; archivos_nuevos?: number; usuarios?: number } }
+interface Estado {
+	datos: number; datos_limite: number; archivos: number; archivos_limite: number; latido: string | null; llaves: Llave[];
+	copias?: Copia[]; ultima_copia?: string | null; ultimo_simulacro?: { momento: string; correcta: boolean } | null;
+}
 
 export async function avisosSistema(): Promise<AvisoSistema[]> {
 	const { data, error } = await sb.rpc('avisos_sistema');
@@ -50,6 +55,25 @@ function barra(titulo: string, usado: number, limite: number): string {
 		<p><strong>${esc(titulo)}</strong> · ${mb(usado)} de ${mb(limite)} (${pc} %)</p>
 		<progress class="${pc >= 95 ? 'lleno' : pc >= 80 ? 'casi' : ''}" max="100" value="${pc}">${pc} %</progress>
 	</div>`;
+}
+
+const momento = (m: string) => new Date(m).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' });
+
+function htmlCopias(e: Estado): string {
+	const intro = 'Cada noche se guarda una copia cifrada de todo (datos, usuarios y archivos) en el almacén privado «copias» de GitHub, y cada tres meses un simulacro comprueba que se puede recuperar entera.';
+	const copias = e.copias ?? [];
+	if (!copias.length) {
+		return `<p class="ayuda">${intro} Todavía no se ha hecho ninguna: sigue la receta 18 para ponerlas en marcha (o pídele a Claude que te guíe).</p>`;
+	}
+	const horas = e.ultima_copia ? (Date.now() - Date.parse(e.ultima_copia)) / 3_600_000 : Infinity;
+	const sim = e.ultimo_simulacro;
+	const ultima = copias.find((c) => c.tipo === 'copia' && c.correcta);
+	return `<p class="ayuda">${intro}</p>
+		<p>Última copia: ${e.ultima_copia ? `<strong>${esc(momento(e.ultima_copia))}</strong>` : 'ninguna correcta todavía'}
+			${horas <= 48 ? '<span class="estado al-dia">Al día</span>' : '<span class="estado rechazado">Falta la de esta noche</span>'}
+			${ultima?.detalle.archivos !== undefined ? `<br><span class="promo-lugar">${ultima.detalle.usuarios ?? 0} usuarios y ${ultima.detalle.archivos} archivos guardados${ultima.detalle.archivos_nuevos ? ` (${ultima.detalle.archivos_nuevos} nuevos esa noche)` : ''}.</span>` : ''}</p>
+		<p>Último simulacro de recuperación: ${sim ? `<strong>${esc(momento(sim.momento))}</strong>
+			${sim.correcta ? '<span class="estado al-dia">Recuperado entero</span>' : '<span class="estado rechazado">Con problemas: díselo a Claude</span>'}` : 'todavía ninguno <span class="estado pendiente">Pendiente</span>'}</p>`;
 }
 
 export async function pantallaSistema(destino: HTMLElement): Promise<void> {
@@ -96,6 +120,8 @@ async function pintarEstado(caja: HTMLElement, mensaje = ''): Promise<void> {
 		<h3 class="subtitulo">Espacio del plan gratuito</h3>
 		${barra('Base de datos', e.datos, e.datos_limite)}
 		${barra('Archivos (documentación, planos y fotos)', e.archivos, e.archivos_limite)}
+		<h3 class="subtitulo">Copias de seguridad</h3>
+		${ htmlCopias( e ) }
 		<h3 class="subtitulo">Vigilancia automática</h3>
 		<p class="ayuda">Cada 3 días, una tarea automática (en GitHub) mantiene activa la base de datos (Supabase), para que no se duerma, y comprueba las llaves. Si algo falla, te llega un email.</p>
 		<p>${e.latido ? `Última señal: <strong>${esc(new Date(e.latido).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' }))}</strong>` : 'Todavía no ha dado ninguna señal.'}

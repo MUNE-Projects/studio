@@ -1219,6 +1219,72 @@ await caso( DEBE_FUNCIONAR, 'Módulos y documentos: MUNE Studio cambia los módu
 
 } );
 
+// ─── Copias de seguridad (023_copias.sql, receta 18) ────────────────────────
+
+const copiasId = await crearUsuario( 'hello.muneprojects+copias@gmail.com' );
+execFileSync( 'psql', [ DB_URL, '-q', '-c', `insert into public.cuentas_copias (user_id) values ('${ copiasId }') on conflict do nothing` ] );
+execFileSync( 'psql', [ DB_URL, '-q', '-c', "alter role copias with password 'prueba-copias-123'" ] );
+const cuentaCopias = await entrar( 'hello.muneprojects+copias@gmail.com' );
+const comoCopias = ( sql ) => execFileSync( 'psql', [ DB_URL.replace( /\/\/[^@]*@/, '//copias:prueba-copias-123@' ), '-X', '-At', '-v', 'ON_ERROR_STOP=1', '-c', sql ],
+	{ stdio: [ 'ignore', 'pipe', 'pipe' ] } ).toString().trim();
+
+await caso( DEBE_FALLAR, 'Copias: la cuenta de copias lee datos de MUNE, sube o borra archivos; el usuario «copias» de la base de datos cambia algo; otro apunta una copia o ve el registro de copias', async () => {
+
+	const r = {
+		leePromociones: await cuentaCopias.from( 'promociones' ).select( 'id' ),
+		leeDocumentos: await cuentaCopias.from( 'documentos' ).select( 'id' ),
+		leeMiembros: await cuentaCopias.from( 'miembros' ).select( 'id' ),
+		sube: await cuentaCopias.storage.from( 'documentos' ).upload( `${ pA.id }/prueba-a/${ req[ 'prueba-a' ] }/copias.pdf`, pdf( 'x' ), { contentType: 'application/pdf' } ),
+		borra: await cuentaCopias.storage.from( 'entregables' ).remove( [ planoA.ruta ] ),
+		promotoraApunta: await gestorA.rpc( 'registrar_copia', { p_tipo: 'copia', p_correcta: true, p_detalle: {} } ),
+		robotApunta: await robot.rpc( 'registrar_copia', { p_tipo: 'copia', p_correcta: true, p_detalle: {} } ),
+		anonimoApunta: await anonimo.rpc( 'registrar_copia', { p_tipo: 'copia', p_correcta: true, p_detalle: {} } ),
+		promotoraVe: await gestorA.from( 'copias_hechas' ).select( 'id' ),
+		copiasVe: await cuentaCopias.from( 'copias_hechas' ).select( 'id' ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	// remove() no da error si no borra nada: se comprueba que el plano sigue ahí
+	if ( ! ( await admin.storage.from( 'entregables' ).download( planoA.ruta ) ).data ) noFallan.push( 'borra' );
+	for ( const [ k, sql ] of Object.entries( {
+		escribe: `insert into public.registro (user_id, accion) values ('${ copiasId }', 'x')`,
+		cambia: `update public.promociones set nombre = 'x'`,
+		borraFilas: 'delete from public.copias_hechas',
+		creaTabla: 'create table public.x (id int)',
+		usuarios: `update auth.users set email = 'x@x.x'`,
+	} ) ) {
+
+		try {
+
+			comoCopias( sql );
+			noFallan.push( `bd:${ k }` );
+
+		} catch { /* debe fallar */ }
+
+	}
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Copias: el usuario «copias» lee toda la base de datos y los usuarios; la cuenta de copias descarga los archivos de todas las promotoras y apunta la copia; MUNE Studio la ve', async () => {
+
+	const promociones = Number( comoCopias( 'select count(*) from public.promociones' ) );
+	const usuarios = Number( comoCopias( 'select count(*) from copias.usuarios' ) );
+	const factores = Number( comoCopias( 'select count(*) from copias.factores' ) );
+	const archivos = Number( comoCopias( "select count(*) from storage.objects where bucket_id in ('documentos', 'entregables', 'referencias')" ) );
+	const docBRuta = ( await exigir( aprobB.from( 'documentos' ).select( 'ruta' ).limit( 1 ), 'documento B' ) )[ 0 ].ruta;
+	const bajadas = await Promise.all( [ [ 'documentos', docB.ruta ?? docBRuta ], [ 'entregables', planoA.ruta ], [ 'entregables', planoB.ruta ] ]
+		.map( ( [ a, ruta ] ) => cuentaCopias.storage.from( a ).download( ruta ) ) );
+	await exigir( cuentaCopias.rpc( 'registrar_copia', { p_tipo: 'copia', p_correcta: true, p_detalle: { prueba: true } } ), 'apuntar copia' );
+	const estado = await exigir( admin.rpc( 'estado_sistema' ), 'estado' );
+	const avisos = await exigir( admin.rpc( 'avisos_sistema' ), 'avisos' );
+	return promociones >= 4 && usuarios >= 6 && factores >= 1 && archivos > 0
+		&& bajadas.every( ( b ) => b.data && ! b.error )
+		&& estado.ultima_copia && estado.copias[ 0 ]?.tipo === 'copia'
+		&& ! avisos.some( ( x ) => x.clave === 'copias' ) && avisos.some( ( x ) => x.clave === 'simulacro' );
+
+} );
+
 // ─── Resumen ────────────────────────────────────────────────────────────────
 
 const fallidos = resultados.filter( ( r ) => ! r.ok );
