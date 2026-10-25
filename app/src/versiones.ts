@@ -151,7 +151,13 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 	const aviso = destino.querySelector<HTMLElement>('[data-progreso]')!;
 	const repintar = () => void pintarVersiones(destino, p);
 	anotarEnlaces(destino);
-	if (validacion) void pintarValidacion(destino.querySelector<HTMLElement>('[data-validacion]')!, REVISION, p, validacion, repintar);
+	// «Publicar al aprobar la promotora» cuando no hay nada nuevo que aprobar: se publica al enviar
+	const publicarSola = pendiente && p.publicacion !== 'manual' ? async () => {
+		const b = destino.querySelector<HTMLButtonElement>('[data-publicar]');
+		if (b) b.disabled = true;
+		await ejecutar(aviso, id, { accion: 'aprobar', promocion: id, version: rev!.version }, rev!.version, repintar);
+	} : null;
+	if (validacion) void pintarValidacion(destino.querySelector<HTMLElement>('[data-validacion]')!, REVISION, p, validacion, repintar, publicarSola);
 
 	destino.querySelector<HTMLButtonElement>('[data-publicar]')?.addEventListener('click', async (ev) => {
 		const b = ev.currentTarget as HTMLButtonElement;

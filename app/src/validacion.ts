@@ -268,8 +268,12 @@ let trasEnviar = '';
 /**
  * Bloque «Validación de vN» dentro de Versiones: enviar a validar, cómo va cada
  * parte, quién valida y el detalle de cada elemento por persona.
+ *
+ * Si al enviar ya está todo aprobado (nada ha cambiado desde una versión
+ * anterior), la promotora no tiene nada que aprobar: no se le avisa y, si la
+ * promoción se publica al aprobar la promotora, se llama a `publicarSola`.
  */
-export async function pintarValidacion(caja: HTMLElement, revision: string, p: { id: string; promotora_id: string }, v: Validacion, alCambiar: () => void): Promise<void> {
+export async function pintarValidacion(caja: HTMLElement, revision: string, p: { id: string; promotora_id: string }, v: Validacion, alCambiar: () => void, publicarSola: (() => Promise<void>) | null = null): Promise<void> {
 	const id = p.id;
 	if (!tieneValidacion(v)) { caja.innerHTML = ''; return; }
 	const [aprobPlanos, aprobExp] = await Promise.all([
@@ -341,6 +345,21 @@ export async function pintarValidacion(caja: HTMLElement, revision: string, p: {
 			}
 		} catch (e) {
 			fallado = e;
+		}
+		// sin cambios desde una versión anterior: todo conserva su aprobación
+		const ahora = fallado ? null : await leerValidacion(revision, id, v.version).catch(() => null);
+		if (ahora && listaParaPublicar(ahora)) {
+			const de = [...new Set(lasPartes(ahora).flatMap((x) => x.elementos.map((e) => e.heredada_de)).filter(Boolean))];
+			const texto = `✓ Enviado. No hay nada nuevo que aprobar: no ha cambiado desde ${de.length === 1 ? `la ${de[0]}` : 'versiones anteriores'} y conserva su aprobación, así que no se avisa a la promotora.`;
+			await anotar('envía a validar sin nada nuevo que aprobar', { promocion: id, version: v.version });
+			if (publicarSola) {
+				aviso.textContent = `${texto} Se publica ya, como si la promotora acabara de aprobarla.`;
+				await publicarSola();
+				return;
+			}
+			trasEnviar = `${texto} Ya puedes publicar la ${v.version}.`;
+			alCambiar();
+			return;
 		}
 		const respuestas: [string, string][] = [];
 		for (const tipo of hecho) {
