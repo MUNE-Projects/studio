@@ -1415,6 +1415,60 @@ await caso( DEBE_FALLAR, '40. Puerta del comprador: un código cambiado, de una 
 
 } );
 
+// ─── 3D profesional desde MUNE Portal (027_profesional.sql, paso 6a) ────────
+
+const abrirPase = ( sb, promocion = 'prueba-a' ) => sb.rpc( 'abrir_experiencia_profesional', { p_promocion: promocion } );
+const entrarPro = ( pase, promocion = 'prueba-a', version = 'v92' ) => anonimo.rpc( 'entrar_profesional', { p_promocion: promocion, p_pase: pase, p_version: version } );
+const guardarPro = ( pase, vivienda, opciones ) => anonimo.rpc( 'guardar_seleccion_profesional', { p_promocion: 'prueba-a', p_pase: pase, p_version: 'v92', p_vivienda: vivienda, p_pack: 'acabados', p_opciones: opciones } );
+await exigir( robot.rpc( 'guardar_datos_privados', { p_promocion: 'prueba-a', p_version: 'v92', p_contenido: {
+	...datosPrueba, viviendas: [ ...datosPrueba.viviendas, { ref: 'Bajo C', planta: 'Baja', tipologia: 'a', espejo: false } ] } } ), 'datos v92' );
+
+await caso( DEBE_FUNCIONAR, '3D profesional: el equipo abre el 3D desde el Portal con un pase y ve todas las viviendas, los precios y lo elegido; quien tiene «personalización» elige en nombre del comprador', async () => {
+
+	const pase = await exigir( abrirPase( gestorA ), 'pase' );
+	const pro = await exigir( entrarPro( pase ), 'entrar' );
+	const r = await exigir( guardarPro( pase, 'Bajo C', { suelo: 'nogal' } ), 'guardar' );
+	const lista = await exigir( gestorA.rpc( 'personalizacion_de_promocion', { p_promocion: 'prueba-a' } ), 'lista' );
+	const deC = lista.selecciones.find( ( s ) => s.vivienda === 'Bajo C' );
+	const paseCompradores = await exigir( abrirPase( soloCompradores.sb ), 'pase sin personalización' );
+	const proCompradores = await exigir( entrarPro( paseCompradores ), 'entrar sin personalización' );
+	return /^[0-9a-f]{48}$/.test( pase ) && pro.viviendas.length === 3 && pro.catalogo.categorias[ 0 ].opciones[ 1 ].precio === 1900
+		&& pro.puede_personalizar === true && 'Bajo A' in pro.selecciones
+		&& Number( r.importe ) === 1900 && deC?.hecho_por === 'equipo'
+		&& proCompradores.puede_personalizar === false && proCompradores.viviendas.length === 3;
+
+} );
+
+await caso( DEBE_FALLAR, '41. 3D profesional: otra promotora, el robot o alguien sin sesión abren un pase; un pase inventado, de otra promoción o de hace más de 12 horas da datos; sin «personalización» o desde MUNE se elige en nombre del comprador', async () => {
+
+	const noFallanExtra = [];
+	const paseA = await exigir( abrirPase( gestorA ), 'pase A' );
+	const paseCompradores = await exigir( abrirPase( soloCompradores.sb ), 'pase sin personalización' );
+	const paseMune = await exigir( abrirPase( admin ), 'pase MUNE' );
+	const r = {
+		otraPromotora: await abrirPase( aprobB ),
+		robot: await abrirPase( robot ),
+		anonimo: await abrirPase( anonimo ),
+		sinPermisoGuarda: await guardarPro( paseCompradores, 'Bajo C', { suelo: 'base' } ),
+		muneGuarda: await guardarPro( paseMune, 'Bajo C', { suelo: 'base' } ),
+		paseInventadoGuarda: await guardarPro( 'f'.repeat( 48 ), 'Bajo C', { suelo: 'base' } ),
+		promotoraLeePases: await gestorA.from( 'pases_profesionales' ).select( 'id' ),
+	};
+	const inventado = ( await entrarPro( '0'.repeat( 48 ) ) ).data;
+	const otraPromocion = ( await entrarPro( paseA, 'prueba-b' ) ).data;
+	// un pase de hace más de una jornada ya no vale
+	const paseViejo = await exigir( abrirPase( gestorA ), 'pase viejo' );
+	execFileSync( 'psql', [ DB_URL, '-q', '-c', "update public.pases_profesionales set creado_en = now() - interval '13 hours' where id = (select max(id) from public.pases_profesionales)" ] );
+	if ( ( await entrarPro( paseViejo ) ).data ) noFallanExtra.push( 'paseViejo' );
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	if ( inventado ) noFallan.push( 'inventado' );
+	if ( otraPromocion ) noFallan.push( 'otraPromocion' );
+	noFallan.push( ...noFallanExtra );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
 // ─── Resumen ────────────────────────────────────────────────────────────────
 
 const fallidos = resultados.filter( ( r ) => ! r.ok );

@@ -313,6 +313,10 @@ body[data-modo="plano"] .vistas [data-vista], body[data-modo="plano"] .vistas .g
 /* acceso público / comprador */
 body:not(.comprador) .solo-comprador { display: none !important; }
 body.comprador .solo-publico { display: none !important; }
+/* modo profesional (equipo de la promotora desde MUNE Portal) */
+body:not(.profesional) .solo-profesional { display: none !important; }
+.elegir-vivienda { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; font-size: 12.5px; color: var(--tinta-2); }
+.elegir-vivienda select { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--linea); border-radius: 8px; background: #fff; font: inherit; color: var(--tinta); }
 
 /* ------------------------------------------------ aviso tras un cambio */
 .aviso {
@@ -509,7 +513,7 @@ body.listo.cargando-3d #carga { opacity: 1; visibility: visible; transition: opa
 }
 .boton-studio:hover { color: var(--tinta); background: #fff; }
 .boton-studio:active { transform: scale(0.97); }
-body.en-studio .boton-studio, body.perfil-promotora .boton-studio { display: none; }
+body.en-studio .boton-studio, body.perfil-promotora .boton-studio, .boton-studio[hidden] { display: none; }
 .perfil-activo { display: inline-flex; align-items: center; gap: 10px; margin-right: 10px; padding: 6px 12px; border: 1px solid var(--linea); border-radius: 999px; background: var(--superficie); font-size: 12px; color: var(--tinta-2); pointer-events: auto; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
 .perfil-activo[hidden] { display: none; }
 .perfil-activo strong { font-weight: 600; color: var(--acento); }

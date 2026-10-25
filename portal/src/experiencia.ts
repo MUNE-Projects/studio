@@ -5,8 +5,13 @@
 // «Entorno y elementos generales»), nunca por vista. La validan las personas
 // elegidas en «Equipo → Quién valida»; queda validada cuando aprueban todas.
 // Las unidades son entregables de tipo «experiencia», sin archivo.
+//
+// Modo profesional (paso 6a, 027_profesional.sql): desde aquí el 3D se abre con
+// un pase de la persona (…/#p-<pase>), sin códigos: todas las viviendas, su
+// personalización con precios y lo que ha elegido cada comprador; renders y
+// plano comercial. Con «Gestionar personalizaciones», también elegir en su nombre.
 
-import { ESCAPARATE, REVISION, alEnviar, esc } from './comun';
+import { ESCAPARATE, REVISION, alEnviar, esc, sb, traducir } from './comun';
 import {
 	type Contexto, type Elemento, avance, baseVisita, chipEstado, faltanTrasAprobar, guardarDecision, htmlPersonas,
 	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, textoPublicando, numVersion, tituloUnidad, versionPublicada, versionesCon,
@@ -21,13 +26,16 @@ export async function pintarExperiencia(caja: HTMLElement, id: string, extra: st
 	const enRevision = versiones[0] && (!publicada || numVersion(versiones[0]) > numVersion(publicada)) ? versiones[0] : null;
 	const cabecera = `
 		<h2>Experiencia 3D</h2>
-		<p class="ayuda">La experiencia 3D de la promoción, siempre a mano para recorrerla y enseñarla.</p>
+		<p class="ayuda">La experiencia 3D de la promoción, siempre a mano para recorrerla y enseñarla. Se abre en modo profesional: ves todas las viviendas con su personalización y lo que ha elegido cada comprador, y puedes sacar renders y descargar el plano comercial.</p>
 		${publicada || enRevision ? `<div class="acciones">
-			${publicada ? `<a class="boton pequeno" href="${esc(`${ESCAPARATE}/${id}/`)}" target="_blank" rel="noopener noreferrer">Recorrer la versión publicada (${esc(publicada)})</a>` : ''}
-			${enRevision ? `<a class="boton ${publicada ? 'secundario' : ''} pequeno" href="${esc(`${REVISION}/${id}/`)}" target="_blank" rel="noopener noreferrer">Recorrer la versión en revisión (${esc(enRevision)})</a>` : ''}
-		</div>` : '<p class="vacio">Todavía no hay ninguna versión. Cuando el equipo de MUNE prepare la primera, podrás recorrerla aquí y validarla cuando haga falta.</p>'}`;
+			${publicada ? `<a class="boton pequeno" href="${esc(`${ESCAPARATE}/${id}/`)}" data-profesional target="_blank" rel="noopener noreferrer">Recorrer la versión publicada (${esc(publicada)})</a>` : ''}
+			${enRevision ? `<a class="boton ${publicada ? 'secundario' : ''} pequeno" href="${esc(`${REVISION}/${id}/`)}" data-profesional target="_blank" rel="noopener noreferrer">Recorrer la versión en revisión (${esc(enRevision)})</a>` : ''}
+			${publicada ? `<a class="enlace" href="${esc(`${ESCAPARATE}/${id}/`)}" target="_blank" rel="noopener noreferrer">Ver como el público</a>` : ''}
+		</div>
+		<p class="error" role="alert" data-error-profesional></p>` : '<p class="vacio">Todavía no hay ninguna versión. Cuando el equipo de MUNE prepare la primera, podrás recorrerla aquí y validarla cuando haga falta.</p>'}`;
 	if (!versiones.length) {
 		caja.innerHTML = cabecera;
+		abrirProfesional(caja, id);
 		return;
 	}
 	const version = versiones.includes(extra) ? extra : versiones[0];
@@ -48,6 +56,7 @@ export async function pintarExperiencia(caja: HTMLElement, id: string, extra: st
 		${unidades.map((u) => htmlUnidad(id, u, version, actual, base, ctx)).join('')}
 		${versiones.length > 1 ? `<p class="ayuda separado">Otras versiones: ${versiones.filter((v) => v !== version)
 			.map((v) => `<a class="enlace" href="#/promocion/${esc(id)}/experiencia/${esc(v)}">${esc(v)}</a>`).join(' · ')}</p>` : ''}`;
+	abrirProfesional(caja, id);
 
 	for (const u of unidades) {
 		const raiz = caja.querySelector<HTMLElement>(`[data-unidad="${u.id}"]`);
@@ -87,7 +96,7 @@ function htmlUnidad(id: string, u: Elemento, version: string, actual: boolean, b
 		${u.detalle || u.viviendas ? `<p class="promo-lugar">${esc(u.detalle ?? '')}${u.detalle && u.viviendas ? ' · ' : ''}${esc(u.viviendas ?? '')}</p>` : ''}
 		${avance(u, 'experiencia') ? `<p class="avance">${avance(u, 'experiencia')}</p>` : ''}
 		${htmlPersonas(u, version)}
-		${actual ? `<div class="acciones"><a class="boton ${puede && voto!.decision !== 'aprobado' ? '' : 'secundario'} pequeno" href="${esc(`${base}/${id}/?ver=${encodeURIComponent(u.clave)}`)}" target="_blank" rel="noopener noreferrer">Recorrer en 3D</a></div>` : ''}
+		${actual ? `<div class="acciones"><a class="boton ${puede && voto!.decision !== 'aprobado' ? '' : 'secundario'} pequeno" href="${esc(`${base}/${id}/?ver=${encodeURIComponent(u.clave)}`)}" data-profesional target="_blank" rel="noopener noreferrer">Recorrer en 3D</a></div>` : ''}
 		${puede ? `<details class="validar-plegable" ${voto!.decision === null ? 'open' : ''}>
 			<summary>${voto!.decision === 'aprobado' ? 'Ya la has aprobado · pedir cambios' : 'Validar'}</summary>
 			<div class="validar">
@@ -115,4 +124,34 @@ function htmlUnidad(id: string, u: Elemento, version: string, actual: boolean, b
 			</div>
 		</details>` : ''}
 	</article>`;
+}
+
+/**
+ * Los enlaces al 3D se abren en modo profesional: se pide un pase a Supabase y
+ * se añade al enlace (#p-…), que la web quita de la dirección al entrar. La
+ * pestaña se abre antes de pedirlo para que el navegador no la bloquee.
+ */
+function abrirProfesional(caja: HTMLElement, id: string): void {
+	const error = caja.querySelector<HTMLElement>('[data-error-profesional]');
+	for (const a of caja.querySelectorAll<HTMLAnchorElement>('a[data-profesional]')) {
+		a.addEventListener('click', async (ev) => {
+			ev.preventDefault();
+			if (error) error.textContent = '';
+			const ventana = window.open('', '_blank');
+			if (ventana) {
+				ventana.opener = null;
+				ventana.document.title = 'Abriendo la Experiencia 3D…';
+			}
+			const { data, error: e } = await sb.rpc('abrir_experiencia_profesional', { p_promocion: id });
+			if (e || typeof data !== 'string') {
+				ventana?.close();
+				if (error) error.textContent = traducir(e, 'abrir la Experiencia 3D');
+				else alert(traducir(e, 'abrir la Experiencia 3D'));
+				return;
+			}
+			const destino = `${a.href.split('#')[0]}#p-${data}`;
+			if (ventana) ventana.location.href = destino;
+			else location.href = destino;
+		});
+	}
 }
