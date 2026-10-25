@@ -84,12 +84,22 @@
     {
       "version": "v10",
       "fecha": "2026-10-12T10:43:18Z",
-      "estado": "publicada",
+      "estado": "sustituida",
       "taller": "cc75967a047667ca678dfeb7875a341e8a037600",
       "preparadaPor": "Claude",
       "cambios": "Barra de carga en la Experiencia 3D (prueba de validación)",
       "aprobadoPor": "Administradora",
       "publicadaEl": "2026-10-12T11:03:17Z"
+    },
+    {
+      "version": "v12",
+      "fecha": "2026-10-25T08:48:03Z",
+      "estado": "publicada",
+      "taller": "1295c9e7a3abaf8c903a302d3b34cdd9ddb9c2d6",
+      "preparadaPor": "Claude",
+      "cambios": "Precios, packs y lista de viviendas fuera de la web pública (solo con el código del comprador); la personalización del comprador se guarda al descargar su documento",
+      "aprobadoPor": "Administradora",
+      "publicadaEl": "2026-10-25T08:55:55Z"
     }
   ],
   "historial": [
@@ -153,6 +163,12 @@
       "fecha": "2026-10-12T11:03:17Z",
       "accion": "aprobar",
       "version": "v10",
+      "por": "Administradora"
+    },
+    {
+      "fecha": "2026-10-25T08:55:55Z",
+      "accion": "aprobar",
+      "version": "v12",
       "por": "Administradora"
     }
   ]
