@@ -30,7 +30,7 @@ import { aplicarAlternativa, fmtM2 } from './configurador/alternativas';
 import { Configurador, fmtEuros, fmtPrecio, type Seleccion } from './configurador/configurador';
 import { Panel } from './configurador/panel';
 import { fmtFecha, packsDeVivienda } from './configurador/packs';
-import { CATALOGO, PROMOCION, accesoProfesional, cargarModelo, catalogoPara, extraerCodigo, guardarSeleccion as guardarEnSupabase, resolverAcceso, viviendaDeUnidad, viviendaPublica, type Modelo } from './promocion/promocion';
+import { CATALOGO, PROMOCION, accesoProfesional, cargarModelo, catalogoPara, extraerCodigo, guardarSeleccion as guardarEnSupabase, paseInicial, resolverAcceso, resolverProfesional, salirProfesional, viviendaDeUnidad, viviendaPublica, type Modelo } from './promocion/promocion';
 import { aplicarMarca } from './promocion/marca';
 import { generarPDF } from './documento/pdf';
 import { planoPDF, planoPNG, type DatosPlano } from './documento/plano';
@@ -129,10 +129,20 @@ async function iniciar() {
 	// ---------------------------------------------------------------- acceso
 	// Parte pública: plano, vivienda y vistas. Con el enlace privado de una
 	// vivienda (#código) se carga esa vivienda y se habilita la personalización.
+	// Modo profesional (paso 6a): el equipo de la promotora llega desde MUNE Portal
+	// con un pase (#p-…) y ve todas las viviendas, con su personalización y lo
+	// que ha elegido cada comprador. No usa códigos de comprador.
+	const pase = paseInicial();
+	const accesoProfesionalInicial = pase ? await resolverProfesional( pase ) : null;
+	const profesional = typeof accesoProfesionalInicial === 'object' ? accesoProfesionalInicial : null;
+	document.body.classList.toggle( 'profesional', !! profesional );
+	document.body.classList.toggle( 'perfil-promotora', !! profesional );
 	const pideProfesional = /^#(studio|promotora)/.test( location.hash );
-	const codigoInicial = ( pideProfesional ? '' : extraerCodigo( location.hash ) ) || leer( CLAVE_ACCESO ) || '';
-	const accesoInicial = await resolverAcceso( codigoInicial );
-	let comprador: ViviendaPromocion | null = typeof accesoInicial === 'object' ? accesoInicial : null;
+	const codigoInicial = profesional ? '' : ( pideProfesional ? '' : extraerCodigo( location.hash ) ) || leer( CLAVE_ACCESO ) || '';
+	const accesoInicial = profesional ? null : await resolverAcceso( codigoInicial );
+	let comprador: ViviendaPromocion | null = profesional
+		? viviendaDeUnidad( new URLSearchParams( location.search ).get( 'ver' ) ) ?? PROMOCION.viviendas[ 0 ]
+		: typeof accesoInicial === 'object' ? accesoInicial : null;
 	// código que ya no vale: se olvida (si no se pudo comprobar, se conserva para la próxima vez)
 	if ( accesoInicial === null && codigoInicial ) guardar( CLAVE_ACCESO, null );
 	// ?ver=<unidad> (p. ej. «a-espejo»): el equipo de la promotora revisa desde MUNE
@@ -711,7 +721,7 @@ async function iniciar() {
 	}
 
 	// ---------------------------------------------------------------- personalizar
-	const guardarSeleccion = () => comprador && guardar( claveSeleccion( comprador.ref ), JSON.stringify( Object.fromEntries( Object.entries( conf.seleccion ).filter( ( [ k ] ) => conf.editable( k ) ) ) ) );
+	const guardarSeleccion = () => comprador && ! profesional && guardar( claveSeleccion( comprador.ref ), JSON.stringify( Object.fromEntries( Object.entries( conf.seleccion ).filter( ( [ k ] ) => conf.editable( k ) ) ) ) );
 
 	const vistaDeAlternativa = () => ( modelo.alternativas.find( ( v ) => v.id === conf.alternativa ) ?? modelo.alternativas[ 0 ] )?.vista ?? null;
 	/** Vista que corresponde a una categoría ("mantener" = ninguna). */
@@ -822,7 +832,7 @@ async function iniciar() {
 		// selección anterior de esta vivienda en este navegador (comodidad, no se envía a ningún sitio)
 		if ( comprador ) {
 
-			try {
+			if ( ! profesional ) try {
 
 				const s = JSON.parse( leer( claveSeleccion( v.ref ) ) ?? 'null' ) as Seleccion | null;
 				if ( s ) conf.restaurar( s );
@@ -884,6 +894,13 @@ async function iniciar() {
 	} );
 	$( '#salir-comprador' ).addEventListener( 'click', () => {
 
+		if ( profesional ) {
+
+			salirProfesional();
+			location.reload();
+			return;
+
+		}
 		comprador = null;
 		guardar( CLAVE_ACCESO, null );
 		if ( location.hash ) history.replaceState( null, '', location.pathname + location.search );
@@ -891,6 +908,24 @@ async function iniciar() {
 		irModo( 'vivienda' );
 
 	} );
+
+	// ---------------------------------------------------------------- modo profesional: elegir vivienda
+	if ( profesional ) {
+
+		$( '#salir-comprador' ).textContent = 'Salir del modo profesional';
+		const lista = $<HTMLSelectElement>( '#elegir-vivienda' );
+		for ( const v of PROMOCION.viviendas ) lista.add( new Option( nombreVivienda( v ), v.ref, false, v.ref === comprador?.ref ) );
+		lista.addEventListener( 'change', () => {
+
+			const v = PROMOCION.viviendas.find( ( x ) => x.ref === lista.value );
+			if ( ! v ) return;
+			comprador = v;
+			cargarVivienda( v );
+			actualizarFicha();
+
+		} );
+
+	}
 
 	// ---------------------------------------------------------------- documento de selección
 	const dialogo = $<HTMLDialogElement>( '#resumen-configuracion' );
@@ -989,14 +1024,18 @@ async function iniciar() {
 
 			const pv = conf.packs.find( ( p ) => p.pack.id === packResumen )!;
 			// al descargar el documento, la selección queda guardada como «Seleccionada» (025_selecciones.sql)
-			const guardada = await guardarEnSupabase( pv.pack.id, Object.fromEntries( pv.categorias.map( ( c ) => [ c.id, conf.seleccion[ c.id ] ] ) ) );
+			// en modo profesional, solo con «Gestionar personalizaciones» (si no, es una vista previa)
+			const guardada = profesional && ! profesional.puedePersonalizar
+				? 'Es una vista previa: la selección no se guarda. Para guardarla en nombre del comprador necesitas «Gestionar personalizaciones».'
+				: await guardarEnSupabase( pv.pack.id, Object.fromEntries( pv.categorias.map( ( c ) => [ c.id, conf.seleccion[ c.id ] ] ) ), fichaVivienda.ref );
 			if ( typeof guardada === 'string' ) avisar( guardada );
 			else {
 
 				const s = { fecha: guardada.fecha, opciones: guardada.opciones, estado: guardada.estado, importe: guardada.importe };
 				fichaVivienda.selecciones = { ...fichaVivienda.selecciones, [ pv.pack.id ]: s };
 				pv.guardada = s;
-				avisar( pv.pack.hasta < '2100' ? `Tu selección queda guardada. Puedes cambiarla hasta el ${ fmtFecha( pv.pack.hasta, true ) }.` : 'Tu selección queda guardada.' );
+				if ( profesional ) avisar( `Selección guardada en nombre del comprador de ${ nombreVivienda( fichaVivienda ) }.` );
+				else avisar( pv.pack.hasta < '2100' ? `Tu selección queda guardada. Puedes cambiarla hasta el ${ fmtFecha( pv.pack.hasta, true ) }.` : 'Tu selección queda guardada.' );
 
 			}
 			const comprador = datosComprador();
@@ -1516,7 +1555,12 @@ async function iniciar() {
 		}
 
 	} )();
-	if ( comprador ) avisar( `Te damos la bienvenida. Estás viendo tu vivienda ${ comprador.ref }. Pulsa Personalizar para ver las opciones disponibles para tu vivienda.` );
+	if ( profesional ) avisar( profesional.puedePersonalizar
+		? 'Modo profesional: elige una vivienda arriba para ver su personalización y lo elegido. Puedes elegir en nombre del comprador, sacar renders y descargar el plano comercial.'
+		: 'Modo profesional: elige una vivienda arriba para ver su personalización y lo elegido. Puedes sacar renders y descargar el plano comercial.' );
+	else if ( accesoProfesionalInicial === null && pase ) avisar( 'Tu acceso al 3D ha caducado. Vuelve a abrirlo desde MUNE Portal.' );
+	else if ( accesoProfesionalInicial === 'sin-conexion' ) avisar( 'No se ha podido abrir el modo profesional ahora mismo. Revisa tu conexión y vuelve a abrirlo desde MUNE Portal.' );
+	else if ( comprador ) avisar( `Te damos la bienvenida. Estás viendo tu vivienda ${ comprador.ref }. Pulsa Personalizar para ver las opciones disponibles para tu vivienda.` );
 	else if ( accesoInicial === 'sin-conexion' ) avisar( 'No se ha podido comprobar tu código ahora mismo. Puedes ver la promoción y volver a entrar en unos minutos.' );
 
 	// ---------------------------------------------------------------- studio (producción)
@@ -1543,8 +1587,9 @@ async function iniciar() {
 	};
 	// ---------------------------------------------------------------- perfiles profesionales
 	// Público → Comprador (código de vivienda) → Promotora (entregables comerciales)
-	// → Studio (producción). Promotora y Studio entran con su propio código por
-	// «Acceso profesional»; el navegador recuerda el último código válido.
+	// → Studio (producción). La promotora entra desde MUNE Portal (modo profesional);
+	// en la construcción interna, Studio (y la promotora, con su código) entra por
+	// «Acceso profesional» y el navegador recuerda el último código válido.
 	const CLAVE_PROFESIONAL = 'inmobiliarias:profesional';
 	const entrarPromotora = ( codigo: string ) => {
 
@@ -1598,6 +1643,8 @@ async function iniciar() {
 		}
 
 	} );
+	// en la web pública, el equipo de la promotora entra desde MUNE Portal (modo profesional)
+	if ( ! __STUDIO__ ) $( '#abrir-studio' ).hidden = true;
 	$( '#abrir-studio' ).addEventListener( 'click', () => void pedirAcceso() );
 	$( '#salir-promotora' ).addEventListener( 'click', () => {
 
@@ -1610,12 +1657,12 @@ async function iniciar() {
 	void ( async () => {
 
 		const guardado = leer( CLAVE_PROFESIONAL );
-		if ( guardado && ! pideProfesional && ( await accesoProfesional( guardado ) ) === 'promotora' ) entrarPromotora( guardado );
+		if ( __STUDIO__ && guardado && ! pideProfesional && ( await accesoProfesional( guardado ) ) === 'promotora' ) entrarPromotora( guardado );
 
 	} )();
 	const codigoHash = () => location.hash.replace( /^#(studio|promotora)-?/, '' );
-	if ( pideProfesional ) void pedirAcceso( codigoHash() );
-	addEventListener( 'hashchange', () => /^#(studio|promotora)/.test( location.hash ) && void pedirAcceso( codigoHash() ) );
+	if ( __STUDIO__ && pideProfesional ) void pedirAcceso( codigoHash() );
+	if ( __STUDIO__ ) addEventListener( 'hashchange', () => /^#(studio|promotora)/.test( location.hash ) && void pedirAcceso( codigoHash() ) );
 
 	Object.assign( window, { __vivienda: { nav, irModo, irEstado: ( n: number ) => irModo( n === 1 ? 'plano' : 'vivienda' ), cam, estados: est, renderer, camara, ctrl, pausar: ( p: boolean ) => ( pausado = p ), diagnostico: () => diagnostico } } );
 

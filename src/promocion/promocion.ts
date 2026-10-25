@@ -192,6 +192,83 @@ function aplicarDatos( d: DatosComprador ) {
 /** Código válido del comprador que ha entrado (para guardar su selección). */
 let codigoComprador = '';
 
+// ---------------------------------------------------------------- modo profesional (paso 6a)
+// El equipo de la promotora abre esta web desde MUNE Portal con un pase
+// (…/#p-<pase>, 027_profesional.sql): ve todas las viviendas con su
+// personalización y lo elegido, saca renders y descarga el plano comercial.
+// Con la capacidad «personalizacion» también elige en nombre del comprador.
+
+const PASE = /^#p-([0-9a-f]{48})$/;
+const clavePase = () => `mune:pase:${ PROMOCION.id }`;
+let paseProfesional = '';
+
+/** El pase del enlace (que se quita de la dirección) o el de esta pestaña. */
+export function paseInicial(): string {
+
+	const m = location.hash.match( PASE );
+	if ( m ) {
+
+		history.replaceState( null, '', location.pathname + location.search );
+		try { sessionStorage.setItem( clavePase(), m[ 1 ] ); } catch { /* sin almacenamiento: vale para esta carga */ }
+		return m[ 1 ];
+
+	}
+	try { return sessionStorage.getItem( clavePase() ) ?? ''; } catch { return ''; }
+
+}
+
+export function salirProfesional() {
+
+	paseProfesional = '';
+	try { sessionStorage.removeItem( clavePase() ); } catch { /* nada que olvidar */ }
+
+}
+
+export interface Profesional { puedePersonalizar: boolean }
+
+/** Cambia el pase por los datos de esta versión: todas las viviendas, precios y selecciones. */
+export async function resolverProfesional( pase: string ): Promise<Profesional | null | 'sin-conexion'> {
+
+	try {
+
+		const r = await fetch( `${ SUPABASE_URL }/rest/v1/rpc/entrar_profesional`, {
+			method: 'POST',
+			headers: { apikey: SUPABASE_CLAVE, 'Content-Type': 'application/json' },
+			body: JSON.stringify( { p_promocion: PROMOCION.id, p_pase: pase, p_version: __VERSION__ } ),
+		} );
+		if ( ! r.ok ) return 'sin-conexion';
+		const d = await r.json() as {
+			puede_personalizar: boolean; catalogo: Configuracion | null; packs: Promocion[ 'packs' ];
+			tipologias: { id: string; opciones: Promocion[ 'tipologias' ][ number ][ 'opciones' ] }[];
+			viviendas: ViviendaPromocion[]; formalizacion: ViviendaPromocion[ 'formalizacion' ];
+			selecciones: Record<string, ViviendaPromocion[ 'selecciones' ]>;
+		} | null;
+		if ( ! d ) {
+
+			salirProfesional();
+			return null;
+
+		}
+		paseProfesional = pase;
+		if ( d.catalogo ) Object.assign( CATALOGO, d.catalogo );
+		PROMOCION.packs = d.packs;
+		for ( const t of d.tipologias ) {
+
+			const propia = PROMOCION.tipologias.find( ( x ) => x.id === t.id );
+			if ( propia ) propia.opciones = t.opciones;
+
+		}
+		if ( d.viviendas.length ) PROMOCION.viviendas = d.viviendas.map( ( v ) => ( { ...v, selecciones: d.selecciones[ v.ref ] ?? {}, formalizacion: d.formalizacion ?? {} } ) );
+		return { puedePersonalizar: d.puede_personalizar };
+
+	} catch {
+
+		return 'sin-conexion';
+
+	}
+
+}
+
 /** Lo que queda guardado de un pack; o un texto con el motivo si no se ha podido guardar. */
 export type SeleccionGuardada = { estado: 'seleccionada' | 'cerrada'; importe: number; fecha: string; opciones: Record<string, string>; hasta: string | null };
 
@@ -200,21 +277,27 @@ export type SeleccionGuardada = { estado: 'seleccionada' | 'cerrada'; importe: n
  * 025_selecciones.sql). Supabase comprueba el código, que el pack esté abierto
  * y las opciones, y calcula el importe con los precios de esta versión.
  */
-export async function guardarSeleccion( pack: string, opciones: Record<string, string> ): Promise<SeleccionGuardada | string> {
+export async function guardarSeleccion( pack: string, opciones: Record<string, string>, vivienda: string ): Promise<SeleccionGuardada | string> {
 
-	if ( ! codigoComprador ) return 'Entra con tu código para guardar tu selección.';
+	if ( ! codigoComprador && ! paseProfesional ) return 'Entra con tu código para guardar tu selección.';
 	try {
 
-		const r = await fetch( `${ SUPABASE_URL }/rest/v1/rpc/guardar_seleccion`, {
+		// en modo profesional, en nombre del comprador de esa vivienda (027_profesional.sql)
+		const [ rpc, cuerpo ] = paseProfesional
+			? [ 'guardar_seleccion_profesional', { p_promocion: PROMOCION.id, p_pase: paseProfesional, p_version: __VERSION__, p_vivienda: vivienda, p_pack: pack, p_opciones: opciones } ]
+			: [ 'guardar_seleccion', { p_promocion: PROMOCION.id, p_codigo: codigoComprador, p_version: __VERSION__, p_pack: pack, p_opciones: opciones } ];
+		const r = await fetch( `${ SUPABASE_URL }/rest/v1/rpc/${ rpc }`, {
 			method: 'POST',
 			headers: { apikey: SUPABASE_CLAVE, 'Content-Type': 'application/json' },
-			body: JSON.stringify( { p_promocion: PROMOCION.id, p_codigo: codigoComprador, p_version: __VERSION__, p_pack: pack, p_opciones: opciones } ),
+			body: JSON.stringify( cuerpo ),
 		} );
 		if ( ! r.ok ) {
 
 			const t = await r.text();
 			console.error( 'guardar_seleccion', t );
-			return /periodo/.test( t ) ? 'El periodo de selección de este pack no está abierto.'
+			return /caducado/.test( t ) ? 'Tu acceso al 3D ha caducado. Vuelve a abrirlo desde MUNE Portal.'
+				: /Solo el comprador o el equipo/.test( t ) ? 'Es una vista previa: para guardar la selección en nombre del comprador necesitas «Gestionar personalizaciones».'
+				: /periodo/.test( t ) ? 'El periodo de selección de este pack no está abierto.'
 				: /cerrada/.test( t ) ? 'Tu selección de este pack ya está cerrada.'
 					: 'No se ha podido guardar tu selección ahora mismo. Inténtalo de nuevo en unos minutos.';
 

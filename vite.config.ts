@@ -24,6 +24,8 @@ const sinDatosDeStudio = (): Plugin => ( {
 		if ( ! /promociones[\\/][^\\/]+[\\/]promocion\.json$/.test( id ) ) return null;
 		const datos = JSON.parse( codigo );
 		delete datos.studio;
+		// el equipo de la promotora entra desde MUNE Portal (paso 6a): sin código en la web
+		delete datos.promotora;
 		// contacto y datos de pago de la formalización: solo con código (Supabase)
 		delete datos.pagos;
 		if ( datos.marca ) delete datos.marca.comercial;

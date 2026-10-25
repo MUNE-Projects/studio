@@ -5,7 +5,7 @@ independiente de la experiencia pública y de la del comprador:
 
 | | Público | Comprador | Promotora | Studio |
 |---|---|---|---|---|
-| Acceso | web abierta | enlace privado `#c-…` | «Acceso profesional» + código de promotora | «Acceso profesional» + código de Studio |
+| Acceso | web abierta | su código de comprador | desde MUNE Portal, con un pase personal (decisión 46) | «Acceso profesional» + código de Studio (solo en la construcción interna) |
 | Qué hace | ver la vivienda | personalizar y generar los PDF de sus packs | descargar entregables comerciales | preparar los datos de la promoción |
 | Plano comercial | PDF directo | PDF directo | PDF o PNG (selector) | PDF o PNG (selector) |
 | Render HD | no | no | sí | sí |
@@ -14,11 +14,10 @@ independiente de la experiencia pública y de la del comprador:
 | Código cargado | bundle principal | bundle principal | bundle principal | + chunk `studio` (bajo demanda) |
 
 **Cómo entrar:**
-- Pulsa **Acceso profesional** (abajo a la derecha) e introduce el código. El código decide el perfil. Códigos de la demo:
-  - Studio: `estudio-7q4m2x`;
-  - Promotora: `promotora-3k8d1w`.
+- El equipo de la promotora entra desde MUNE Portal → *Experiencia 3D* (modo profesional, decisión 46). En la web pública ya no hay «Acceso profesional».
+- En la construcción interna (`--mode studio`), pulsa **Acceso profesional** (abajo a la derecha) e introduce el código del Studio. Código de la demo: `estudio-7q4m2x`.
 - Ese navegador recuerda el acceso: la próxima vez, el botón abre el Studio directamente.
-- También se entra de una vez con `#studio-estudio-7q4m2x` o `#promotora-promotora-3k8d1w` al final de la URL.
+- También se entra de una vez con `#studio-estudio-7q4m2x` al final de la URL.
 
 El código no se guarda en los datos: `promocion.json` solo contiene
 `studio.acceso`, el SHA-256 de `"<id de promoción>:studio:<código>"`.
