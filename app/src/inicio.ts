@@ -53,7 +53,7 @@ export async function pantallaInicio(destino: HTMLElement): Promise<void> {
 		const version = e.rev!.version;
 		let paso: [string, string, string, number];
 		try {
-			paso = pasoInicio(await leerValidacion(REVISION, p.id, version));
+			paso = pasoInicio(await leerValidacion(REVISION, p.id, version, e.pub?.version ?? null));
 		} catch (err) {
 			console.error('[MUNE Studio]', err);
 			paso = ['Sin comprobar', '', 'No se ha podido comprobar la validación. Ábrela para verla.', 6];

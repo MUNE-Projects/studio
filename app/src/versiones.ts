@@ -6,7 +6,7 @@
 
 import { alEnviar, anotar, esc, fallo, fecha, sb } from './comun';
 import { avisarPromotora } from './avisos';
-import { leerValidacion, listaParaPublicar, motivoNoPublicar, pintarValidacion, type Validacion } from './validacion';
+import { apuntarSinNadaNuevo, leerValidacion, listaParaPublicar, motivoNoPublicar, pintarValidacion, type Validacion } from './validacion';
 
 export const ESCAPARATE: string = import.meta.env.VITE_ESCAPARATE ?? 'https://experience.mune-projects.workers.dev';
 export const REVISION: string = import.meta.env.VITE_REVISION ?? 'https://revision-experience.mune-projects.workers.dev';
@@ -111,7 +111,7 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 	let bloqueo = '';
 	if (pendiente) {
 		try {
-			validacion = await leerValidacion(REVISION, id, rev!.version);
+			validacion = await leerValidacion(REVISION, id, rev!.version, pub?.version ?? null);
 			bloqueo = listaParaPublicar(validacion) ? '' : motivoNoPublicar(validacion);
 		} catch (err) {
 			console.error('[MUNE Studio]', err);
@@ -131,7 +131,7 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 			${volver.length ? '<button class="boton secundario" type="button" data-abrir-volver>Volver a una anterior</button>' : ''}
 		</div>
 		${bloqueo ? `<p class="ayuda">${esc(bloqueo)}</p>` : ''}
-		${pendiente && p.publicacion !== 'manual' ? `<p class="ayuda">Esta promoción se publica al aprobar la promotora: cuando valide todo lo enviado, la ${esc(rev!.version)} se publicará sola y te llegará un email.</p>` : ''}
+		${pendiente && p.publicacion !== 'manual' && !validacion?.igualQue ? `<p class="ayuda">Esta promoción se publica al aprobar la promotora: cuando valide todo lo enviado, la ${esc(rev!.version)} se publicará sola y te llegará un email.</p>` : ''}
 		<p class="aviso" data-progreso role="status" hidden></p>
 		<div data-validacion></div>
 		${volver.length ? `<form class="peticion-form" data-volver hidden novalidate>
@@ -157,6 +157,23 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 		const b = ev.currentTarget as HTMLButtonElement;
 		if (!confirm(`¿Publicar la ${rev!.version} de ${p.nombre}?\n\n${pub ? `Sustituirá a la ${pub.version}, la versión que ven ahora los visitantes.` : 'Será la primera versión publicada.'}`)) return;
 		b.disabled = true;
+		if (validacion?.igualQue) {
+			// sin nada nuevo que validar: se apunta para la promotora sin avisarla y se publica
+			aviso.hidden = false;
+			aviso.classList.remove('error');
+			try {
+				if (!await apuntarSinNadaNuevo(REVISION, id, validacion, (t) => { aviso.textContent = t; })) {
+					aviso.textContent = `Hay algo nuevo que validar desde la ${validacion.igualQue}: se ha enviado a la promotora para que lo valide${p.publicacion === 'manual' ? '. Podrás publicar cuando lo haga' : ' y se publicará cuando lo haga'}.`;
+					setTimeout(() => { if (aviso.isConnected) repintar(); }, 8000);
+					return;
+				}
+			} catch (err) {
+				aviso.classList.add('error');
+				aviso.textContent = fallo(`No se ha podido publicar la ${rev!.version}`, err);
+				b.disabled = false;
+				return;
+			}
+		}
 		const ok = await ejecutar(aviso, id, { accion: 'aprobar', promocion: id, version: rev!.version }, rev!.version, repintar);
 		if (!ok) b.disabled = false;
 	});
