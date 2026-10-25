@@ -32,12 +32,12 @@ interface Ficha {
 	referencia_catastral: string | null; tipo: string | null; num_viviendas: number | null; num_portales: number | null;
 	num_plantas: number | null; fecha_entrega: string | null; fase_proyecto?: string | null;
 }
-interface Promocion extends DatosFiscales, Ficha { id: string; nombre: string; ubicacion: string; estado: string; activa: boolean; promotora_id: string; formalizacion?: Formalizacion; textos_legales?: TextosLegales | null; modulos?: Modulos; publicacion?: string }
+interface Promocion extends DatosFiscales, Ficha { id: string; nombre: string; ubicacion: string; estado: string; activa: boolean; promotora_id: string; formalizacion?: Formalizacion; textos_legales?: TextosLegales | null; modulos?: Modulos; publicacion?: string; solicitar_info?: string | null }
 interface Modulos { experiencia_publica: boolean; acceso_comprador: boolean; personalizacion: boolean }
 interface TextosLegales { planos?: string; renders?: string; experiencia?: string; personalizacion?: string }
 
 const CAMPOS_PROMOCION = `id, nombre, ubicacion, estado, activa, promotora_id, razon_social, cif, domicilio_fiscal,
-	direccion, codigo_postal, municipio, provincia, referencia_catastral, tipo, num_viviendas, num_portales, num_plantas, fecha_entrega, fase_proyecto, formalizacion, textos_legales, modulos, publicacion`;
+	direccion, codigo_postal, municipio, provincia, referencia_catastral, tipo, num_viviendas, num_portales, num_plantas, fecha_entrega, fase_proyecto, formalizacion, textos_legales, modulos, publicacion, solicitar_info`;
 
 // ─── Partes de cada promoción y modo de publicación (022) ─────────────────
 
@@ -703,6 +703,14 @@ export async function pantallaPromocion(destino: HTMLElement, id: string, pestan
 			<h2 class="separado">Formalización de la personalización</h2>
 			<p class="ayuda">A quién envía el comprador su documento firmado y los datos para la transferencia. Normalmente lo rellena la promotora en MUNE Portal; solo lo ven los compradores con código.</p>
 			${formFormalizacion(p.formalizacion)}
+			<h2 class="separado">Solicitar información</h2>
+			<p class="ayuda">El enlace del botón «Solicitar información» de la experiencia pública: la web de la promotora, un formulario o un email. Normalmente lo pone la promotora en MUNE Portal. Se aplica al momento; vacío, el botón no aparece.</p>
+			<form class="peticion-form" data-solicitar-info novalidate>
+				<label>Enlace o email <input name="enlace" type="text" maxlength="500" inputmode="url" placeholder="https://… o ventas@…" value="${esc(p.solicitar_info?.replace(/^mailto:/, '') ?? '')}"></label>
+				<p class="error" role="alert"></p>
+				<div class="acciones"><button class="boton" type="submit">Guardar enlace</button></div>
+				<p class="ok" data-guardado role="status"></p>
+			</form>
 			<h2 class="separado">Textos legales</h2>
 			<p class="ayuda">Los escribe la promotora en MUNE Portal. Se aplican en la próxima versión que prepares: se revisan en la vista previa y se publican con ella.</p>
 			${formTextosLegales(p.textos_legales ?? {})}`;
@@ -712,6 +720,13 @@ export async function pantallaPromocion(destino: HTMLElement, id: string, pestan
 			if (e) throw e;
 			form.querySelector<HTMLElement>('[data-guardado]')!.textContent = '✓ Guardado.';
 			form.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled = false;
+		});
+		const info = caja.querySelector<HTMLFormElement>('[data-solicitar-info]')!;
+		alEnviar(info, async (d) => {
+			const { error: e } = await sb.rpc('guardar_solicitar_info', { p_promocion: id, p_enlace: String(d.get('enlace') ?? '') });
+			if (e) throw e;
+			info.querySelector<HTMLElement>('[data-guardado]')!.textContent = '✓ Enlace guardado. Ya aparece en la experiencia pública.';
+			info.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled = false;
 		});
 		const legales = caja.querySelector<HTMLFormElement>('[data-legales]')!;
 		alEnviar(legales, async (d) => {
