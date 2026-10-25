@@ -66,7 +66,7 @@ function anteriores(version: string): string[] {
  * Lanza el brazo ejecutor y sigue el resultado mirando la versión publicada
  * hasta que cambia. Al terminar, vuelve a pintar el bloque de versiones.
  */
-async function ejecutar(aviso: HTMLElement, id: string, orden: Record<string, string>, esperada: string, repintar: () => void): Promise<boolean> {
+async function ejecutar(aviso: HTMLElement, id: string, orden: Record<string, string>, esperada: string, repintar: () => void, avisar = true): Promise<boolean> {
 	aviso.hidden = false;
 	aviso.classList.remove('error');
 	aviso.textContent = 'Poniéndolo en marcha…';
@@ -84,7 +84,7 @@ async function ejecutar(aviso: HTMLElement, id: string, orden: Record<string, st
 		const v = await leerVersion(ESCAPARATE, id);
 		if (v && v !== 'error' && v.version === esperada) {
 			aviso.textContent = `✓ Hecho: la ${esperada} ya es la versión publicada.`;
-			if (orden.accion === 'aprobar') aviso.textContent += ` ${await avisarPromotora({ tipo: 'publicada', promocion: id, version: esperada })}`;
+			if (orden.accion === 'aprobar' && avisar) aviso.textContent += ` ${await avisarPromotora({ tipo: 'publicada', promocion: id, version: esperada })}`;
 			setTimeout(() => { if (aviso.isConnected) repintar(); }, 10000);
 			return;
 		}
@@ -174,7 +174,8 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 				return;
 			}
 		}
-		const ok = await ejecutar(aviso, id, { accion: 'aprobar', promocion: id, version: rev!.version }, rev!.version, repintar);
+		// sin nada nuevo que validar (una mejora de MUNE), la promotora no recibe el email de publicada
+		const ok = await ejecutar(aviso, id, { accion: 'aprobar', promocion: id, version: rev!.version }, rev!.version, repintar, !validacion?.igualQue);
 		if (!ok) b.disabled = false;
 	});
 
