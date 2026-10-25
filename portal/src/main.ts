@@ -309,7 +309,7 @@ const pendientesMios = (elementos: Elemento[], yo: string) =>
 
 async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', mensaje = ''): Promise<void> {
 	const promo = await sb.from('promociones').select(`id, nombre, ubicacion, estado, promotora_id, razon_social, cif, domicilio_fiscal, direccion, codigo_postal,
-		municipio, provincia, referencia_catastral, tipo, num_viviendas, num_portales, num_plantas, fecha_entrega, fase_proyecto, formalizacion, textos_legales, modulos`).eq('id', id).maybeSingle();
+		municipio, provincia, referencia_catastral, tipo, num_viviendas, num_portales, num_plantas, fecha_entrega, fase_proyecto, formalizacion, textos_legales, modulos, solicitar_info`).eq('id', id).maybeSingle();
 	if (promo.error) throw promo.error;
 	if (!promo.data) {
 		location.hash = '#/';
@@ -411,7 +411,7 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 	}
 
 	if (actual === 'experiencia') {
-		await pintarExperiencia(caja, id, extra, ctx, (m, v) => void pantallaPromocion(id, 'experiencia', v, m).catch(fallo));
+		await pintarExperiencia(caja, { id, nombre: p.nombre, publicaActiva: modulos.experiencia_publica !== false }, extra, ctx, (m, v) => void pantallaPromocion(id, 'experiencia', v, m).catch(fallo));
 	}
 
 	if (actual === 'compradores') {
@@ -436,6 +436,14 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 			<h2 class="separado">Datos fiscales de la promoción</h2>
 			<p class="ayuda">La sociedad que lleva esta promoción. Si es la misma que la de la promotora, pulsa «Copiar los datos de la promotora».</p>
 			${formFiscal(p, false, true)}
+			<h2 class="separado">Solicitar información</h2>
+			<p class="ayuda">La experiencia pública de la promoción enseña un botón «Solicitar información» que lleva a este enlace: tu web, un formulario de contacto o un email. Se aplica al momento. Si lo dejas vacío, el botón no aparece.</p>
+			<form class="peticion-form" data-solicitar-info novalidate>
+				<label>Enlace o email <input name="enlace" type="text" maxlength="500" inputmode="url" placeholder="https://tuweb.es/contacto o ventas@tuweb.es" value="${esc((p as unknown as { solicitar_info: string | null }).solicitar_info?.replace(/^mailto:/, '') ?? '')}"></label>
+				<p class="error" role="alert"></p>
+				<div class="acciones"><button class="boton" type="submit">Guardar enlace</button></div>
+				<p class="ok" data-guardado role="status"></p>
+			</form>
 			<h2 class="separado">Textos legales</h2>
 			<p class="ayuda">Tus textos legales para cada parte de la promoción, de hasta 1000 caracteres cada uno. Se aplican en la próxima versión que prepare el equipo de MUNE: la revisarás en la vista previa antes de publicarla.</p>
 			${formTextosLegales((p as unknown as { textos_legales: TextosLegales | null }).textos_legales)}`;
@@ -443,6 +451,9 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 		conectarFiscal((d) => sb.rpc('guardar_datos_promocion', {
 			p_promocion: p.id, p_razon_social: String(d.get('razon_social')), p_cif: String(d.get('cif')), p_domicilio_fiscal: String(d.get('domicilio_fiscal')),
 		}));
+		conectarFormulario('[data-solicitar-info]', (d) => sb.rpc('guardar_solicitar_info', {
+			p_promocion: p.id, p_enlace: String(d.get('enlace') ?? ''),
+		}), 'Enlace guardado. Ya aparece en la experiencia pública.');
 		conectarFormulario('[data-textos-legales]', (d) => sb.rpc('guardar_textos_legales', {
 			p_promocion: p.id, p_planos: String(d.get('planos') ?? ''), p_renders: String(d.get('renders') ?? ''),
 			p_experiencia: String(d.get('experiencia') ?? ''), p_personalizacion: String(d.get('personalizacion') ?? ''),

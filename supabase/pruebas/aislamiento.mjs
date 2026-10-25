@@ -1469,6 +1469,41 @@ await caso( DEBE_FALLAR, '41. 3D profesional: otra promotora, el robot o alguien
 
 } );
 
+// ─── Experience pública (028_experiencia_publica.sql, paso 6b) ──────────────
+
+const infoPublica = ( promocion = 'prueba-a' ) => anonimo.rpc( 'experiencia_publica', { p_promocion: promocion } );
+const guardarInfo = ( sb, enlace, promocion = 'prueba-a' ) => sb.rpc( 'guardar_solicitar_info', { p_promocion: promocion, p_enlace: enlace } );
+
+await caso( DEBE_FUNCIONAR, 'Experience pública: el equipo con «datos» pone el enlace de «Solicitar información» (o un email) y la web pública lo ve, con si está activa', async () => {
+
+	await exigir( guardarInfo( gestorA, 'ventas@promotora-a.es' ), 'email' );
+	const conEmail = await exigir( infoPublica(), 'leer email' );
+	await exigir( guardarInfo( gestorA, 'https://promotora-a.es/contacto' ), 'enlace' );
+	const conEnlace = await exigir( infoPublica(), 'leer enlace' );
+	const inventada = await exigir( infoPublica( 'no-existe' ), 'inventada' );
+	return conEmail.solicitar_info === 'mailto:ventas@promotora-a.es' && conEnlace.solicitar_info === 'https://promotora-a.es/contacto'
+		&& typeof conEnlace.activa === 'boolean' && inventada.activa === false && inventada.solicitar_info === null;
+
+} );
+
+await caso( DEBE_FALLAR, '42. Experience pública: otra promotora, el robot, alguien sin «datos» o sin sesión cambian el enlace de «Solicitar información», o se guarda un enlace que no es https', async () => {
+
+	const r = {
+		otraPromotora: await guardarInfo( aprobB, 'https://malo.es' ),
+		robot: await guardarInfo( robot, 'https://malo.es' ),
+		sinDatos: await guardarInfo( soloCompradores.sb, 'https://malo.es' ),
+		anonimo: await guardarInfo( anonimo, 'https://malo.es' ),
+		javascript: await guardarInfo( gestorA, 'javascript:alert(1)' ),
+		http: await guardarInfo( gestorA, 'http://promotora-a.es' ),
+		anonimoLeeTabla: await anonimo.from( 'promociones' ).select( 'solicitar_info' ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	if ( ( await exigir( infoPublica(), 'leer' ) ).solicitar_info !== 'https://promotora-a.es/contacto' ) noFallan.push( 'cambiado' );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
 // ─── Resumen ────────────────────────────────────────────────────────────────
 
 const fallidos = resultados.filter( ( r ) => ! r.ok );
