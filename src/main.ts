@@ -717,8 +717,8 @@ async function iniciar() {
 		const t = modelo.tipologia;
 		const v = fichaVivienda;
 		$( '#ficha-vivienda' ).textContent = comprador ? nombreVivienda( v ) : t.nombre;
-		// elegir vivienda (modo profesional) o tipología (público, si hay más de una)
-		$( '.elegir-vivienda' ).hidden = ! ( profesional || ( ! comprador && PROMOCION.viviendas.length > 1 ) );
+		// elegir vivienda: solo en modo profesional (el público ve la tipología de su enlace)
+		$( '.elegir-vivienda' ).hidden = ! profesional;
 		$<HTMLSelectElement>( '#elegir-vivienda' ).value = v.ref;
 		$( '#ficha-datos' ).textContent = `${ t.dormitorios } dormitorios · ${ t.banos } baños · ${ fmtM2( utilInterior() ) } útiles · terraza y porche de ${ fmtM2( v.superficies.exterior ) }`;
 		document.body.classList.toggle( 'comprador', !! comprador );
@@ -915,23 +915,19 @@ async function iniciar() {
 
 	} );
 
-	// ---------------------------------------------------------------- elegir vivienda o tipología
-	// Modo profesional: cualquier vivienda de la promoción. Público: cada
-	// tipología y variante (en una unifamiliar, cada vivienda).
-	{
+	// ---------------------------------------------------------------- modo profesional: elegir vivienda
+	// Solo el equipo de la promotora pasa de una vivienda a otra. El público ve
+	// únicamente la tipología de su enlace (…/?ver=<tipología>, decisión 47).
+	if ( profesional ) {
 
-		if ( profesional ) $( '#salir-comprador' ).textContent = 'Salir del modo profesional';
-		const unifamiliar = PROMOCION.promocion.tipo === 'unifamiliar';
-		$( '.elegir-vivienda label' ).textContent = profesional || unifamiliar ? 'Vivienda' : 'Tipología';
-		const nombreUnidad = ( v: ViviendaPromocion ) => unifamiliar ? `Vivienda ${ v.ref }`
-			: `${ cargarModelo( v.tipologia ).tipologia.nombre }${ v.espejo ? ' · simétrica' : '' }`;
+		$( '#salir-comprador' ).textContent = 'Salir del modo profesional';
 		const lista = $<HTMLSelectElement>( '#elegir-vivienda' );
-		for ( const v of PROMOCION.viviendas ) lista.add( new Option( profesional ? nombreVivienda( v ) : nombreUnidad( v ), v.ref, false, v.ref === fichaVivienda.ref ) );
+		for ( const v of PROMOCION.viviendas ) lista.add( new Option( nombreVivienda( v ), v.ref, false, v.ref === fichaVivienda.ref ) );
 		lista.addEventListener( 'change', () => {
 
 			const v = PROMOCION.viviendas.find( ( x ) => x.ref === lista.value );
 			if ( ! v ) return;
-			if ( profesional ) comprador = v;
+			comprador = v;
 			cargarVivienda( v );
 			actualizarFicha();
 

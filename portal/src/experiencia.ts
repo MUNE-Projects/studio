@@ -27,6 +27,9 @@ export async function pintarExperiencia(caja: HTMLElement, promo: Promocion3D, e
 	const [versiones, publicada] = await Promise.all([versionesConExperiencia(id), versionPublicada(id)]);
 	// La versión enviada a validar que aún no se ha publicado se ve en la vista previa.
 	const enRevision = versiones[0] && (!publicada || numVersion(versiones[0]) > numVersion(publicada)) ? versiones[0] : null;
+	// las tipologías de la versión publicada, cada una con su enlace público
+	const publicas = promo.publicaActiva && publicada && versiones.includes(publicada)
+		? (await leerValidacion(id, publicada, 'experiencia')).filter((u) => u.clave !== 'entorno') : [];
 	const cabecera = `
 		<h2>Experiencia 3D</h2>
 		<p class="ayuda">La experiencia 3D de la promoción, siempre a mano para recorrerla y enseñarla. Se abre en modo profesional: ves todas las viviendas con su personalización y lo que ha elegido cada comprador, y puedes sacar renders y descargar el plano comercial.</p>
@@ -36,7 +39,7 @@ export async function pintarExperiencia(caja: HTMLElement, promo: Promocion3D, e
 			${publicada ? `<a class="enlace" href="${esc(`${ESCAPARATE}/${id}/`)}" target="_blank" rel="noopener noreferrer">Ver como el público</a>` : ''}
 		</div>
 		<p class="error" role="alert" data-error-profesional></p>
-		${htmlCompartir(promo, publicada)}` : '<p class="vacio">Todavía no hay ninguna versión. Cuando el equipo de MUNE prepare la primera, podrás recorrerla aquí y validarla cuando haga falta.</p>'}`;
+		${htmlCompartir(promo, publicada, publicas)}` : '<p class="vacio">Todavía no hay ninguna versión. Cuando el equipo de MUNE prepare la primera, podrás recorrerla aquí y validarla cuando haga falta.</p>'}`;
 	if (!versiones.length) {
 		caja.innerHTML = cabecera;
 		abrirProfesional(caja, id);
@@ -163,30 +166,35 @@ function abrirProfesional(caja: HTMLElement, id: string): void {
 }
 
 /**
- * La Experience pública para compartir (paso 6b): su dirección y el código para
- * insertarla en cualquier web. Solo con la Experience pública activa y una
- * versión publicada.
+ * La Experience pública para compartir (paso 6b, decisión 47): un enlace y un
+ * código de inserción por tipología (y variante; en una unifamiliar, por
+ * vivienda), para ponerlos junto a esa tipología en la web de la promotora.
+ * Quien entra por un enlace solo ve esa tipología. Solo con la Experience
+ * pública activa y una versión publicada.
  */
-function htmlCompartir(promo: Promocion3D, publicada: string | null): string {
+function htmlCompartir(promo: Promocion3D, publicada: string | null, unidades: Elemento[]): string {
 	if (!promo.publicaActiva) {
 		return `<h2 class="separado">Experiencia pública</h2>
-			<p class="ayuda">La experiencia pública de esta promoción está apagada: su dirección no enseña la visita. Siguen entrando los compradores con su código y tu equipo desde aquí. Para encenderla, escribe al equipo de MUNE.</p>`;
+			<p class="ayuda">La experiencia pública de esta promoción está apagada: sus enlaces no enseñan la visita. Siguen entrando los compradores con su código y tu equipo desde aquí. Para encenderla, escribe al equipo de MUNE.</p>`;
 	}
-	if (!publicada) return '';
-	const url = `${ESCAPARATE}/${promo.id}/`;
-	const codigo = `<iframe src="${url}" title="${esc(`Experiencia 3D · ${promo.nombre}`)}" style="width:100%;aspect-ratio:16/10;border:0;border-radius:12px" allow="fullscreen; xr-spatial-tracking" allowfullscreen loading="lazy"></iframe>`;
+	if (!publicada || !unidades.length) return '';
+	const fila = (u: Elemento) => {
+		const url = `${ESCAPARATE}/${promo.id}/?ver=${encodeURIComponent(u.clave)}`;
+		const codigo = `<iframe src="${url}" title="${esc(`${promo.nombre} · ${tituloUnidad(u)}`)}" style="width:100%;aspect-ratio:16/10;border:0;border-radius:12px" allow="fullscreen; xr-spatial-tracking" allowfullscreen loading="lazy"></iframe>`;
+		return `<div class="entregable">
+			<span><strong>${esc(tituloUnidad(u))}</strong><br><span class="promo-lugar">${esc(url)}</span></span>
+			<span class="acciones">
+				<button class="boton secundario pequeno" type="button" data-copiar="${esc(url)}">Copiar enlace</button>
+				<button class="boton secundario pequeno" type="button" data-copiar="${esc(codigo)}">Copiar código de inserción</button>
+			</span>
+		</div>`;
+	};
 	return `<h2 class="separado">Compartir la experiencia pública</h2>
-		<p class="ayuda">La dirección de la visita pública, para enviarla o enlazarla, y el código para insertarla en tu web (o en cualquier otra). Siempre enseña la última versión publicada.</p>
-		<label>Dirección pública <input type="text" readonly value="${esc(url)}" data-compartir-texto></label>
-		<div class="acciones"><button class="boton secundario pequeno" type="button" data-copiar="${esc(url)}">Copiar dirección pública</button></div>
-		<label>Código de inserción <textarea rows="3" readonly data-compartir-texto>${esc(codigo)}</textarea></label>
-		<div class="acciones"><button class="boton secundario pequeno" type="button" data-copiar="${esc(codigo)}">Copiar código de inserción</button></div>`;
+		<p class="ayuda">Cada tipología tiene su propio enlace y su código de inserción, para ponerlo junto a ella en tu web (o en cualquier otra). Quien entra por un enlace solo ve esa tipología. Siempre enseñan la última versión publicada.</p>
+		${unidades.map(fila).join('')}`;
 }
 
 function conectarCompartir(caja: HTMLElement): void {
-	for (const t of caja.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-compartir-texto]')) {
-		t.addEventListener('focus', () => t.select());
-	}
 	for (const b of caja.querySelectorAll<HTMLButtonElement>('button[data-copiar]')) {
 		const texto = b.textContent ?? '';
 		b.addEventListener('click', async () => {
