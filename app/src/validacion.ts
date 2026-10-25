@@ -333,7 +333,7 @@ export async function pintarValidacion(caja: HTMLElement, revision: string, p: {
 			<h3 class="subtitulo">Validación de ${esc(v.version)}</h3>
 			<p class="ok"><strong>Nada nuevo que validar.</strong></p>
 			<p class="ayuda">Los planos comerciales y la Experiencia 3D son iguales que en la ${esc(v.igualQue)}, que la promotora ya aprobó: lo que cambia en la ${esc(v.version)} no lo tiene que validar ella (por ejemplo, una mejora de MUNE). No hace falta enviársela.
-				Revisa la vista previa y, si está bien, publícala tú con «Publicar ${esc(v.version)}». La promotora recibirá el email de versión publicada.</p>`;
+				Revisa la vista previa y, si está bien, publícala tú con «Publicar ${esc(v.version)}». La promotora no recibirá ningún email.</p>`;
 		return;
 	}
 	const [aprobPlanos, aprobExp] = await Promise.all([
