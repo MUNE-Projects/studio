@@ -95,7 +95,7 @@ export function espejarTipologia( t: Tipologia, S: number ): Tipologia {
 		...t,
 		vistas: Object.fromEntries( Object.entries( t.vistas ).map( ( [ k, v ] ) => [ k, vista( v, S ) ] ) ),
 		guiadas: [ ...t.guiadas ],
-		piscina: { ...t.piscina, rect: rect( t.piscina.rect, S ) },
+		piscina: t.piscina && { ...t.piscina, rect: rect( t.piscina.rect, S ) },
 	};
 
 }
