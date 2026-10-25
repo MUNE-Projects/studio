@@ -314,7 +314,8 @@ body[data-modo="plano"] .vistas [data-vista], body[data-modo="plano"] .vistas .g
 body:not(.comprador) .solo-comprador { display: none !important; }
 body.comprador .solo-publico { display: none !important; }
 /* modo profesional (equipo de la promotora desde MUNE Portal) */
-body:not(.profesional) .solo-profesional { display: none !important; }
+/* tipología (público) o vivienda (modo profesional) */
+.elegir-vivienda[hidden], .solicitar-info[hidden] { display: none; }
 .elegir-vivienda { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; font-size: 12.5px; color: var(--tinta-2); }
 .elegir-vivienda select { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--linea); border-radius: 8px; background: #fff; font: inherit; color: var(--tinta); }
 
@@ -598,3 +599,14 @@ body.perfil-promotora:not([data-modo="plano"]) #foto, body.en-studio:not([data-m
 .menu-vistas button { padding: 8px 12px; border: 0; border-radius: 9px; background: transparent; text-align: left; font: inherit; font-size: 13px; color: var(--tinta-2); cursor: pointer; white-space: nowrap; }
 .menu-vistas button:hover, .menu-vistas button:focus-visible { background: rgb(28 28 26 / 0.05); color: var(--tinta); }
 .menu-vistas button[aria-pressed="true"] { background: rgb(28 28 26 / 0.08); color: var(--tinta); font-weight: 500; }
+
+/* ------------------------------------------------ Experience pública (paso 6b) */
+.solicitar-info { margin: 10px 0 0; }
+.boton-info { display: inline-block; padding: 7px 12px; border: 0; border-radius: 9px; background: var(--tinta); color: var(--papel); font: inherit; font-size: 12.5px; text-decoration: none; cursor: pointer; }
+.boton-info:hover { opacity: 0.88; }
+/* apagada: solo el aviso (y la entrada de compradores, si está activa) */
+.no-disponible { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px 16px; background: var(--papel, #f5f3ef); text-align: center; }
+.no-disponible[hidden] { display: none; }
+.no-disponible > div { max-width: 420px; }
+.no-disponible h1 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
+.no-disponible p { margin: 0 0 16px; color: var(--tinta-2); font-size: 14px; }

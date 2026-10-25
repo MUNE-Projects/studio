@@ -19,9 +19,12 @@
 		<h1 id="ficha-vivienda">Vivienda</h1>
 		<p id="ficha-datos" class="datos"></p>
 		<p id="total-ficha" class="total-ficha" hidden></p>
-		<p class="elegir-vivienda solo-profesional">
+		<p class="elegir-vivienda" hidden>
 			<label for="elegir-vivienda">Vivienda</label>
 			<select id="elegir-vivienda"></select>
+		</p>
+		<p class="solicitar-info solo-publico" hidden>
+			<a id="solicitar-info" class="boton-info" target="_blank" rel="noopener noreferrer">Solicitar información</a>
 		</p>
 		<p class="acceso-comprador solo-publico">
 			<button type="button" id="abrir-acceso" class="enlace">¿Ya eres comprador? Entra para personalizar tu vivienda.</button>
@@ -30,6 +33,15 @@
 			<button type="button" id="salir-comprador" class="enlace discreto">Salir del acceso de comprador</button>
 		</p>
 	</header>
+
+	<div id="no-disponible" class="no-disponible" role="status" hidden>
+		<div>
+			<p id="no-disponible-promocion" class="antetitulo"></p>
+			<h1>Esta experiencia no está disponible ahora</h1>
+			<p>Si ya eres comprador, entra con tu código para ver y personalizar tu vivienda.</p>
+			<button type="button" id="no-disponible-acceso" class="boton-info">Entrar con mi código</button>
+		</div>
+	</div>
 
 	<div class="dock">
 		<div class="vistas" role="toolbar" aria-label="Vistas de la vivienda">

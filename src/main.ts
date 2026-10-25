@@ -30,7 +30,7 @@ import { aplicarAlternativa, fmtM2 } from './configurador/alternativas';
 import { Configurador, fmtEuros, fmtPrecio, type Seleccion } from './configurador/configurador';
 import { Panel } from './configurador/panel';
 import { fmtFecha, packsDeVivienda } from './configurador/packs';
-import { CATALOGO, PROMOCION, accesoProfesional, cargarModelo, catalogoPara, extraerCodigo, guardarSeleccion as guardarEnSupabase, paseInicial, resolverAcceso, resolverProfesional, salirProfesional, viviendaDeUnidad, viviendaPublica, type Modelo } from './promocion/promocion';
+import { CATALOGO, PROMOCION, accesoProfesional, cargarModelo, catalogoPara, estadoPublico, extraerCodigo, guardarSeleccion as guardarEnSupabase, paseInicial, resolverAcceso, resolverProfesional, salirProfesional, viviendaDeUnidad, viviendaPublica, type Modelo } from './promocion/promocion';
 import { aplicarMarca } from './promocion/marca';
 import { generarPDF } from './documento/pdf';
 import { planoPDF, planoPNG, type DatosPlano } from './documento/plano';
@@ -132,6 +132,8 @@ async function iniciar() {
 	// Modo profesional (paso 6a): el equipo de la promotora llega desde MUNE Portal
 	// con un pase (#p-…) y ve todas las viviendas, con su personalización y lo
 	// que ha elegido cada comprador. No usa códigos de comprador.
+	// Experience pública (paso 6b): ¿activa?, ¿con acceso de compradores?, «Solicitar información»
+	const estadoPublicoP = __STUDIO__ ? Promise.resolve( null ) : estadoPublico();
 	const pase = paseInicial();
 	const accesoProfesionalInicial = pase ? await resolverProfesional( pase ) : null;
 	const profesional = typeof accesoProfesionalInicial === 'object' ? accesoProfesionalInicial : null;
@@ -715,6 +717,9 @@ async function iniciar() {
 		const t = modelo.tipologia;
 		const v = fichaVivienda;
 		$( '#ficha-vivienda' ).textContent = comprador ? nombreVivienda( v ) : t.nombre;
+		// elegir vivienda (modo profesional) o tipología (público, si hay más de una)
+		$( '.elegir-vivienda' ).hidden = ! ( profesional || ( ! comprador && PROMOCION.viviendas.length > 1 ) );
+		$<HTMLSelectElement>( '#elegir-vivienda' ).value = v.ref;
 		$( '#ficha-datos' ).textContent = `${ t.dormitorios } dormitorios · ${ t.banos } baños · ${ fmtM2( utilInterior() ) } útiles · terraza y porche de ${ fmtM2( v.superficies.exterior ) }`;
 		document.body.classList.toggle( 'comprador', !! comprador );
 
@@ -888,6 +893,7 @@ async function iniciar() {
 		comprador = v;
 		guardar( CLAVE_ACCESO, extraerCodigo( campoAcceso.value ) );
 		dialogoAcceso.close();
+		$( '#no-disponible' ).hidden = true;
 		cargarVivienda( v );
 		irModo( 'personalizar' );
 
@@ -909,17 +915,23 @@ async function iniciar() {
 
 	} );
 
-	// ---------------------------------------------------------------- modo profesional: elegir vivienda
-	if ( profesional ) {
+	// ---------------------------------------------------------------- elegir vivienda o tipología
+	// Modo profesional: cualquier vivienda de la promoción. Público: cada
+	// tipología y variante (en una unifamiliar, cada vivienda).
+	{
 
-		$( '#salir-comprador' ).textContent = 'Salir del modo profesional';
+		if ( profesional ) $( '#salir-comprador' ).textContent = 'Salir del modo profesional';
+		const unifamiliar = PROMOCION.promocion.tipo === 'unifamiliar';
+		$( '.elegir-vivienda label' ).textContent = profesional || unifamiliar ? 'Vivienda' : 'Tipología';
+		const nombreUnidad = ( v: ViviendaPromocion ) => unifamiliar ? `Vivienda ${ v.ref }`
+			: `${ cargarModelo( v.tipologia ).tipologia.nombre }${ v.espejo ? ' · simétrica' : '' }`;
 		const lista = $<HTMLSelectElement>( '#elegir-vivienda' );
-		for ( const v of PROMOCION.viviendas ) lista.add( new Option( nombreVivienda( v ), v.ref, false, v.ref === comprador?.ref ) );
+		for ( const v of PROMOCION.viviendas ) lista.add( new Option( profesional ? nombreVivienda( v ) : nombreUnidad( v ), v.ref, false, v.ref === fichaVivienda.ref ) );
 		lista.addEventListener( 'change', () => {
 
 			const v = PROMOCION.viviendas.find( ( x ) => x.ref === lista.value );
 			if ( ! v ) return;
-			comprador = v;
+			if ( profesional ) comprador = v;
 			cargarVivienda( v );
 			actualizarFicha();
 
@@ -1555,6 +1567,30 @@ async function iniciar() {
 		}
 
 	} )();
+	// Experience pública: «Solicitar información» y, si está apagada, solo compradores y equipo
+	void estadoPublicoP.then( ( e ) => {
+
+		if ( ! e ) return;
+		if ( e.solicitarInfo ) {
+
+			$<HTMLAnchorElement>( '#solicitar-info' ).href = e.solicitarInfo;
+			$( '.solicitar-info' ).hidden = false;
+
+		}
+		if ( ! e.accesoComprador ) $( '.acceso-comprador.solo-publico' ).hidden = true;
+		if ( e.activa || comprador ) return;
+		if ( location.hostname.startsWith( 'revision-' ) ) {
+
+			avisar( 'Vista previa: la Experience pública de esta promoción está apagada. En la web publicada solo entran los compradores con su código y el equipo de la promotora desde MUNE Portal.' );
+			return;
+
+		}
+		$( '#no-disponible-promocion' ).textContent = PROMOCION.promocion.nombre;
+		for ( const x of $( '#no-disponible' ).querySelectorAll<HTMLElement>( 'p:not(.antetitulo), button' ) ) x.hidden = ! e.accesoComprador;
+		$( '#no-disponible' ).hidden = false;
+
+	} );
+	$( '#no-disponible-acceso' ).addEventListener( 'click', () => abrirAcceso() );
 	if ( profesional ) avisar( profesional.puedePersonalizar
 		? 'Modo profesional: elige una vivienda arriba para ver su personalización y lo elegido. Puedes elegir en nombre del comprador, sacar renders y descargar el plano comercial.'
 		: 'Modo profesional: elige una vivienda arriba para ver su personalización y lo elegido. Puedes sacar renders y descargar el plano comercial.' );

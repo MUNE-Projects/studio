@@ -192,6 +192,35 @@ function aplicarDatos( d: DatosComprador ) {
 /** Código válido del comprador que ha entrado (para guardar su selección). */
 let codigoComprador = '';
 
+// ---------------------------------------------------------------- Experience pública (paso 6b)
+// Si está activa (módulo de MUNE Studio) y el enlace de «Solicitar información»
+// (028_experiencia_publica.sql). No hace esperar a la visita: se aplica cuando
+// llega la respuesta; si Supabase no responde, null y la visita sigue igual.
+
+export interface EstadoPublico { activa: boolean; accesoComprador: boolean; solicitarInfo: string | null }
+
+export async function estadoPublico(): Promise<EstadoPublico | null> {
+
+	try {
+
+		const r = await fetch( `${ SUPABASE_URL }/rest/v1/rpc/experiencia_publica`, {
+			method: 'POST',
+			headers: { apikey: SUPABASE_CLAVE, 'Content-Type': 'application/json' },
+			body: JSON.stringify( { p_promocion: PROMOCION.id } ),
+		} );
+		if ( ! r.ok ) return null;
+		const d = await r.json() as { activa: boolean; acceso_comprador: boolean; solicitar_info: string | null };
+		const enlace = d.solicitar_info && /^(https:\/\/|mailto:)/.test( d.solicitar_info ) ? d.solicitar_info : null;
+		return { activa: d.activa, accesoComprador: d.acceso_comprador, solicitarInfo: enlace };
+
+	} catch {
+
+		return null;
+
+	}
+
+}
+
 // ---------------------------------------------------------------- modo profesional (paso 6a)
 // El equipo de la promotora abre esta web desde MUNE Portal con un pase
 // (…/#p-<pase>, 027_profesional.sql): ve todas las viviendas con su
