@@ -11,6 +11,11 @@
 // no cambia entre versiones (misma huella), conserva su aprobación. Solo se
 // publica con las dos partes validadas. Las versiones preparadas antes de que
 // existiera una parte (sin su .json en la vista previa) no la necesitan.
+//
+// Si la vista previa no trae nada nuevo que validar (todo igual que en la
+// versión publicada, ya aprobada; por ejemplo, una mejora de MUNE), no se envía
+// a la promotora: la administradora la publica directamente y, al publicar, el
+// Panel apunta los elementos sin avisar (heredan la aprobación).
 
 import { avisarPromotora } from './avisos';
 import { anotar, esc, fallo, fecha, sb, traducir } from './comun';
@@ -50,6 +55,8 @@ export interface Validacion {
 	version: string;
 	planos: Parte; experiencia: Parte;
 	manifiestoPlanos: Manifiesto | null; manifiestoExperiencia: ManifiestoExperiencia | null;
+	/** Versión ya aprobada igual que esta vista previa (no hay nada nuevo que validar), o null. */
+	igualQue: string | null;
 }
 
 const NOMBRE: Record<Tipo, string> = { planos: 'Planos comerciales', experiencia: 'Experiencia 3D' };
@@ -82,7 +89,29 @@ function lista(els: Elemento[]): Lista {
 	return 'listos';
 }
 
-export async function leerValidacion(revision: string, id: string, version: string): Promise<Validacion> {
+/**
+ * true si todavía no se ha enviado nada y todos los planos y la Experiencia 3D
+ * de la vista previa tienen la misma huella de datos que un elemento aprobado
+ * de `aprobada`.
+ */
+async function igualQueAprobada(id: string, v: Validacion, aprobada: string): Promise<boolean> {
+	if (!tieneValidacion(v) || lasPartes(v).some((x) => x.lista !== 'sin_enviar')) return false;
+	const nuevas = [...(v.manifiestoPlanos?.planos.map((x) => x.huellaDatos) ?? []), ...(v.manifiestoExperiencia?.unidades.map((u) => u.huella) ?? [])];
+	if (!nuevas.length) return false;
+	const [filas, planos, experiencia] = await Promise.all([
+		sb.from('entregables').select('id, huella_datos').eq('promocion_id', id).eq('version', aprobada),
+		elementos(id, aprobada, 'planos'),
+		elementos(id, aprobada, 'experiencia'),
+	]);
+	if (filas.error) throw filas.error;
+	const aprobados = new Set([...planos, ...experiencia].filter((e) => e.estado === 'aprobado').map((e) => e.id));
+	const huellas = new Set(((filas.data ?? []) as { id: number; huella_datos: string | null }[])
+		.filter((f) => aprobados.has(f.id) && f.huella_datos).map((f) => f.huella_datos));
+	return nuevas.every((h) => huellas.has(h));
+}
+
+/** Validación de la versión de la vista previa. Con `aprobada` (la publicada), mira además si trae algo nuevo. */
+export async function leerValidacion(revision: string, id: string, version: string, aprobada: string | null = null): Promise<Validacion> {
 	const [manifiestoPlanos, manifiestoExperiencia, planos, experiencia] = await Promise.all([
 		leerManifiesto(revision, id, version),
 		leerExperiencia(revision, id, version),
@@ -90,15 +119,17 @@ export async function leerValidacion(revision: string, id: string, version: stri
 		elementos(id, version, 'experiencia'),
 	]);
 	const parte = (tipo: Tipo, els: Elemento[], hay: boolean): Parte => ({ tipo, aplica: hay || els.length > 0, elementos: els, lista: lista(els) });
-	return {
-		version, manifiestoPlanos, manifiestoExperiencia,
+	const v: Validacion = {
+		version, manifiestoPlanos, manifiestoExperiencia, igualQue: null,
 		planos: parte('planos', planos, !!manifiestoPlanos),
 		experiencia: parte('experiencia', experiencia, !!manifiestoExperiencia),
 	};
+	if (aprobada && await igualQueAprobada(id, v, aprobada)) v.igualQue = aprobada;
+	return v;
 }
 
 const lasPartes = (v: Validacion) => [v.planos, v.experiencia].filter((p) => p.aplica);
-export const listaParaPublicar = (v: Validacion) => lasPartes(v).every((p) => p.lista === 'listos');
+export const listaParaPublicar = (v: Validacion) => !!v.igualQue || lasPartes(v).every((p) => p.lista === 'listos');
 export const tieneValidacion = (v: Validacion) => lasPartes(v).length > 0;
 const porEnviar = (v: Validacion) => ({
 	planos: !!v.manifiestoPlanos && !v.planos.elementos.length,
@@ -123,6 +154,7 @@ export function motivoNoPublicar(v: Validacion): string {
 /** Estado de una versión pendiente para la bandeja de Inicio: [etiqueta, clase, explicación, prioridad]. */
 export function pasoInicio(v: Validacion): [string, string, string, number] {
 	if (!tieneValidacion(v)) return ['Revisar y publicar', 'pendiente', 'Revisa la vista previa y publícala si está bien.', 3];
+	if (v.igualQue) return ['Lista para publicar', 'al-dia', `Nada nuevo que validar: es igual que la ${v.igualQue}, ya aprobada. Revisa la vista previa y publícala tú.`, 0];
 	if (listaParaPublicar(v)) return ['Lista para publicar', 'al-dia', 'La promotora lo ha validado todo.', 0];
 	const partes = lasPartes(v);
 	if (partes.some((p) => p.lista === 'cambios')) return ['Cambios pedidos', 'rechazado', 'La promotora ha pedido cambios. Mira cuáles en la promoción.', 1];
@@ -261,6 +293,30 @@ async function enviarExperiencia(id: string, m: ManifiestoExperiencia): Promise<
 	await anotar('envía la Experiencia 3D a la promotora', { promocion: id, version: m.version, unidades: filas.length });
 }
 
+/**
+ * Al publicar una versión sin nada nuevo que validar: apunta sus planos y su
+ * Experiencia 3D para la promotora sin avisarla (heredan la aprobación). Si
+ * aun así queda algo por validar (por ejemplo, la promotora ha añadido
+ * aprobadores), se le avisa como en un envío normal y devuelve false.
+ */
+export async function apuntarSinNadaNuevo(revision: string, id: string, v: Validacion, progreso: (t: string) => void): Promise<boolean> {
+	const enviar = porEnviar(v);
+	if (enviar.planos) await enviarPlanos(revision, id, v.manifiestoPlanos!, progreso);
+	if (enviar.experiencia) {
+		progreso('Guardando la Experiencia 3D…');
+		await enviarExperiencia(id, v.manifiestoExperiencia!);
+	}
+	const ahora = await leerValidacion(revision, id, v.version);
+	if (listaParaPublicar(ahora)) {
+		await anotar('publica sin nada nuevo que validar', { promocion: id, version: v.version, igual_que: v.igualQue });
+		return true;
+	}
+	for (const tipo of (['planos', 'experiencia'] as const).filter((t) => enviar[t])) {
+		await avisarPromotora({ tipo, promocion: id, version: v.version });
+	}
+	return false;
+}
+
 /** Frase que se muestra una vez, al repintar tras enviar a validar. */
 let trasEnviar = '';
 
@@ -268,14 +324,18 @@ let trasEnviar = '';
 /**
  * Bloque «Validación de vN» dentro de Versiones: enviar a validar, cómo va cada
  * parte, quién valida y el detalle de cada elemento por persona.
- *
- * Si al enviar ya está todo aprobado (nada ha cambiado desde una versión
- * anterior), la promotora no tiene nada que aprobar: no se le avisa y, si la
- * promoción se publica al aprobar la promotora, se llama a `publicarSola`.
  */
-export async function pintarValidacion(caja: HTMLElement, revision: string, p: { id: string; promotora_id: string }, v: Validacion, alCambiar: () => void, publicarSola: (() => Promise<void>) | null = null): Promise<void> {
+export async function pintarValidacion(caja: HTMLElement, revision: string, p: { id: string; promotora_id: string }, v: Validacion, alCambiar: () => void): Promise<void> {
 	const id = p.id;
 	if (!tieneValidacion(v)) { caja.innerHTML = ''; return; }
+	if (v.igualQue) {
+		caja.innerHTML = `
+			<h3 class="subtitulo">Validación de ${esc(v.version)}</h3>
+			<p class="ok"><strong>Nada nuevo que validar.</strong></p>
+			<p class="ayuda">Los planos comerciales y la Experiencia 3D son iguales que en la ${esc(v.igualQue)}, que la promotora ya aprobó: lo que cambia en la ${esc(v.version)} no lo tiene que validar ella (por ejemplo, una mejora de MUNE). No hace falta enviársela.
+				Revisa la vista previa y, si está bien, publícala tú con «Publicar ${esc(v.version)}». La promotora recibirá el email de versión publicada.</p>`;
+		return;
+	}
 	const [aprobPlanos, aprobExp] = await Promise.all([
 		v.planos.aplica ? aprobadoresDe(id, 'planos').catch(() => []) : Promise.resolve([]),
 		v.experiencia.aplica ? aprobadoresDe(id, 'experiencia').catch(() => []) : Promise.resolve([]),
@@ -345,21 +405,6 @@ export async function pintarValidacion(caja: HTMLElement, revision: string, p: {
 			}
 		} catch (e) {
 			fallado = e;
-		}
-		// sin cambios desde una versión anterior: todo conserva su aprobación
-		const ahora = fallado ? null : await leerValidacion(revision, id, v.version).catch(() => null);
-		if (ahora && listaParaPublicar(ahora)) {
-			const de = [...new Set(lasPartes(ahora).flatMap((x) => x.elementos.map((e) => e.heredada_de)).filter(Boolean))];
-			const texto = `✓ Enviado. No hay nada nuevo que aprobar: no ha cambiado desde ${de.length === 1 ? `la ${de[0]}` : 'versiones anteriores'} y conserva su aprobación, así que no se avisa a la promotora.`;
-			await anotar('envía a validar sin nada nuevo que aprobar', { promocion: id, version: v.version });
-			if (publicarSola) {
-				aviso.textContent = `${texto} Se publica ya, como si la promotora acabara de aprobarla.`;
-				await publicarSola();
-				return;
-			}
-			trasEnviar = `${texto} Ya puedes publicar la ${v.version}.`;
-			alCambiar();
-			return;
 		}
 		const respuestas: [string, string][] = [];
 		for (const tipo of hecho) {
