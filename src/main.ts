@@ -1704,7 +1704,7 @@ async function iniciar() {
 	if ( __STUDIO__ && pideProfesional ) void pedirAcceso( codigoHash() );
 	if ( __STUDIO__ ) addEventListener( 'hashchange', () => /^#(studio|promotora)/.test( location.hash ) && void pedirAcceso( codigoHash() ) );
 
-	Object.assign( window, { __vivienda: { nav, irModo, irEstado: ( n: number ) => irModo( n === 1 ? 'plano' : 'vivienda' ), cam, estados: est, renderer, camara, ctrl, pausar: ( p: boolean ) => ( pausado = p ), diagnostico: () => diagnostico } } );
+	Object.assign( window, { __vivienda: { nav, irModo, irVista, irEstado: ( n: number ) => irModo( n === 1 ? 'plano' : 'vivienda' ), cam, estados: est, renderer, camara, ctrl, pausar: ( p: boolean ) => ( pausado = p ), diagnostico: () => diagnostico } } );
 
 }
 

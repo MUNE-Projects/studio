@@ -6,6 +6,7 @@ import * as THREE from 'three/webgpu';
 import type { Estancia, Vivienda } from '../modelo/tipos';
 import { puntoEnPoligono, puntoEnRect, unir } from '../util/geo';
 import * as M from './materiales';
+import { esCarpinteriaExterior } from '../modelo/huecos';
 
 const ALTO_RODAPIE = 0.07, GRUESO_RODAPIE = 0.012;
 /** Estancias sin rodapié (alicatadas o exteriores). */
@@ -144,7 +145,7 @@ export function construirMecanismos( v: Vivienda ) {
 	matMecanismo ??= M.lacado( '#f6f5f2', 0.35 );
 	matTecla ??= M.liso( '#e4e2dd', 0.4 );
 	const placas: THREE.BufferGeometry[] = [], teclas: THREE.BufferGeometry[] = [];
-	for ( const h of v.huecos.filter( ( x ) => x.tipo !== 'balconera' ) ) {
+	for ( const h of v.huecos.filter( ( x ) => ! esCarpinteriaExterior( x ) && x.tipo !== 'paso' ) ) {
 
 		const [ x0, y0, x1, y1 ] = v.muros.find( ( m ) => m.id === h.muro )!.rect;
 		const enX = h.eje === 'x';

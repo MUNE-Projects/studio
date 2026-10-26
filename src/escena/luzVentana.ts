@@ -7,6 +7,7 @@
 import * as THREE from 'three/webgpu';
 import type { Vivienda } from '../modelo/tipos';
 import { puntoEnPoligono } from '../util/geo';
+import { esCarpinteriaExterior } from '../modelo/huecos';
 
 export const INTENSIDAD_VENTANA = 20;
 
@@ -15,7 +16,7 @@ export function construirLucesVentana( v: Vivienda, calidadSombra = 1024 ) {
 	const g = new THREE.Group();
 	g.name = 'luces-ventana';
 	const interiores = v.estancias.filter( ( e ) => e.uso !== 'exterior' );
-	for ( const h of v.huecos.filter( ( x ) => x.tipo === 'balconera' ) ) {
+	for ( const h of v.huecos.filter( esCarpinteriaExterior ) ) {
 
 		const [ x0, y0, x1, y1 ] = v.muros.find( ( m ) => m.id === h.muro )!.rect;
 		const u = ( h.desde + h.hasta ) / 2;

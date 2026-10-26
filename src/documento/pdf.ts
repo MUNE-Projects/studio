@@ -263,7 +263,7 @@ export async function generarPDF( d: DatosDocumento ): Promise<Blob> {
 		doc.setPage( i );
 		linea( M, A4.alto - 20, A4.ancho - M, A4.alto - 20 );
 		texto( marca.legal.pie, M, A4.alto - 15.5, 6.8, GRIS_CLARO );
-		texto( `${ marca.contacto.web } · ${ marca.contacto.telefono } · ${ marca.contacto.email }`, M, A4.alto - 12, 6.8, GRIS_CLARO );
+		texto( [ marca.contacto?.web, marca.contacto?.telefono, marca.contacto?.email ].filter( Boolean ).join( ' · ' ), M, A4.alto - 12, 6.8, GRIS_CLARO );
 		texto( `Generado el ${ fecha } a las ${ hora } · Página ${ i } de ${ paginas }`, A4.ancho - M, A4.alto - 12, 6.8, GRIS_CLARO, 'normal', { align: 'right' } );
 
 	}

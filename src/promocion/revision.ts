@@ -12,6 +12,11 @@ import { activo, huella } from '../biblioteca/biblioteca';
 import type { Configuracion, Rect, Tipologia, Alternativa, Vivienda } from '../modelo/tipos';
 import { areaPoligono, puntoEnPoligono, puntoEnRect } from '../util/geo';
 import { revisarVistas } from '../escena/vistas';
+import { alturasHueco } from '../modelo/huecos';
+
+const TIPOS_HUECO = [ 'entrada', 'puerta', 'paso', 'balconera', 'ventana' ];
+const TIPOS_PUERTA = [ 'abatible', 'doble', 'corredera', 'corredera-empotrada' ];
+const APERTURAS = [ 'corredera', 'oscilobatiente', 'abatible', 'fija', 'proyectante' ];
 
 export type Nivel = 'error' | 'aviso' | 'ok';
 export interface Hallazgo { nivel: Nivel; ambito: string; mensaje: string }
@@ -122,6 +127,14 @@ export function revisarPromocion( v: Vivienda, t: Tipologia, alternativas: Alter
 
 		const [ a, b ] = x.eje === 'x' ? [ m.rect[ 0 ], m.rect[ 2 ] ] : [ m.rect[ 1 ], m.rect[ 3 ] ];
 		if ( x.desde < a - 0.01 || x.hasta > b + 0.01 ) add( 'error', 'Huecos', `«${ x.id }» se sale del muro «${ x.muro }».` );
+		// lo que la visita todavía no sabe representar se dice, no se aproxima
+		if ( ! TIPOS_HUECO.includes( x.tipo ) ) add( 'error', 'Huecos', `«${ x.id }» es de tipo «${ x.tipo }», que la visita aún no sabe representar.` );
+		if ( x.puerta && ! TIPOS_PUERTA.includes( x.puerta ) ) add( 'error', 'Huecos', `«${ x.id }»: puerta «${ x.puerta }» que la visita aún no sabe representar.` );
+		if ( x.apertura && ! APERTURAS.includes( x.apertura ) ) add( 'error', 'Huecos', `«${ x.id }»: apertura «${ x.apertura }» que la visita aún no sabe representar.` );
+		const [ z0, z1 ] = alturasHueco( x, v );
+		if ( z0 >= z1 || z1 > v.alturas.libre.valor + 0.01 ) add( 'error', 'Huecos', `«${ x.id }»: alturas imposibles (de ${ z0 } a ${ z1 } m, con ${ v.alturas.libre.valor } m de altura libre).` );
+		if ( x.tipo === 'ventana' && x.antepecho === undefined && ! v.alturas.antepecho ) add( 'aviso', 'Huecos', `«${ x.id }»: ventana sin altura de alféizar; se supone 0,9 m. Compruébala en alzados o secciones.` );
+		if ( ( x.hojas ?? 1 ) > 4 ) add( 'aviso', 'Huecos', `«${ x.id }»: ${ x.hojas } hojas; se dibujan como máximo 4.` );
 
 	}
 

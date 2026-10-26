@@ -14,6 +14,7 @@ import type { Equipamiento, Estancia, Promocion, Punto, Tipologia, Vivienda, Viv
 import { colocarRotulo, type Formato, type Medida } from '../escena/rotulos';
 import { svgPNG } from '../promocion/marca';
 import { CATALOGO } from '../promocion/promocion';
+import { barridoHueco, simbolosHueco, type Estilo } from '../modelo/simbolos';
 
 type P2 = [ number, number ];
 
@@ -363,46 +364,27 @@ function componer( D: Dibujo, d: DatosPlano, logos: { promotora: { url: string; 
 	// muros (poché) sin huecos
 	for ( const [ x0, y0, x1, y1 ] of piezasMuro( v ) ) D.pol( [ T( x0, y0 ), T( x1, y0 ), T( x1, y1 ), T( x0, y1 ) ], COLORES.muro );
 
-	// huecos: puertas con su giro y carpinterías exteriores
+	// huecos: puertas con su giro y carpinterías exteriores (símbolos comunes con la visita 3D)
+	const grosor: Record<Estilo, [ string, number ]> = {
+		jamba: [ COLORES.tinta, 0.18 ], carpinteria: [ COLORES.tinta, 0.18 ], vidrio: [ '#7fa6b5', 0.3 ], exterior: [ COLORES.gris, 0.12 ],
+		hoja: [ COLORES.tinta, 0.35 ], giro: [ COLORES.gris, 0.13 ], fino: [ COLORES.gris, 0.1 ],
+	};
 	for ( const h of v.huecos ) {
 
-		const [ x0, y0, x1, y1 ] = v.muros.find( ( m ) => m.id === h.muro )!.rect;
-		const enX = h.eje === 'x';
-		const P = ( u: number, w: number ) => enX ? T( u, w ) : T( w, u );
-		const w0 = enX ? y0 : x0, w1 = enX ? y1 : x1;
-		if ( h.tipo === 'balconera' ) {
+		for ( const t of simbolosHueco( h, v ) ) {
 
-			// jambas, doble carpintería y vidrio
-			D.lin( [ P( h.desde, w0 ), P( h.desde, w1 ) ], COLORES.tinta, 0.18 );
-			D.lin( [ P( h.hasta, w0 ), P( h.hasta, w1 ) ], COLORES.tinta, 0.18 );
-			const wf = w1 - 0.09;
-			for ( const dw of [ - 0.035, 0.035 ] ) D.lin( [ P( h.desde, wf + dw ), P( h.hasta, wf + dw ) ], COLORES.tinta, 0.18 );
-			D.lin( [ P( h.desde, wf ), P( h.hasta, wf ) ], '#7fa6b5', 0.3 );
-			D.lin( [ P( h.desde, w0 ), P( h.hasta, w0 ) ], COLORES.gris, 0.12 );
-			continue;
+			const [ c, g ] = grosor[ t.estilo ];
+			D.lin( t.puntos.map( ( [ x, y ] ) => T( x, y ) ), c, t.estilo === 'hoja' && h.tipo === 'entrada' ? 0.5 : g );
 
 		}
-
-		// hoja abierta a 90° y arco de giro
-		const sg = h.bisagra === 'inicio' ? 1 : - 1;
-		const pos = h.abre === 'n' || h.abre === 'e';
-		const r = h.hasta - h.desde - 0.04;
-		const u0 = h.bisagra === 'inicio' ? h.desde + 0.02 : h.hasta - 0.02;
-		const wb = pos ? w1 : w0, dw = pos ? 1 : - 1;
-		const gruesa = h.tipo === 'entrada' ? 0.5 : 0.35;
-		D.lin( [ P( u0, wb ), P( u0, wb + dw * r ) ], COLORES.tinta, gruesa );
-		const arco: P2[] = [];
-		for ( let i = 0; i <= 24; i ++ ) {
-
-			const a = ( i / 24 ) * Math.PI / 2;
-			arco.push( P( u0 + sg * r * Math.cos( a ), wb + dw * r * Math.sin( a ) ) );
-
-		}
-
-		D.lin( arco, COLORES.gris, 0.13 );
 		if ( h.tipo === 'entrada' ) {
 
-			// flecha de acceso
+			// flecha de acceso, desde fuera
+			const [ x0, y0, x1, y1 ] = v.muros.find( ( m ) => m.id === h.muro )!.rect;
+			const enX = h.eje === 'x';
+			const P = ( u: number, w: number ) => enX ? T( u, w ) : T( w, u );
+			const w0 = enX ? y0 : x0, w1 = enX ? y1 : x1;
+			const pos = h.abre === 'n' || h.abre === 'e';
 			const um = ( h.desde + h.hasta ) / 2, wa = pos ? w0 - 0.5 : w1 + 0.5;
 			D.lin( [ P( um, wa ), P( um, pos ? w0 - 0.1 : w1 + 0.1 ) ], acento, 0.35 );
 			D.pol( [ P( um - 0.09, pos ? w0 - 0.22 : w1 + 0.22 ), P( um + 0.09, pos ? w0 - 0.22 : w1 + 0.22 ), P( um, pos ? w0 - 0.08 : w1 + 0.08 ) ], acento );
@@ -436,14 +418,7 @@ function componer( D: Dibujo, d: DatosPlano, logos: { promotora: { url: string; 
 
 	};
 	// barridos de puertas: el rótulo tampoco debe taparlos
-	const giros: [ number, number, number, number ][] = v.huecos.filter( ( h ) => h.tipo !== 'balconera' ).map( ( h ) => {
-
-		const [ x0, y0, x1, y1 ] = v.muros.find( ( m ) => m.id === h.muro )!.rect;
-		const r = h.hasta - h.desde;
-		const pos = h.abre === 'n' || h.abre === 'e';
-		return h.eje === 'x' ? [ h.desde, pos ? y1 : y0 - r, h.hasta, pos ? y1 + r : y0 ] : [ pos ? x1 : x0 - r, h.desde, pos ? x1 + r : x0, h.hasta ];
-
-	} );
+	const giros = v.huecos.map( ( h ) => barridoHueco( h, v ) ).filter( ( r ): r is [ number, number, number, number ] => !! r );
 	for ( const e of [ ...v.estancias ].sort( ( a, b ) => a.superficie - b.superficie ) ) {
 
 		const sup = fmtM2( e.superficie );
@@ -518,7 +493,8 @@ function componer( D: Dibujo, d: DatosPlano, logos: { promotora: { url: string; 
 	y += 8.5;
 	D.txt( t.nombre, colX, y, { tam: 21, negrita: true } );
 	y += 6;
-	D.txt( `${ t.dormitorios } dormitorios · ${ t.banos } baños`, colX, y, { tam: 9, color: COLORES.gris } );
+	const plural = ( n: number, uno: string, varios: string ) => `${ n } ${ n === 1 ? uno : varios }`;
+	D.txt( `${ plural( t.dormitorios, 'dormitorio', 'dormitorios' ) } · ${ plural( t.banos, 'baño', 'baños' ) }`, colX, y, { tam: 9, color: COLORES.gris } );
 	if ( d.ficha ) {
 
 		y += 4.6;
@@ -570,10 +546,15 @@ function componer( D: Dibujo, d: DatosPlano, logos: { promotora: { url: string; 
 	y += 4;
 	D.txt( 'LEYENDA', colX, y, { tam: 6.6, negrita: true, espaciado: 0.4, color: COLORES.gris } );
 	y += 4.5;
+	// solo lo que aparece en este plano (cada promoción es distinta)
+	const hay = ( f: ( e: typeof v.estancias[ number ] ) => boolean ) => v.estancias.some( f );
+	const conPorche = hay( ( e ) => e.id === 'porche' ), conExterior = hay( ( e ) => e.uso === 'exterior' );
+	const nombresExteriores = [ ...new Set( v.estancias.filter( ( e ) => e.uso === 'exterior' ).map( ( e ) => e.nombre.toLowerCase() ) ) ];
+	const textoExterior = nombresExteriores.length ? nombresExteriores.join( ', ' ).replace( /, ([^,]*)$/, ' y $1' ) : '';
 	const leyenda: [ string, ( x: number, y: number ) => void ][] = [
-		[ 'Pavimento de madera', ( x, yy ) => D.pol( [ [ x, yy - 2.6 ], [ x + 6, yy - 2.6 ], [ x + 6, yy + 0.6 ], [ x, yy + 0.6 ] ], COLORES.suelo.madera, COLORES.vetas.madera, 0.15 ) ],
-		[ 'Pavimento cerámico', ( x, yy ) => D.pol( [ [ x, yy - 2.6 ], [ x + 6, yy - 2.6 ], [ x + 6, yy + 0.6 ], [ x, yy + 0.6 ] ], COLORES.suelo.ceramico, COLORES.vetas.ceramico, 0.15 ) ],
-		[ 'Terraza y porche', ( x, yy ) => D.pol( [ [ x, yy - 2.6 ], [ x + 6, yy - 2.6 ], [ x + 6, yy + 0.6 ], [ x, yy + 0.6 ] ], COLORES.suelo.exterior, COLORES.vetas.exterior, 0.15 ) ],
+		...( hay( ( e ) => e.suelo === 'madera' ) ? [ [ 'Pavimento de madera', ( x: number, yy: number ) => D.pol( [ [ x, yy - 2.6 ], [ x + 6, yy - 2.6 ], [ x + 6, yy + 0.6 ], [ x, yy + 0.6 ] ], COLORES.suelo.madera, COLORES.vetas.madera, 0.15 ) ] as [ string, ( x: number, y: number ) => void ] ] : [] ),
+		...( hay( ( e ) => e.uso !== 'exterior' && e.suelo !== 'madera' ) ? [ [ 'Pavimento cerámico', ( x: number, yy: number ) => D.pol( [ [ x, yy - 2.6 ], [ x + 6, yy - 2.6 ], [ x + 6, yy + 0.6 ], [ x, yy + 0.6 ] ], COLORES.suelo.ceramico, COLORES.vetas.ceramico, 0.15 ) ] as [ string, ( x: number, y: number ) => void ] ] : [] ),
+		...( conExterior ? [ [ textoExterior.charAt( 0 ).toUpperCase() + textoExterior.slice( 1 ), ( x: number, yy: number ) => D.pol( [ [ x, yy - 2.6 ], [ x + 6, yy - 2.6 ], [ x + 6, yy + 0.6 ], [ x, yy + 0.6 ] ], COLORES.suelo.exterior, COLORES.vetas.exterior, 0.15 ) ] as [ string, ( x: number, y: number ) => void ] ] : [] ),
 		[ 'Muro / tabique', ( x, yy ) => D.pol( [ [ x, yy - 2.6 ], [ x + 6, yy - 2.6 ], [ x + 6, yy + 0.6 ], [ x, yy + 0.6 ] ], COLORES.muro ) ],
 		[ 'Carpintería exterior', ( x, yy ) => {
 
@@ -582,7 +563,7 @@ function componer( D: Dibujo, d: DatosPlano, logos: { promotora: { url: string; 
 			D.lin( [ [ x, yy - 0.2 ], [ x + 6, yy - 0.2 ] ], COLORES.tinta, 0.18 );
 
 		} ],
-		[ 'Proyección del porche', ( x, yy ) => D.lin( [ [ x, yy - 1 ], [ x + 6, yy - 1 ] ], COLORES.gris, 0.18, [ 1.4, 1 ] ) ],
+		...( conPorche ? [ [ 'Proyección del porche', ( x: number, yy: number ) => D.lin( [ [ x, yy - 1 ], [ x + 6, yy - 1 ] ], COLORES.gris, 0.18, [ 1.4, 1 ] ) ] as [ string, ( x: number, y: number ) => void ] ] : [] ),
 	];
 	leyenda.forEach( ( [ texto, icono ], i ) => {
 
@@ -611,7 +592,7 @@ function componer( D: Dibujo, d: DatosPlano, logos: { promotora: { url: string; 
 	D.txt( rev ? `${ rev.fase } · v${ rev.version } · ${ fechaCorta( rev.fecha ) }` : 'Documento comercial', colX, yp, { tam: 7, negrita: true, color: COLORES.gris } );
 	D.txt( `Generado el ${ new Date().toLocaleDateString( 'es-ES' ) }`, colX + colW, yp, { tam: 7, color: COLORES.grisClaro, alinear: 'right' } );
 	yp += 4;
-	D.txt( `${ marca.promotora } · ${ marca.contacto.web } · ${ marca.contacto.telefono }`, colX, yp, { tam: 6.5, color: COLORES.grisClaro } );
+	D.txt( [ marca.promotora, marca.contacto?.web, marca.contacto?.telefono ].filter( Boolean ).join( ' · ' ), colX, yp, { tam: 6.5, color: COLORES.grisClaro } );
 
 }
 

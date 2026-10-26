@@ -5,6 +5,7 @@ import * as THREE from 'three/webgpu';
 import { float, uniform } from 'three/tsl';
 import { color } from './materiales';
 import type { Rect, Vivienda } from '../modelo/tipos';
+import { simbolosHueco } from '../modelo/simbolos';
 
 export const uLineas = uniform( 1 );
 const Y = 0.02; // por encima del poché aplastado (1 cm) con margen para la precisión de profundidad
@@ -20,36 +21,13 @@ export function construirLineas( v: Vivienda, extras: { piscina?: Rect } = {} ) 
 
 	};
 
+	// huecos: el mismo símbolo que el plano comercial (simbolos.ts)
 	for ( const h of v.huecos ) {
 
-		const [ x0, y0, x1, y1 ] = v.muros.find( ( m ) => m.id === h.muro )!.rect;
-		if ( h.tipo === 'balconera' ) {
+		for ( const t of simbolosHueco( h, v ) ) {
 
-			const yF = y1 - 0.09;
-			for ( const y of [ yF - 0.035, yF, yF + 0.035 ] ) add( seg, h.desde, y, h.hasta, y );
-			continue;
-
-		}
-
-		// hoja abierta a 90° + arco de giro (convención de planta)
-		const enX = h.eje === 'x';
-		const s = h.bisagra === 'inicio' ? 1 : - 1;
-		const pos = h.abre === 'n' || h.abre === 'e';
-		const r = h.hasta - h.desde - 0.04;
-		const u0 = h.bisagra === 'inicio' ? h.desde + 0.02 : h.hasta - 0.02;
-		const w0 = pos ? ( enX ? y1 : x1 ) : ( enX ? y0 : x0 );
-		const dw = pos ? 1 : - 1;
-		const P = ( u: number, w: number ): [ number, number ] => enX ? [ u, w ] : [ w, u ];
-		const [ px, py ] = P( u0, w0 );
-		const [ qx, qy ] = P( u0, w0 + dw * r );
-		add( seg, px, py, qx, qy );
-		const n = 24;
-		for ( let i = 0; i < n; i ++ ) {
-
-			const a0 = ( i / n ) * Math.PI / 2, a1 = ( ( i + 1 ) / n ) * Math.PI / 2;
-			const [ ax, ay ] = P( u0 + s * r * Math.cos( a0 ), w0 + dw * r * Math.sin( a0 ) );
-			const [ bx, by ] = P( u0 + s * r * Math.cos( a1 ), w0 + dw * r * Math.sin( a1 ) );
-			add( suaves, ax, ay, bx, by );
+			const dst = t.estilo === 'giro' || t.estilo === 'fino' ? suaves : seg;
+			for ( let i = 0; i < t.puntos.length - 1; i ++ ) add( dst, t.puntos[ i ][ 0 ], t.puntos[ i ][ 1 ], t.puntos[ i + 1 ][ 0 ], t.puntos[ i + 1 ][ 1 ] );
 
 		}
 

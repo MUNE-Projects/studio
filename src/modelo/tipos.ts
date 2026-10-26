@@ -18,17 +18,38 @@ export interface Muro {
 	origen: string;
 }
 
+/**
+ * Hueco en un muro. Lo que dice el proyecto de cada uno (planos y memoria de
+ * calidades); lo que no se indica toma el valor general de la vivienda.
+ *  · entrada: puerta de la vivienda.
+ *  · puerta: puerta interior (abatible de una o dos hojas, corredera vista o
+ *    corredera empotrada en el tabique).
+ *  · paso: hueco sin puerta.
+ *  · balconera: puerta-ventana hasta el suelo (acceso a terraza, balcón…).
+ *  · ventana: ventana con antepecho (alféizar a media altura).
+ */
 export interface Hueco {
 	id: string;
 	muro: string;
-	tipo: 'entrada' | 'puerta' | 'balconera';
+	tipo: 'entrada' | 'puerta' | 'paso' | 'balconera' | 'ventana';
 	eje: 'x' | 'y';
 	desde: number;
 	hasta: number;
+	/** puertas abatibles: lado de la bisagra y hacia dónde abre */
 	bisagra?: 'inicio' | 'fin';
 	abre?: Orientacion;
-	apertura?: 'corredera' | 'oscilobatiente';
+	/** puertas interiores: cómo es la hoja (por defecto, abatible) */
+	puerta?: 'abatible' | 'doble' | 'corredera' | 'corredera-empotrada';
+	/** ventanas y balconeras: cómo abre la carpintería (por defecto, oscilobatiente) */
+	apertura?: 'corredera' | 'oscilobatiente' | 'abatible' | 'fija' | 'proyectante';
+	/** ventanas y balconeras: número de hojas (por defecto, 2; 1 si mide menos de 0,9 m) */
 	hojas?: number;
+	/** ventanas: altura del alféizar sobre el suelo, en metros */
+	antepecho?: number;
+	/** altura del dintel sobre el suelo, si no es la general de la vivienda */
+	alto?: number;
+	/** ventanas y balconeras: persiana enrollable (por defecto, sí) */
+	persiana?: boolean;
 	origen: string;
 }
 
@@ -68,6 +89,10 @@ export interface Vivienda {
 		puerta_interior: Valor<number>;
 		puerta_entrada: Valor<number>;
 		balconera: Valor<number>;
+		/** dintel de las ventanas (por defecto, el de las balconeras) */
+		ventana?: Valor<number>;
+		/** altura del alféizar de las ventanas (por defecto, 0,9 m) */
+		antepecho?: Valor<number>;
 		barandilla: Valor<number>;
 	};
 	muros: Muro[];
