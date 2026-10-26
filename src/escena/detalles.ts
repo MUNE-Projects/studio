@@ -7,6 +7,7 @@ import type { Estancia, Vivienda } from '../modelo/tipos';
 import { puntoEnPoligono, puntoEnRect, unir } from '../util/geo';
 import * as M from './materiales';
 import { esCarpinteriaExterior } from '../modelo/huecos';
+import { alturaEn } from '../modelo/alturas';
 
 const ALTO_RODAPIE = 0.07, GRUESO_RODAPIE = 0.012;
 /** Estancias sin rodapié (alicatadas o exteriores). */
@@ -99,7 +100,6 @@ export function construirDownlights( v: Vivienda ) {
 
 	matAro ??= M.liso( '#e9e8e4', 0.35 );
 	matLuz ??= M.emisivo( '#fff3e0', 1.4 );
-	const H = v.alturas.libre.valor;
 	const aros: THREE.BufferGeometry[] = [], luces: THREE.BufferGeometry[] = [];
 	for ( const e of v.estancias ) {
 
@@ -116,6 +116,7 @@ export function construirDownlights( v: Vivienda ) {
 			if ( v.muros.some( ( m ) => puntoEnRect( x, y, m.rect, 0.25 ) ) ) continue;
 			const aro = new THREE.RingGeometry( 0.045, 0.058, 24 );
 			aro.rotateX( Math.PI / 2 );
+			const H = alturaEn( e, v, x, y );
 			aro.translate( x, H - 0.001, - y );
 			aros.push( aro );
 			const luz = new THREE.CircleGeometry( 0.045, 24 );

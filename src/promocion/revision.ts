@@ -13,6 +13,7 @@ import type { Configuracion, Rect, Tipologia, Alternativa, Vivienda } from '../m
 import { areaPoligono, puntoEnPoligono, puntoEnRect } from '../util/geo';
 import { revisarVistas } from '../escena/vistas';
 import { alturasHueco } from '../modelo/huecos';
+import { alturaEn, alturasEstancia } from '../modelo/alturas';
 
 const TIPOS_HUECO = [ 'entrada', 'puerta', 'paso', 'balconera', 'ventana' ];
 const TIPOS_PUERTA = [ 'abatible', 'doble', 'corredera', 'corredera-empotrada' ];
@@ -114,6 +115,15 @@ export function revisarPromocion( v: Vivienda, t: Tipologia, alternativas: Alter
 	if ( Math.abs( util - oficial ) > 0.05 ) add( 'aviso', 'Superficies', `La suma de estancias (${ r2( util ) } m²) no coincide con la superficie útil oficial (${ oficial } m²).` );
 	else add( 'ok', 'Superficies', `Superficie útil coherente: ${ r2( util ) } m².` );
 
+	// techos propios (falsos techos e inclinados): dentro de la altura general
+	for ( const e of v.estancias.filter( ( s ) => s.techo ) ) {
+
+		const [ lo, hi ] = alturasEstancia( e, v );
+		if ( hi > v.alturas.libre.valor + 0.01 ) add( 'error', 'Alturas', `«${ e.nombre }»: el techo llega a ${ hi } m y la altura libre general es ${ v.alturas.libre.valor } m; sube la general hasta el punto más alto.` );
+		if ( lo < 1.0 ) add( 'aviso', 'Alturas', `«${ e.nombre }»: el techo baja hasta ${ lo } m. Compruébalo en las secciones.` );
+
+	}
+
 	// huecos anclados a muros existentes y dentro de su tramo
 	for ( const x of v.huecos ) {
 
@@ -135,6 +145,15 @@ export function revisarPromocion( v: Vivienda, t: Tipologia, alternativas: Alter
 		if ( z0 >= z1 || z1 > v.alturas.libre.valor + 0.01 ) add( 'error', 'Huecos', `«${ x.id }»: alturas imposibles (de ${ z0 } a ${ z1 } m, con ${ v.alturas.libre.valor } m de altura libre).` );
 		if ( x.tipo === 'ventana' && x.antepecho === undefined && ! v.alturas.antepecho ) add( 'aviso', 'Huecos', `«${ x.id }»: ventana sin altura de alféizar; se supone 0,9 m. Compruébala en alzados o secciones.` );
 		if ( ( x.hojas ?? 1 ) > 4 ) add( 'aviso', 'Huecos', `«${ x.id }»: ${ x.hojas } hojas; se dibujan como máximo 4.` );
+		// el dintel no puede quedar por encima del techo de las estancias a las que da
+		const [ mx0, my0, mx1, my1 ] = m.rect, u = ( x.desde + x.hasta ) / 2;
+		const lados = x.eje === 'x' ? [ [ u, my0 - 0.2 ], [ u, my1 + 0.2 ] ] : [ [ mx0 - 0.2, u ], [ mx1 + 0.2, u ] ];
+		for ( const [ px, py ] of lados ) {
+
+			const e = v.estancias.find( ( s ) => s.uso !== 'exterior' && s.techo && puntoEnPoligono( px, py, s.poligono ) );
+			if ( e && z1 > alturaEn( e, v, px, py ) + 0.01 ) add( 'error', 'Alturas', `«${ x.id }» (dintel a ${ z1 } m) queda por encima del techo de «${ e.nombre }» (${ r2( alturaEn( e, v, px, py ) ) } m).` );
+
+		}
 
 	}
 

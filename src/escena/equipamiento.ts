@@ -10,6 +10,7 @@ import type { Equipamiento, Vivienda } from '../modelo/tipos';
 import { unir } from '../util/geo';
 import * as M from './materiales';
 import { activoPara, construirActivo, activo as buscarActivo, type Ambientacion } from '../biblioteca/biblioteca';
+import { alturaTecho } from '../modelo/alturas';
 
 /**
  * Clave de material: una de las fijas (`lacado`, `cuarzo`…) o una dinámica
@@ -520,7 +521,6 @@ export const GIRO: Record<string, number> = { s: 0, n: Math.PI, e: Math.PI / 2, 
 export function construirEquipamiento( v: Vivienda, amb?: Ambientacion | null ) {
 
 	MAT ??= crearMateriales();
-	const H = v.alturas.libre.valor;
 	const fijo = new THREE.Group(); fijo.name = 'equipamiento-fijo';
 	const mobiliario = new THREE.Group(); mobiliario.name = 'mobiliario';
 	const decoracion = new THREE.Group(); decoracion.name = 'decoracion';
@@ -529,6 +529,8 @@ export function construirEquipamiento( v: Vivienda, amb?: Ambientacion | null ) 
 
 		const [ x0, y0, x1, y1 ] = e.rect;
 		const cx = ( x0 + x1 ) / 2, cy = ( y0 + y1 ) / 2;
+		// armarios y columnas llegan hasta el techo de su estancia (falso techo o inclinado)
+		const H = alturaTecho( v, cx, cy );
 		const girado = e.frente === 'e' || e.frente === 'o';
 		const W = girado ? y1 - y0 : x1 - x0;
 		const D = girado ? x1 - x0 : y1 - y0;
@@ -586,7 +588,7 @@ export function construirEquipamiento( v: Vivienda, amb?: Ambientacion | null ) 
 		}
 
 		const [ W, D, Ha ] = d.dims ?? a.dims;
-		const g = construirActivo( a, W, D, Ha, { techo: H, elev: d.elev, semilla: d.id } );
+		const g = construirActivo( a, W, D, Ha, { techo: alturaTecho( v, d.pos[ 0 ], d.pos[ 1 ] ), elev: d.elev, semilla: d.id } );
 		g.rotation.y = THREE.MathUtils.degToRad( d.rot );
 		g.position.set( d.pos[ 0 ], d.elev, - d.pos[ 1 ] );
 		g.userData = { fijo: false, x: d.pos[ 0 ], decoracion: d.id, activo: a.id };

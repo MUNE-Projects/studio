@@ -62,6 +62,12 @@ export interface Estancia {
 	uso: Uso;
 	suelo: string;
 	poligono: Punto[];
+	/**
+	 * Techo propio, si no es el general de la vivienda: falso techo más bajo
+	 * (baños, pasillos…) o inclinado (áticos, bajo cubierta), que va de `bajo`
+	 * a `alto` subiendo hacia `sube`.
+	 */
+	techo?: { altura?: number; inclinado?: { bajo: number; alto: number; sube: Orientacion }; origen?: string };
 	origen: string;
 }
 
