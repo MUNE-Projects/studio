@@ -354,6 +354,24 @@ function componer( D: Dibujo, d: DatosPlano, logos: { promotora: { url: string; 
 
 	}
 
+	// techos inclinados: línea donde la altura libre es de 1,50 m (punto y raya)
+	const lineas150: [ number, number ][][] = [];
+	for ( const e of v.estancias ) {
+
+		const inc = e.techo?.inclinado;
+		if ( ! inc || ( 1.5 - inc.bajo ) * ( 1.5 - inc.alto ) >= 0 ) continue;
+		const f = ( 1.5 - inc.bajo ) / ( inc.alto - inc.bajo );
+		const xs = e.poligono.map( ( q ) => q[ 0 ] ), ys = e.poligono.map( ( q ) => q[ 1 ] );
+		const [ x0, x1, y0, y1 ] = [ Math.min( ...xs ), Math.max( ...xs ), Math.min( ...ys ), Math.max( ...ys ) ];
+		const l: [ number, number ][] = inc.sube === 'n' ? [ [ x0, y0 + f * ( y1 - y0 ) ], [ x1, y0 + f * ( y1 - y0 ) ] ]
+			: inc.sube === 's' ? [ [ x0, y1 - f * ( y1 - y0 ) ], [ x1, y1 - f * ( y1 - y0 ) ] ]
+				: inc.sube === 'e' ? [ [ x0 + f * ( x1 - x0 ), y0 ], [ x0 + f * ( x1 - x0 ), y1 ] ]
+					: [ [ x1 - f * ( x1 - x0 ), y0 ], [ x1 - f * ( x1 - x0 ), y1 ] ];
+		lineas150.push( l );
+		D.lin( l.map( ( [ x, y ] ) => T( x, y ) ), COLORES.gris, 0.18, [ 2.2, 0.8, 0.4, 0.8 ] );
+
+	}
+
 	// barandilla de la terraza
 	const rec = v.exterior.barandilla.recorrido;
 	D.lin( TT( rec ), '#4a4845', 0.35 );
@@ -563,6 +581,7 @@ function componer( D: Dibujo, d: DatosPlano, logos: { promotora: { url: string; 
 			D.lin( [ [ x, yy - 0.2 ], [ x + 6, yy - 0.2 ] ], COLORES.tinta, 0.18 );
 
 		} ],
+		...( lineas150.length ? [ [ 'Altura libre de 1,50 m', ( x: number, yy: number ) => D.lin( [ [ x, yy - 1 ], [ x + 6, yy - 1 ] ], COLORES.gris, 0.18, [ 2.2, 0.8, 0.4, 0.8 ] ) ] as [ string, ( x: number, y: number ) => void ] ] : [] ),
 		...( conPorche ? [ [ 'Proyección del porche', ( x: number, yy: number ) => D.lin( [ [ x, yy - 1 ], [ x + 6, yy - 1 ] ], COLORES.gris, 0.18, [ 1.4, 1 ] ) ] as [ string, ( x: number, y: number ) => void ] ] : [] ),
 	];
 	leyenda.forEach( ( [ texto, icono ], i ) => {

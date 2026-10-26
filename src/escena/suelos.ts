@@ -4,6 +4,7 @@ import * as THREE from 'three/webgpu';
 import type { Estancia, Hueco, Rect, Vivienda } from '../modelo/tipos';
 import { forma, puntoEnPoligono } from '../util/geo';
 import * as M from './materiales';
+import { alturaEn, alturasEstancia } from '../modelo/alturas';
 
 const MAT_SUELO: Record<string, () => THREE.Material> = {
 	'madera': () => M.tarima(),
@@ -50,7 +51,6 @@ function estanciaJunto( e: Estancia, h: Hueco, r: Rect ) {
 
 export function construirSuelos( v: Vivienda, conEntorno = true ) {
 
-	const H = v.alturas.libre.valor;
 	const suelos = new THREE.Group();
 	suelos.name = 'suelos';
 	const mat = ( k: string ) => {
@@ -100,7 +100,12 @@ export function construirSuelos( v: Vivienda, conEntorno = true ) {
 	for ( const e of v.estancias ) {
 
 		if ( e.uso === 'exterior' && e.id !== 'porche' ) continue;
-		const m = new THREE.Mesh( plano( e.poligono, H, true ), matTecho );
+		// falso techo o techo inclinado: cada vértice a su altura
+		const g = plano( e.poligono, 0, true );
+		const pos = g.attributes.position;
+		for ( let i = 0; i < pos.count; i ++ ) pos.setY( i, alturaEn( e, v, pos.getX( i ), - pos.getZ( i ) ) );
+		if ( e.techo?.inclinado ) g.computeVertexNormals();
+		const m = new THREE.Mesh( g, matTecho );
 		m.castShadow = true;
 		m.receiveShadow = true;
 		m.userData.porche = e.id === 'porche';
@@ -113,7 +118,7 @@ export function construirSuelos( v: Vivienda, conEntorno = true ) {
 	volumenes.name = 'volumenes';
 	for ( const e of v.estancias ) {
 
-		const alto = e.uso === 'exterior' ? 0.12 : H * 0.94;
+		const alto = e.uso === 'exterior' ? 0.12 : alturasEstancia( e, v )[ 0 ] * 0.94;
 		const g = new THREE.ExtrudeGeometry( forma( e.poligono ), { depth: alto, bevelEnabled: false } );
 		g.rotateX( - Math.PI / 2 );
 		if ( ! matVolumen.has( e.uso ) ) matVolumen.set( e.uso, M.volumen( e.uso ) );
