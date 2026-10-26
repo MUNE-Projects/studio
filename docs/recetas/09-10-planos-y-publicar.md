@@ -4,7 +4,7 @@
 **Tipo:** automática, con tres puntos de control: tu revisión, la aprobación de la promotora y tu publicación.
 
 ## Pasos
-1. **Preparar** (Claude): `node herramientas/publicacion.mjs preparar <id> --cambios "…" --confirmar`, con el escaparate en la rama `revision`.
+1. **Preparar** (Claude): `node herramientas/publicacion.mjs preparar <id> --cambios "…" --confirmar`, con el escaparate en la rama `revision`. Si la suma de las estancias de una tipología no cuadra con su superficie útil oficial (más de 0,5 m² de diferencia), se detiene y lo explica: hay que aclarar con la promotora qué dato es el bueno y corregir los datos antes (decisión 48).
    - Construye la web pública (sin Studio ni secretos).
    - **Genera los planos comerciales** de la versión con `herramientas/planos.mjs`: uno por tipología y variante (espejo…) y por cada distribución alternativa; en las unifamiliares (`"tipo": "unifamiliar"` en `promocion.json`), uno por vivienda. Quedan en `planos/` de la vista previa, con `planos.json` (títulos, viviendas y huellas).
    - Con los planos, **genera las unidades de la Experiencia 3D** (`experiencia/experiencia.json` de la vista previa): una por tipología y variante (las distribuciones alternativas van dentro de su tipología); en las unifamiliares, una por vivienda; y «Entorno y elementos generales» si existe `promociones/<id>/entorno/`. Cada unidad lleva su huella (si no cambia, su validación sigue valiendo) y sus vistas guiadas. Para revisar una unidad concreta en la visita: `?ver=<clave>` (por ejemplo, `?ver=a-espejo`).
