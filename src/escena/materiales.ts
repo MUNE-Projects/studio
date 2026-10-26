@@ -275,9 +275,14 @@ const PATRONES: Record<number, ( o: Salida ) => void> = {
 
 	[ A.SATE ]: ( { col, rug, rel, c0 } ) => {
 
-		col.assign( c0.mul( float( 0.985 ).add( ruidoSuave( pw, 1.2 ).mul( 0.02 ) ) ) );
+		// v0 = 1: ladrillo cara vista (c0 ladrillo, c1 junta de mortero), aparejo a soga
+		const liso = c0.mul( float( 0.985 ).add( ruidoSuave( pw, 1.2 ).mul( 0.02 ) ) );
+		const [ junta, pieza ] = baldosas( uvPared(), vec2( 0.25, 0.075 ), float( 0.01 ), 0.5 );
+		const ladrillo = mix( c0.mul( float( 0.86 ).add( pieza.mul( 0.26 ) ) ), V.c1, junta );
+		const esLadrillo = step( 0.5, V.v0 );
+		col.assign( mix( liso, ladrillo, esLadrillo ) );
 		rug.assign( 0.95 );
-		rel.assign( mx_noise_float( pw.mul( 160 ) ).mul( 0.5 ) );
+		rel.assign( mix( mx_noise_float( pw.mul( 160 ) ).mul( 0.5 ), junta.oneMinus(), esLadrillo ) );
 
 
 	},
@@ -417,7 +422,8 @@ const PATRONES: Record<number, ( o: Salida ) => void> = {
 
 		// hoja lacada con pantografiado horizontal (patrón supuesto: 4 ranuras)
 		const y = pl.y;
-		const ranura = smoothstep( 0.0035, 0.0015, abs( fract( y.div( 0.42 ) ).sub( 0.5 ) ).mul( 0.42 ) )
+		// v0: separación entre ranuras (muy grande = hoja lisa)
+		const ranura = smoothstep( 0.0035, 0.0015, abs( fract( y.div( V.v0 ) ).sub( 0.5 ) ).mul( V.v0 ) )
 			.mul( smoothstep( 0.3, 0.35, y ) ).mul( smoothstep( 1.95, 1.9, y ) );
 		col.assign( mix( c0, V.c1, ranura ) );
 		rug.assign( 0.4 );
@@ -598,9 +604,9 @@ export const alicatado = ( tono: string | N, creceConMuros = false ) =>
 export const pintura = ( tono: string, conCorte = false, creceConMuros = false ) =>
 	universal( { acabado: A.PINTURA, colores: [ tono ], relieve: 0.06, corte: conCorte, crece: creceConMuros } );
 
-/** Fachada SATE: mortero acrílico con grano fino. */
-export const sate = ( tono: string, creceConMuros = true ) =>
-	universal( { acabado: A.SATE, colores: [ tono ], relieve: 0.12, corte: true, crece: creceConMuros } );
+/** Fachada SATE: mortero acrílico con grano fino; o ladrillo cara vista con su junta. */
+export const sate = ( tono: string, creceConMuros = true, ladrillo = false, junta = '#d9d4cc' ) =>
+	universal( { acabado: A.SATE, colores: [ tono, junta ], valores: [ ladrillo ? 1 : 0 ], relieve: ladrillo ? 0.35 : 0.12, corte: true, crece: creceConMuros } );
 
 /** Madera (roble claro) con veta a lo largo del eje x local. */
 export const madera = ( tono = '#b99a78', oscuro = '#94765a', rug = 0.55 ) =>
@@ -645,8 +651,8 @@ export const lienzo = ( tonos: string[] ) => {
 };
 
 /** Hoja de puerta lacada con ranuras horizontales. */
-export const puertaRanurada = ( tono = '#f2f0eb', ranura = '#d9d6cf' ) =>
-	universal( { acabado: A.PUERTA, colores: [ tono, ranura ], relieve: 0.6 } );
+export const puertaRanurada = ( tono = '#f2f0eb', ranura = '#d9d6cf', separacion = 0.42 ) =>
+	universal( { acabado: A.PUERTA, colores: [ tono, ranura ], valores: [ separacion ], relieve: 0.6 } );
 
 export const metalico = ( tono: string, rug: number ) => liso( tono, rug, 1 );
 

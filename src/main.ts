@@ -35,6 +35,7 @@ import { aplicarMarca } from './promocion/marca';
 import { dePlanta, esMultiplanta, plantaCalle, plantasDe } from './modelo/plantas';
 import { esCerrada, esGaraje, esUtil } from './modelo/estancias';
 import { limites, marcoEntorno } from './modelo/exteriores';
+import { ACABADOS } from './promocion/acabados';
 import { generarPDF } from './documento/pdf';
 import { planoPDF, planoPNG, type DatosPlano } from './documento/plano';
 import { RenderHD } from './escena/renderHD';
@@ -173,9 +174,9 @@ async function iniciar() {
 	const H = modelo.vivienda.alturas.libre.valor;
 	M.U.altura.value = H;
 	const matMuros = {
-		pintura: M.conPoche( M.pintura( '#efede8', true, true ) ),
+		pintura: M.conPoche( M.pintura( ACABADOS.paredes.color, true, true ) ),
 		alicatado: M.conPoche( M.alicatado( M.P.banos.pared, true ) ),
-		fachada: M.conPoche( M.sate( '#f1efea' ) ),
+		fachada: M.conPoche( M.sate( ACABADOS.fachada.color, true, ACABADOS.fachada.textura === 'ladrillo', ACABADOS.fachada.junta ) ),
 	};
 	const grupo = ( nombre: string ) => Object.assign( new THREE.Group(), { name: nombre } );
 	const c = {

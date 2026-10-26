@@ -9,6 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import type { Equipamiento, Vivienda } from '../modelo/tipos';
 import { unir } from '../util/geo';
 import * as M from './materiales';
+import { ACABADOS } from '../promocion/acabados';
 import { activoPara, construirActivo, activo as buscarActivo, type Ambientacion } from '../biblioteca/biblioteca';
 import { alturaTecho } from '../modelo/alturas';
 
@@ -65,7 +66,7 @@ function crearMateriales() {
 		sombra: M.liso( '#1b1b1b', 0.9 ),
 		cuarzo: M.cuarzo(),
 		inox: M.metalico( '#cdd0d1', 0.28 ),
-		cromo: M.metalico( '#c4c6c7', 0.22 ),
+		cromo: M.metalico( ACABADOS.griferia.color, 0.22 ),
 		negro: M.negroBrillo(),
 		ceramica: M.ceramica(),
 		madera: M.madera(),
@@ -253,7 +254,8 @@ function columna( p: Pieza, W: number, D: number, H: number, hornos: boolean ) {
 
 }
 
-function encimera( p: Pieza, W: number, D: number, H: number, e: Equipamiento, cy: number ) {
+/** Encimera con muebles bajos; contra la pared lleva frontal y muebles altos (exenta: isla o península, sin ellos). */
+function encimera( p: Pieza, W: number, D: number, H: number, e: Equipamiento, cy: number, exenta = false ) {
 
 	// rangos de planta (y norte) -> x local: con el frente al oeste x local = cy - y;
 	// con el frente al este (vivienda simétrica) x local = y - cy
@@ -335,6 +337,14 @@ function encimera( p: Pieza, W: number, D: number, H: number, e: Equipamiento, c
 
 	}
 
+	if ( exenta ) {
+
+		// isla o península: la trasera, acabada como los frentes
+		p.caja( 'laminado', - W / 2, 0.1, z0 - 0.004, W / 2, yE, z0 );
+		return;
+
+	}
+
 	// frontal de cuarzo y muebles altos con campana integrada sobre la placa
 	const yA = 1.45, yA1 = 2.2, fA = 0.35;
 	p.caja( 'cuarzo', - W / 2, yT, z0, W / 2, yA, z0 + 0.012 );
@@ -398,6 +408,38 @@ function ducha( p: Pieza, W: number, D: number ) {
 	p.caja( 'cromo', 0.14, 2.19, - D / 2, 0.16, 2.21, - D / 2 + 0.3 );
 	p.caja( 'cromo', 0.0, 1.05, - D / 2, 0.3, 1.11, - D / 2 + 0.06 );
 	p.cilindro( 'cromo', 0.45, 1.0, - D / 2 + 0.035, 0.012, 2.0, 12 );
+
+}
+
+/** Bañera exenta: óvalo de bordes redondeados y grifo de suelo. */
+function baneraExenta( p: Pieza, W: number, D: number ) {
+
+	const alto = 0.58;
+	const ext = new THREE.Shape().absellipse( 0, 0, W / 2 - 0.01, D / 2 - 0.01, 0, Math.PI * 2, false, 0 );
+	ext.holes.push( new THREE.Path().absellipse( 0, 0, W / 2 - 0.07, D / 2 - 0.07, 0, Math.PI * 2, true, 0 ) );
+	const g = new THREE.ExtrudeGeometry( ext, { depth: alto - 0.02, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.012, bevelSegments: 4, curveSegments: 48 } );
+	g.rotateX( - Math.PI / 2 );
+	g.translate( 0, 0.015, 0 );
+	p.add( 'ceramica', g );
+	const fondo = new THREE.ExtrudeGeometry( new THREE.Shape().absellipse( 0, 0, W / 2 - 0.07, D / 2 - 0.07, 0, Math.PI * 2, false, 0 ), { depth: 0.18, bevelEnabled: false, curveSegments: 48 } );
+	fondo.rotateX( - Math.PI / 2 );
+	p.add( 'ceramica', fondo );
+	// grifo de pie junto a un extremo
+	const xg = W / 2 + 0.12;
+	p.cilindro( 'cromo', xg, 0, 0, 0.025, 0.9, 16 );
+	const caño = new THREE.QuadraticBezierCurve3( new THREE.Vector3( xg, 0.9, 0 ), new THREE.Vector3( xg, 1.0, 0 ), new THREE.Vector3( xg - 0.2, 0.95, 0 ) );
+	p.add( 'cromo', new THREE.TubeGeometry( caño, 16, 0.012, 10 ) );
+
+}
+
+/** Bidé suspendido o de pie, con su grifo. */
+function bide( p: Pieza, D: number ) {
+
+	const z0 = - D / 2;
+	p.blanda( 'ceramica', - 0.17, 0, z0 + 0.06, 0.17, 0.37, D / 2 - 0.05, 0.06, 4 );
+	p.blanda( 'ceramica', - 0.185, 0.35, z0 + 0.04, 0.185, 0.41, D / 2 - 0.02, 0.07, 4 );
+	p.cilindro( 'cromo', 0, 0.41, z0 + 0.1, 0.02, 0.48, 12 );
+	p.blanda( 'cromo', - 0.012, 0.46, z0 + 0.1, 0.012, 0.475, z0 + 0.2, 0.004, 2 );
 
 }
 
@@ -607,6 +649,11 @@ export function construirEquipamiento( v: Vivienda, amb?: Ambientacion | null ) 
 				case 'lavabo': lavabo( p, W, D, false ); break;
 				case 'lavabo-doble': lavabo( p, W, D, true ); break;
 				case 'lavadora': lavadora( p, W, D ); break;
+				case 'secadora': lavadora( p, W, D ); break;
+				case 'isla': encimera( p, W, D, H, e, cy, true ); break;
+				case 'peninsula': encimera( p, W, D, H, e, cy, true ); break;
+				case 'banera-exenta': baneraExenta( p, W, D ); break;
+				case 'bide': bide( p, D ); break;
 				case 'mesa-comedor': mesaComedor( p, W, D ); break;
 				case 'silla': silla( p, W, D ); break;
 				case 'sofa': sofa( p, W, D ); break;

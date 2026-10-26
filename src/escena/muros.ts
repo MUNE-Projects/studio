@@ -134,7 +134,9 @@ export function construirMuros( v: Vivienda ) {
 				else {
 
 					const e = clasificar( sx, sy, v.estancias );
-					if ( ! e ) clase = esExtremo ? 'pintura' : 'fachada';
+					// sin estancia en esta planta: dentro de la casa si otra planta tiene una
+					// estancia interior ahí (hueco de escalera, doble altura); si no, fachada
+					if ( ! e ) clase = esExtremo || v.huella?.some( ( pol ) => puntoEnPoligono( sx, sy, pol ) ) ? 'pintura' : 'fachada';
 					else if ( e.uso === 'exterior' ) clase = 'fachada';
 					else if ( e.uso === 'humedo' ) clase = 'alicatado';
 					else clase = 'pintura';
