@@ -150,7 +150,7 @@ export interface Tipologia {
 	banos: number;
 	vistas: Record<string, Vista>;
 	guiadas: string[];
-	piscina: Piscina;
+	piscina?: Piscina;
 	/** Orientación: ángulo (grados, sentido horario) del norte respecto al eje y+ del plano. */
 	norte?: { angulo: number; origen: string; nota?: string };
 	/** Revisión del proyecto de la que sale la geometría (para planos y documentos). */

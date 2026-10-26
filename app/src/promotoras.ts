@@ -307,6 +307,13 @@ export async function pantallaPromotoras(destino: HTMLElement): Promise<void> {
 			}
 		}
 		form.hidden = true;
+		// la nueva promotora aparece ya en la lista, sin recargar
+		const lista = destino.querySelector<HTMLElement>('.lista-enlaces')!;
+		lista.querySelector('.vacio')?.remove();
+		lista.insertAdjacentHTML('beforeend', `<a class="fila-enlace" href="#/promotora/${esc(id)}">
+			<span><strong>${esc(nombre)}</strong><br><span class="promo-lugar">0 promociones</span></span>
+			${chipActiva(true)}
+		</a>`);
 		resultado.hidden = false;
 		resultado.innerHTML = `<p class="aviso" role="status">${esc(nombre)} está dada de alta.</p>
 			<ul class="resultados">${filas.join('')}</ul>

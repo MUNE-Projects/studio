@@ -108,6 +108,47 @@ function comprobarPromocion( id ) {
 
 }
 
+// Superficies: la suma de las estancias de cada tipología (lo que enseñan la
+// ficha de la web y el plano comercial) tiene que coincidir con la superficie
+// útil oficial del proyecto. Si no, no se prepara: hay que aclarar con la
+// promotora qué dato es el bueno (decidido el 26/10/2026). Margen: 0,5 m², para
+// los redondeos de cada estancia.
+const MARGEN_SUPERFICIE = 0.5;
+
+function comprobarSuperficies( id ) {
+
+	const carpeta = join( RAIZ, 'promociones', id, 'tipologias' );
+	const problemas = [];
+	for ( const t of existsSync( carpeta ) ? readdirSync( carpeta ) : [] ) {
+
+		const ruta = join( carpeta, t, 'vivienda.json' );
+		if ( ! existsSync( ruta ) ) continue;
+		const v = leerJSON( ruta );
+		const oficial = v.meta?.superficies_oficiales?.interior;
+		if ( typeof oficial !== 'number' ) {
+
+			problemas.push( `tipología «${ t }»: falta la superficie útil oficial (meta.superficies_oficiales.interior)` );
+			continue;
+
+		}
+		const suma = ( v.estancias ?? [] ).filter( ( e ) => e.uso !== 'exterior' ).reduce( ( a, e ) => a + e.superficie, 0 );
+		if ( Math.abs( suma - oficial ) > MARGEN_SUPERFICIE ) {
+
+			problemas.push( `tipología «${ t }»: las estancias suman ${ suma.toFixed( 2 ) } m² y la superficie útil oficial es ${ oficial } m² (diferencia ${ ( suma - oficial ).toFixed( 2 ) } m²)` );
+
+		}
+
+	}
+	if ( problemas.length ) {
+
+		fallo( `Las superficies no cuadran con las oficiales, y saldrían así en la web y en los planos comerciales:\n  · ${ problemas.join( '\n  · ' ) }\n` +
+			'  Aclara con la promotora qué dato es el bueno (plano acotado o cuadro de superficies) y corrige los datos antes de preparar la versión.' );
+
+	}
+	ok( 'Superficies: cada tipología cuadra con su superficie útil oficial' );
+
+}
+
 const rutaRegistro = ( id ) => join( RAIZ, 'promociones', id, 'publicaciones.json' );
 const leerRegistro = ( id ) => leerJSON( rutaRegistro( id ), { promocion: id, versiones: [] } );
 
@@ -323,6 +364,7 @@ async function preparar( id ) {
 	if ( ! cambios ) fallo( 'Falta --cambios: cada versión debe explicar qué cambia' );
 	if ( git( RAIZ, 'status', '--porcelain' ) ) fallo( 'El taller tiene cambios sin guardar. Lo publicado debe ser exactamente lo guardado (haz commit primero).' );
 	if ( git( esc, 'status', '--porcelain' ) ) fallo( 'El escaparate tiene cambios sin guardar.' );
+	comprobarSuperficies( id );
 
 	// número siguiente: el mayor entre el registro, la vista previa y producción
 	const registro = leerRegistro( id );

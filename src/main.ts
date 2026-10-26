@@ -216,7 +216,7 @@ async function iniciar() {
 	const construirEtiquetas = () => {
 
 		for ( const o of [ ...grupoEtiquetas.children ] ) grupoEtiquetas.remove( o );
-		const extra: Rect[] = conf?.piscina ? [ modelo.tipologia.piscina.rect ] : [];
+		const extra: Rect[] = conf?.piscina && modelo.tipologia.piscina ? [ modelo.tipologia.piscina.rect ] : [];
 		const ocupados: Rect[] = [];
 		// primero las estancias pequeñas: son las que menos sitio tienen
 		for ( const e of [ ...vivienda.estancias ].sort( ( a, b ) => a.superficie - b.superficie ) ) {
@@ -294,7 +294,7 @@ async function iniciar() {
 
 	let interiores = vivienda.estancias.filter( ( e ) => e.uso !== 'exterior' );
 	const utilInterior = () => interiores.reduce( ( t, x ) => t + x.superficie, 0 );
-	const construirLineasActuales = () => volcar( c.lineas, construirLineas( vivienda, { piscina: conf.piscina ? modelo.tipologia.piscina.rect : undefined } ), true );
+	const construirLineasActuales = () => volcar( c.lineas, construirLineas( vivienda, { piscina: conf.piscina ? modelo.tipologia.piscina?.rect : undefined } ), true );
 
 	/** Reconstruye la vivienda según la distribución elegida. Devuelve el informe de cambios. */
 	let estados: Estados | undefined;
@@ -323,7 +323,7 @@ async function iniciar() {
 		volcar( c.carpinterias, k.carpinterias );
 		volcar( c.barandilla, k.barandilla );
 		const e = construirEquipamiento( vivienda, modelo.ambientacion );
-		e.mobiliario.add( ...e.decoracion.children );
+		if ( e.decoracion.children.length ) e.mobiliario.add( ...e.decoracion.children );
 		e.fijo.add( Object.assign( construirRodapies( vivienda ), { userData: { x: 6 } } ) );
 		e.fijo.add( Object.assign( construirMecanismos( vivienda ), { userData: { x: 6 } } ) );
 		volcar( lucesVentana, construirLucesVentana( vivienda ) );
@@ -347,10 +347,16 @@ async function iniciar() {
 
 		volcar( c.canto, construirCantoPorche( modelo.vivienda ) );
 		const g = new THREE.Group();
-		g.add( construirPiscina( modelo.tipologia.piscina ) );
+		// no todas las tipologías prevén piscina (la opción del catálogo solo se ofrece si la hay)
+		const piscina = modelo.tipologia.piscina;
+		if ( piscina ) {
+
+			g.add( construirPiscina( piscina ) );
+			const fallos = validarPiscina( piscina, modelo.vivienda );
+			if ( fallos.length ) console.warn( 'La piscina no cumple:', fallos.join( '; ' ) );
+
+		}
 		volcar( c.piscina, g );
-		const fallos = validarPiscina( modelo.tipologia.piscina, modelo.vivienda );
-		if ( fallos.length ) console.warn( 'La piscina no cumple:', fallos.join( '; ' ) );
 
 	};
 
@@ -720,7 +726,9 @@ async function iniciar() {
 		// elegir vivienda: solo en modo profesional (el público ve la tipología de su enlace)
 		$( '.elegir-vivienda' ).hidden = ! profesional;
 		$<HTMLSelectElement>( '#elegir-vivienda' ).value = v.ref;
-		$( '#ficha-datos' ).textContent = `${ t.dormitorios } dormitorios · ${ t.banos } baños · ${ fmtM2( utilInterior() ) } útiles · terraza y porche de ${ fmtM2( v.superficies.exterior ) }`;
+		const plural = ( n: number, uno: string, varios: string ) => `${ n } ${ n === 1 ? uno : varios }`;
+		const exterior = vivienda.estancias.some( ( e ) => e.id === 'porche' ) ? 'terraza y porche' : 'terraza';
+		$( '#ficha-datos' ).textContent = `${ plural( t.dormitorios, 'dormitorio', 'dormitorios' ) } · ${ plural( t.banos, 'baño', 'baños' ) } · ${ fmtM2( utilInterior() ) } útiles · ${ exterior } de ${ fmtM2( v.superficies.exterior ) }`;
 		document.body.classList.toggle( 'comprador', !! comprador );
 
 	}
