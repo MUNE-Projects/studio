@@ -72,6 +72,7 @@ export function construirSuelos( v: Vivienda, conEntorno = true ) {
 	// umbrales bajo los huecos (el suelo de las estancias se detiene en la cara del muro)
 	for ( const h of v.huecos ) {
 
+		if ( h.tipo === 'ventana' ) continue; // con antepecho: no hay umbral
 		const muro = v.muros.find( ( m ) => m.id === h.muro )!;
 		const [ x0, y0, x1, y1 ] = muro.rect;
 		const r: [ number, number ][] = h.eje === 'x'

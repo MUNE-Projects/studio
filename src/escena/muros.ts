@@ -7,6 +7,7 @@
 import * as THREE from 'three/webgpu';
 import type { Estancia, Hueco, Muro, Vivienda } from '../modelo/tipos';
 import { puntoEnPoligono, puntoEnRect } from '../util/geo';
+import { alturasHueco } from '../modelo/huecos';
 
 export type ClaseCara = 'pintura' | 'alicatado' | 'fachada';
 
@@ -15,13 +16,8 @@ interface Pieza {
 	muro: Muro;
 }
 
-export function alturaHueco( h: Hueco, v: Vivienda ) {
-
-	if ( h.tipo === 'entrada' ) return v.alturas.puerta_entrada.valor;
-	if ( h.tipo === 'balconera' ) return v.alturas.balconera.valor;
-	return v.alturas.puerta_interior.valor;
-
-}
+/** Dintel del hueco (altura de su parte superior). */
+export const alturaHueco = ( h: Hueco, v: Vivienda ) => alturasHueco( h, v )[ 1 ];
 
 function piezas( v: Vivienda ): Pieza[] {
 
@@ -44,7 +40,10 @@ function piezas( v: Vivienda ): Pieza[] {
 		for ( const h of huecos ) {
 
 			trozo( cursor, h.desde, 0, H );
-			trozo( h.desde, h.hasta, alturaHueco( h, v ), H );
+			// antepecho (ventanas) y dintel
+			const [ z0, z1 ] = alturasHueco( h, v );
+			trozo( h.desde, h.hasta, 0, z0 );
+			trozo( h.desde, h.hasta, z1, H );
 			cursor = h.hasta;
 
 		}

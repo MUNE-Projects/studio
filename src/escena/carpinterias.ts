@@ -1,9 +1,10 @@
-// Puertas, balconeras y barandilla, generadas a partir de los huecos del JSON.
+// Puertas, ventanas, balconeras y barandilla, generadas a partir de los huecos del JSON.
 
 import * as THREE from 'three/webgpu';
 import type { Hueco, Vivienda } from '../modelo/tipos';
 import { caja, unir } from '../util/geo';
 import { alturaHueco } from './muros';
+import { alturasHueco, esCarpinteriaExterior, hojasDe, ladoInterior } from '../modelo/huecos';
 import * as M from './materiales';
 
 // puertas totalmente abiertas (contra el muro): no tapan la estancia en las vistas comerciales
@@ -60,106 +61,169 @@ function puerta( h: Hueco, v: Vivienda, m: NonNullable<typeof MAT> ) {
 	mMarco.castShadow = mMarco.receiveShadow = true;
 	g.add( mMarco );
 
-	// hoja, con pivote en la bisagra y en la cara hacia la que abre
 	const esp = h.tipo === 'entrada' ? 0.07 : 0.04;
-	const anchoHoja = b - a - 2 * e - 0.006;
 	const altoHoja = hd - e - 0.008;
-	const s = h.bisagra === 'inicio' ? 1 : - 1;
 	const abrePositivo = h.abre === 'n' || h.abre === 'e';
-	const uPivote = h.bisagra === 'inicio' ? a + e + 0.003 : b - e - 0.003;
-	const wPivote = abrePositivo ? c1 - 0.004 : c0 + 0.004;
-	const signoW = abrePositivo ? - 1 : 1; // la hoja cerrada queda dentro del muro
+	const tipoHoja = h.tipo === 'entrada' ? 'abatible' : h.puerta ?? 'abatible';
 
-	const pivote = new THREE.Group();
-	const hojaGeo = P( 0, 0, s * anchoHoja, signoW * esp, 0.004, altoHoja );
-	const hoja = new THREE.Mesh( hojaGeo, m.hoja );
-	hoja.castShadow = hoja.receiveShadow = true;
-	pivote.add( hoja );
+	// corredera escondida en el tabique: abierta, la hoja no se ve
+	if ( tipoHoja === 'corredera-empotrada' ) return g;
 
-	// manillas (roseta + palanca) en ambas caras, cerca del canto libre
-	const uMan = s * ( anchoHoja - 0.065 );
-	const piezasManilla: THREE.BufferGeometry[] = [];
-	for ( const lado of [ - 1, 1 ] ) {
+	// corredera vista: la hoja corre por la cara hacia la que «abre», junto al hueco
+	if ( tipoHoja === 'corredera' ) {
 
-		const wCara = lado === signoW ? signoW * esp : 0;
-		const hacia = lado === signoW ? signoW : - signoW;
-		const ros = new THREE.CylinderGeometry( 0.026, 0.026, 0.01, 24 );
-		ros.rotateX( Math.PI / 2 );
-		if ( ! enX ) ros.rotateY( Math.PI / 2 );
-		const rp = enX ? [ uMan, 1.05, - ( wCara + hacia * 0.005 ) ] : [ wCara + hacia * 0.005, 1.05, - uMan ];
-		ros.translate( rp[ 0 ], rp[ 1 ], rp[ 2 ] );
-		piezasManilla.push( ros );
-		const w0 = wCara + hacia * 0.01, w1 = wCara + hacia * 0.058;
-		piezasManilla.push( P( uMan - 0.009, w0, uMan + 0.009, w1, 1.041, 1.059 ) );
-		piezasManilla.push( P( uMan - s * 0.13, w1 - hacia * 0.018, uMan + s * 0.009, w1, 1.041, 1.059 ) );
+		const ancho = b - a + 0.06;
+		const wc = abrePositivo ? c1 + 0.03 : c0 - 0.03;
+		const lado = h.bisagra === 'inicio' ? - 1 : 1; // se aparta hacia el lado contrario a la «bisagra»
+		const u0 = lado > 0 ? b - 0.05 : a + 0.05 - ancho;
+		const hojaC = new THREE.Mesh( P( u0, wc - esp / 2, u0 + ancho, wc + esp / 2, 0.01, altoHoja ), m.hoja );
+		hojaC.castShadow = hojaC.receiveShadow = true;
+		const guia = new THREE.Mesh( P( Math.min( a, u0 ) - 0.05, wc - 0.03, Math.max( b, u0 + ancho ) + 0.05, wc + 0.03, altoHoja + 0.01, altoHoja + 0.05 ), m.cromo );
+		g.add( hojaC, guia );
+		return g;
 
 	}
 
-	const manillas = new THREE.Mesh( unir( piezasManilla )!, m.cromo );
-	manillas.castShadow = true;
-	pivote.add( manillas );
+	// abatible (una hoja) o doble (dos hojas, una en cada jamba)
+	const hojas: [ 'inicio' | 'fin', number ][] = tipoHoja === 'doble'
+		? [ [ 'inicio', ( b - a - 2 * e - 0.009 ) / 2 ], [ 'fin', ( b - a - 2 * e - 0.009 ) / 2 ] ]
+		: [ [ h.bisagra ?? 'inicio', b - a - 2 * e - 0.006 ] ];
+	for ( const [ bisagra, anchoHoja ] of hojas ) {
 
-	// las puertas interiores se muestran abiertas; la de entrada, cerrada
-	const giro = h.tipo === 'entrada' ? 0 : ANGULO_PUERTA;
-	pivote.rotation.y = enX ? giro * s * ( abrePositivo ? 1 : - 1 ) : giro * - s * ( abrePositivo ? 1 : - 1 );
-	pivote.position.copy( enX ? new THREE.Vector3( uPivote, 0, - wPivote ) : new THREE.Vector3( wPivote, 0, - uPivote ) );
-	g.add( pivote );
+		const s = bisagra === 'inicio' ? 1 : - 1;
+		const uPivote = bisagra === 'inicio' ? a + e + 0.003 : b - e - 0.003;
+		const wPivote = abrePositivo ? c1 - 0.004 : c0 + 0.004;
+		const signoW = abrePositivo ? - 1 : 1; // la hoja cerrada queda dentro del muro
+
+		const pivote = new THREE.Group();
+		const hojaGeo = P( 0, 0, s * anchoHoja, signoW * esp, 0.004, altoHoja );
+		const hoja = new THREE.Mesh( hojaGeo, m.hoja );
+		hoja.castShadow = hoja.receiveShadow = true;
+		pivote.add( hoja );
+
+		// manillas (roseta + palanca) en ambas caras, cerca del canto libre
+		const uMan = s * ( anchoHoja - 0.065 );
+		const piezasManilla: THREE.BufferGeometry[] = [];
+		for ( const ladoM of [ - 1, 1 ] ) {
+
+			const wCara = ladoM === signoW ? signoW * esp : 0;
+			const hacia = ladoM === signoW ? signoW : - signoW;
+			const ros = new THREE.CylinderGeometry( 0.026, 0.026, 0.01, 24 );
+			ros.rotateX( Math.PI / 2 );
+			if ( ! enX ) ros.rotateY( Math.PI / 2 );
+			const rp = enX ? [ uMan, 1.05, - ( wCara + hacia * 0.005 ) ] : [ wCara + hacia * 0.005, 1.05, - uMan ];
+			ros.translate( rp[ 0 ], rp[ 1 ], rp[ 2 ] );
+			piezasManilla.push( ros );
+			const w0 = wCara + hacia * 0.01, w1 = wCara + hacia * 0.058;
+			piezasManilla.push( P( uMan - 0.009, w0, uMan + 0.009, w1, 1.041, 1.059 ) );
+			piezasManilla.push( P( uMan - s * 0.13, w1 - hacia * 0.018, uMan + s * 0.009, w1, 1.041, 1.059 ) );
+
+		}
+
+		const manillas = new THREE.Mesh( unir( piezasManilla )!, m.cromo );
+		manillas.castShadow = true;
+		pivote.add( manillas );
+
+		// las puertas interiores se muestran abiertas; la de entrada, cerrada
+		const giro = h.tipo === 'entrada' ? 0 : ANGULO_PUERTA;
+		pivote.rotation.y = enX ? giro * s * ( abrePositivo ? 1 : - 1 ) : giro * - s * ( abrePositivo ? 1 : - 1 );
+		pivote.position.copy( enX ? new THREE.Vector3( uPivote, 0, - wPivote ) : new THREE.Vector3( wPivote, 0, - uPivote ) );
+		g.add( pivote );
+
+	}
 	return g;
 
 }
 
-function balconera( h: Hueco, v: Vivienda, m: NonNullable<typeof MAT> ) {
+/**
+ * Ventana o balconera en cualquier fachada: cerco, hojas según su apertura,
+ * vidrio, alféizar (ventanas) y guías de la persiana por fuera (si la lleva).
+ */
+function carpinteriaExterior( h: Hueco, v: Vivienda, m: NonNullable<typeof MAT> ) {
 
 	const muro = v.muros.find( ( w ) => w.id === h.muro )!;
-	const [ , y0, , y1 ] = muro.rect;
-	const hd = alturaHueco( h, v );
-	const a = h.desde, b = h.hasta, w = b - a;
-	const yF = y1 - 0.09; // plano de la carpintería, en el tercio interior del muro
+	const [ x0, y0, x1, y1 ] = muro.rect;
+	const enX = h.eje === 'x';
+	const [ c0, c1 ] = enX ? [ y0, y1 ] : [ x0, x1 ];
+	const lado = ladoInterior( h, v );
+	const caraInt = lado > 0 ? c1 : c0, caraExt = lado > 0 ? c0 : c1;
+	const wF = caraInt - lado * 0.09; // plano de la carpintería, en el tercio interior del muro
+	const [ z0, z1 ] = alturasHueco( h, v );
+	const P = ( u0: number, w0: number, u1: number, w1: number, za: number, zb: number ) =>
+		enX ? cajaLocal( u0, w0, u1, w1, za, zb ) : cajaLocal( w0, u0, w1, u1, za, zb );
+	const a = h.desde, b = h.hasta;
 	const g = new THREE.Group();
 	g.name = h.id;
 	const perfil = 0.055, fondo = 0.07;
-
 	const alu: THREE.BufferGeometry[] = [];
 	const vid: THREE.BufferGeometry[] = [];
-	// cerco perimetral + umbral
-	alu.push( caja( a, yF - fondo / 2, a + perfil, yF + fondo / 2, 0, hd ) );
-	alu.push( caja( b - perfil, yF - fondo / 2, b, yF + fondo / 2, 0, hd ) );
-	alu.push( caja( a, yF - fondo / 2, b, yF + fondo / 2, hd - perfil, hd ) );
-	alu.push( caja( a, yF - fondo / 2 - 0.02, b, yF + fondo / 2, 0, 0.018 ) );
+	const crom: THREE.BufferGeometry[] = [];
 
-	const hoja = ( u0: number, u1: number, yc: number, prof: number ) => {
+	// cerco perimetral y umbral (balconera) o marco inferior (ventana)
+	alu.push( P( a, wF - fondo / 2, a + perfil, wF + fondo / 2, z0, z1 ) );
+	alu.push( P( b - perfil, wF - fondo / 2, b, wF + fondo / 2, z0, z1 ) );
+	alu.push( P( a, wF - fondo / 2, b, wF + fondo / 2, z1 - perfil, z1 ) );
+	alu.push( P( a, wF - fondo / 2 - 0.02, b, wF + fondo / 2, z0, z0 + 0.018 ) );
+	const sill: THREE.BufferGeometry[] = [];
+	if ( h.tipo === 'ventana' ) {
 
-		const p = 0.07;
-		alu.push( caja( u0, yc - prof / 2, u0 + p, yc + prof / 2, 0.018, hd - perfil ) );
-		alu.push( caja( u1 - p, yc - prof / 2, u1, yc + prof / 2, 0.018, hd - perfil ) );
-		alu.push( caja( u0, yc - prof / 2, u1, yc + prof / 2, 0.018, 0.018 + 0.09 ) );
-		alu.push( caja( u0, yc - prof / 2, u1, yc + prof / 2, hd - perfil - p, hd - perfil ) );
-		vid.push( caja( u0 + p, yc - 0.008, u1 - p, yc + 0.008, 0.108, hd - perfil - p ) );
-
-	};
-
-	const interior = a + perfil, exterior = b - perfil;
-	const mitad = ( interior + exterior ) / 2;
-	if ( h.apertura === 'corredera' ) {
-
-		hoja( interior, mitad + 0.04, yF + 0.018, 0.032 );
-		hoja( mitad - 0.04, exterior, yF - 0.018, 0.032 );
-
-	} else {
-
-		hoja( interior, mitad, yF, 0.06 );
-		hoja( mitad, exterior, yF, 0.06 );
-		// manilla oscilobatiente
-		const man = caja( mitad + 0.02, yF + 0.03, mitad + 0.04, yF + 0.055, 1.0, 1.16 );
-		const manilla = new THREE.Mesh( man, m.cromo );
-		g.add( manilla );
+		// alféizar interior y vierteaguas exterior
+		sill.push( P( a - 0.03, caraInt - lado * 0.005, b + 0.03, caraInt + lado * 0.04, z0 - 0.03, z0 ) );
+		alu.push( P( a, caraExt - lado * 0.04, b, caraExt + lado * 0.03, z0 - 0.02, z0 ) );
 
 	}
 
-	// guías de la persiana (exterior)
-	alu.push( caja( a, y0 + 0.005, a + 0.035, y0 + 0.06, 0, hd ) );
-	alu.push( caja( b - 0.035, y0 + 0.005, b, y0 + 0.06, 0, hd ) );
-	alu.push( caja( a, y0 + 0.005, b, y0 + 0.06, hd - 0.03, hd ) );
+	const zi = z0 + 0.018, zs = z1 - perfil;
+	const hoja = ( u0: number, u1: number, wc: number, prof: number ) => {
+
+		const p = 0.07;
+		alu.push( P( u0, wc - prof / 2, u0 + p, wc + prof / 2, zi, zs ) );
+		alu.push( P( u1 - p, wc - prof / 2, u1, wc + prof / 2, zi, zs ) );
+		alu.push( P( u0, wc - prof / 2, u1, wc + prof / 2, zi, zi + ( h.tipo === 'balconera' ? 0.09 : p ) ) );
+		alu.push( P( u0, wc - prof / 2, u1, wc + prof / 2, zs - p, zs ) );
+		vid.push( P( u0 + p, wc - 0.008, u1 - p, wc + 0.008, zi + ( h.tipo === 'balconera' ? 0.09 : p ), zs - p ) );
+
+	};
+	const manilla = ( u: number, z: number, horizontal = false ) => crom.push( horizontal
+		? P( u - 0.08, wF + lado * 0.03, u + 0.08, wF + lado * 0.055, z, z + 0.02 )
+		: P( u - 0.01, wF + lado * 0.03, u + 0.01, wF + lado * 0.055, z, z + 0.16 ) );
+
+	const ui = a + perfil, ue = b - perfil, n = hojasDe( h );
+	const ap = h.apertura ?? 'oscilobatiente';
+	const zMan = Math.min( z0 + 1.0, ( z0 + z1 ) / 2 );
+	if ( ap === 'fija' ) {
+
+		vid.push( P( ui, wF - 0.008, ue, wF + 0.008, zi, zs ) );
+
+	} else if ( ap === 'corredera' ) {
+
+		const paso = ( ue - ui ) / n;
+		for ( let i = 0; i < n; i ++ ) {
+
+			const s0 = ui + i * paso - ( i ? 0.04 : 0 ), s1 = ui + ( i + 1 ) * paso + ( i < n - 1 ? 0.04 : 0 );
+			hoja( s0, s1, wF + ( i % 2 ? - 0.018 : 0.018 ), 0.032 );
+
+		}
+		manilla( ui + paso - 0.06, zMan );
+
+	} else {
+
+		const paso = ( ue - ui ) / n;
+		for ( let i = 0; i < n; i ++ ) hoja( ui + i * paso, ui + ( i + 1 ) * paso, wF, 0.06 );
+		if ( ap === 'proyectante' ) manilla( ( ui + ue ) / 2, zi + 0.02, true );
+		else manilla( n === 1 ? ue - 0.09 : ui + paso + 0.03, zMan );
+
+	}
+
+	// guías y cajón de la persiana, por fuera
+	if ( h.persiana !== false ) {
+
+		const g0 = caraExt + lado * 0.005, g1 = caraExt + lado * 0.06;
+		alu.push( P( a, g0, a + 0.035, g1, z0, z1 ) );
+		alu.push( P( b - 0.035, g0, b, g1, z0, z1 ) );
+		alu.push( P( a, g0, b, g1, z1 - 0.03, z1 ) );
+
+	}
 
 	const mAlu = new THREE.Mesh( unir( alu )!, m.aluminio );
 	mAlu.castShadow = mAlu.receiveShadow = true;
@@ -167,7 +231,15 @@ function balconera( h: Hueco, v: Vivienda, m: NonNullable<typeof MAT> ) {
 	const mVid = new THREE.Mesh( unir( vid )!, m.vidrio );
 	mVid.renderOrder = 2;
 	g.add( mVid );
-	g.userData.ancho = w;
+	if ( crom.length ) g.add( new THREE.Mesh( unir( crom )!, m.cromo ) );
+	if ( sill.length ) {
+
+		const mSill = new THREE.Mesh( unir( sill )!, m.lacado );
+		mSill.castShadow = mSill.receiveShadow = true;
+		g.add( mSill );
+
+	}
+	g.userData.ancho = b - a;
 	return g;
 
 }
@@ -221,7 +293,12 @@ export function construirCarpinterias( v: Vivienda ) {
 	MAT ??= materiales();
 	const g = new THREE.Group();
 	g.name = 'carpinterias';
-	for ( const h of v.huecos ) g.add( h.tipo === 'balconera' ? balconera( h, v, MAT ) : puerta( h, v, MAT ) );
+	for ( const h of v.huecos ) {
+
+		if ( h.tipo === 'paso' ) continue; // hueco sin puerta: solo el corte del muro
+		g.add( esCarpinteriaExterior( h ) ? carpinteriaExterior( h, v, MAT ) : puerta( h, v, MAT ) );
+
+	}
 	const baranda = barandilla( v, MAT );
 	return { carpinterias: g, barandilla: baranda };
 

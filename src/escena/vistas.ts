@@ -9,6 +9,7 @@
 
 import type { Estancia, Punto, Tipologia, Vista, Vivienda } from '../modelo/tipos';
 import { areaPoligono, centroide, puntoEnPoligono } from '../util/geo';
+import { esCarpinteriaExterior } from '../modelo/huecos';
 
 /** Superficie a partir de la cual una estancia pide dos vistas. */
 export const SUPERFICIE_GRANDE = 25;
@@ -52,7 +53,7 @@ export function vistasAutomaticas( e: Estancia, v: Vivienda ): Vista[] {
 	const c = centroide( e.poligono );
 	// punto de entrada: el centro de una puerta de la estancia, 45 cm hacia dentro
 	let ojo: Punto = c;
-	for ( const h of v.huecos.filter( ( x ) => x.tipo !== 'balconera' ) ) {
+	for ( const h of v.huecos.filter( ( x ) => ! esCarpinteriaExterior( x ) ) ) {
 
 		const r = v.muros.find( ( m ) => m.id === h.muro )?.rect;
 		if ( ! r ) continue;

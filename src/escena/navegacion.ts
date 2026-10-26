@@ -16,6 +16,7 @@ import * as THREE from 'three/webgpu';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { Rect, Vivienda } from '../modelo/tipos';
 import { puntoEnPoligono } from '../util/geo';
+import { sePuedeCruzar } from '../modelo/huecos';
 
 export type ModoNavegacion = 'planta' | 'exterior' | 'interior';
 
@@ -175,13 +176,13 @@ export class Navegacion {
 	actualizarObstaculos( v: Vivienda, extra: Rect[] = [] ) {
 
 		// las puertas interiores (abiertas) se pueden cruzar: el muro se trocea en
-		// sus huecos; la entrada y las balconeras siguen siendo muro
+		// sus huecos (también los pasos sin puerta); la entrada, las ventanas y las balconeras siguen siendo muro
 		this.muros = [];
 		const pasos: [ number, number ][][] = [];
 		for ( const m of v.muros ) {
 
 			const [ x0, y0, x1, y1 ] = m.rect;
-			const puertas = v.huecos.filter( ( h ) => h.muro === m.id && h.tipo === 'puerta' ).sort( ( a, b ) => a.desde - b.desde );
+			const puertas = v.huecos.filter( ( h ) => h.muro === m.id && sePuedeCruzar( h ) ).sort( ( a, b ) => a.desde - b.desde );
 			if ( ! puertas.length ) {
 
 				this.muros.push( m.rect );
