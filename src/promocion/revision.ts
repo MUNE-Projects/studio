@@ -14,6 +14,7 @@ import { areaPoligono, puntoEnPoligono, puntoEnRect } from '../util/geo';
 import { revisarVistas } from '../escena/vistas';
 import { alturasHueco } from '../modelo/huecos';
 import { alturaEn, alturasEstancia } from '../modelo/alturas';
+import { plantasDe } from '../modelo/plantas';
 
 const TIPOS_HUECO = [ 'entrada', 'puerta', 'paso', 'balconera', 'ventana' ];
 const TIPOS_PUERTA = [ 'abatible', 'doble', 'corredera', 'corredera-empotrada' ];
@@ -114,6 +115,27 @@ export function revisarPromocion( v: Vivienda, t: Tipologia, alternativas: Alter
 	const oficial = v.meta.superficies_oficiales.interior;
 	if ( Math.abs( util - oficial ) > 0.05 ) add( 'aviso', 'Superficies', `La suma de estancias (${ r2( util ) } m²) no coincide con la superficie útil oficial (${ oficial } m²).` );
 	else add( 'ok', 'Superficies', `Superficie útil coherente: ${ r2( util ) } m².` );
+
+	// varias plantas: cada elemento en una planta que existe, escalera para llegar y hueco libre arriba
+	const ps = plantasDe( v );
+	for ( const x of [ ...v.muros, ...v.estancias, ...v.equipamiento ] ) {
+
+		if ( ( x.planta ?? 0 ) >= ps.length || ( x.planta ?? 0 ) < 0 ) add( 'error', 'Plantas', `«${ x.id }» está en la planta ${ x.planta }, que no existe.` );
+
+	}
+	for ( let i = 1; i < ps.length; i ++ ) {
+
+		const escaleras = v.equipamiento.filter( ( e ) => e.tipo === 'escalera' && ( e.planta ?? 0 ) === i - 1 );
+		if ( ! escaleras.length ) add( 'aviso', 'Plantas', `No hay ninguna escalera que suba a «${ ps[ i ].nombre }».` );
+		for ( const e of escaleras ) {
+
+			const cx = ( e.rect[ 0 ] + e.rect[ 2 ] ) / 2, cy = ( e.rect[ 1 ] + e.rect[ 3 ] ) / 2;
+			const encima = v.estancias.find( ( s ) => ( s.planta ?? 0 ) === i && puntoEnPoligono( cx, cy, s.poligono ) );
+			if ( encima ) add( 'aviso', 'Plantas', `La escalera «${ e.id }» queda debajo de «${ encima.nombre }»: en «${ ps[ i ].nombre }» el hueco de la escalera debe quedar libre (sin suelo).` );
+
+		}
+
+	}
 
 	// techos propios (falsos techos e inclinados): dentro de la altura general
 	for ( const e of v.estancias.filter( ( s ) => s.techo ) ) {

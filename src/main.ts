@@ -32,6 +32,7 @@ import { Panel } from './configurador/panel';
 import { fmtFecha, packsDeVivienda } from './configurador/packs';
 import { CATALOGO, PROMOCION, accesoProfesional, cargarModelo, catalogoPara, estadoPublico, extraerCodigo, guardarSeleccion as guardarEnSupabase, paseInicial, resolverAcceso, resolverProfesional, salirProfesional, viviendaDeUnidad, viviendaPublica, type Modelo } from './promocion/promocion';
 import { aplicarMarca } from './promocion/marca';
+import { dePlanta, esMultiplanta, plantasDe } from './modelo/plantas';
 import { generarPDF } from './documento/pdf';
 import { planoPDF, planoPNG, type DatosPlano } from './documento/plano';
 import { RenderHD } from './escena/renderHD';
@@ -206,6 +207,71 @@ async function iniciar() {
 	const lucesVentana = new THREE.Group();
 	escena.add( lucesVentana );
 
+	// ---------------------------------------------------------------- plantas
+	// Viviendas en varias plantas: en el plano se ve solo la planta elegida; en
+	// 3D, esa y las de debajo (las de encima se levantan, como en una maqueta),
+	// y se recorre la elegida.
+	let plantaActiva = 0;
+	// dentro de la vivienda se ven también las plantas de encima (por el hueco de la escalera)
+	let dentroVivienda = false;
+	const cotaActiva = () => plantasDe( vivienda )[ plantaActiva ]?.cota ?? 0;
+	const mostrarPlantas = () => {
+
+		const multi = esMultiplanta( vivienda );
+		const enPlano = document.body.dataset.modo === 'plano';
+		for ( const g of [ c.muros, c.suelos, c.techos, c.volumenes, c.carpinterias, c.barandilla, c.fijo, c.mobiliario, lucesVentana ] ) {
+
+			for ( const h of g.children ) {
+
+				const p = h.userData.planta ?? 0;
+				const oculta = multi && ( enPlano ? p !== plantaActiva : p > plantaActiva && ! dentroVivienda );
+				h.userData.oculta = oculta;
+				h.visible = ! oculta;
+
+			}
+
+		}
+
+	};
+
+	const botonesPlanta = $( '.plantas' );
+	/** Elige la planta activa (y, si se pide, encuadra: el plano o la vista general). */
+	const cambiarPlanta = ( i: number, encuadrar = true ) => {
+
+		plantaActiva = i;
+		interioresPlanta = dePlanta( vivienda, i ).estancias.filter( ( x ) => x.uso !== 'exterior' );
+		botonesPlanta.querySelectorAll( 'button' ).forEach( ( b, k ) => b.setAttribute( 'aria-current', String( k === i ) ) );
+		mostrarPlantas();
+		construirLineasActuales();
+		construirEtiquetas();
+		nav.actualizarObstaculos( dePlanta( vivienda, i ), obstaculos( modelo.ambientacion ), cotaActiva() );
+		if ( ! encuadrar ) return;
+		if ( document.body.dataset.modo === 'plano' ) {
+
+			( modelo.tipologia.vistas as Record<string, Vista> ).planta = encajePlanta();
+			cam.ir( 'planta' );
+
+		} else cam.ir( 'aerea' );
+		despertar();
+
+	};
+	const pintarBotonesPlanta = () => {
+
+		const ps = plantasDe( vivienda );
+		botonesPlanta.hidden = ps.length < 2;
+		botonesPlanta.replaceChildren( ...ps.map( ( p, k ) => {
+
+			const b = document.createElement( 'button' );
+			b.type = 'button';
+			b.textContent = p.nombre;
+			b.setAttribute( 'aria-current', String( k === plantaActiva ) );
+			b.addEventListener( 'click', () => cambiarPlanta( k ) );
+			return b;
+
+		} ) );
+
+	};
+
 	// etiquetas de estancias (modo Plano)
 	const etiquetas = new CSS2DRenderer( { element: $( '#etiquetas' ) } );
 	etiquetas.setSize( innerWidth, innerHeight );
@@ -219,10 +285,11 @@ async function iniciar() {
 		const extra: Rect[] = conf?.piscina && modelo.tipologia.piscina ? [ modelo.tipologia.piscina.rect ] : [];
 		const ocupados: Rect[] = [];
 		// primero las estancias pequeñas: son las que menos sitio tienen
-		for ( const e of [ ...vivienda.estancias ].sort( ( a, b ) => a.superficie - b.superficie ) ) {
+		const pv = dePlanta( vivienda, plantaActiva );
+		for ( const e of [ ...pv.estancias ].sort( ( a, b ) => a.superficie - b.superficie ) ) {
 
 			const sup = `${ e.superficie.toLocaleString( 'es-ES', { minimumFractionDigits: 2 } ) } m²`;
-			const r = colocarRotulo( e, vivienda, pxPorMetro, sup, extra, ocupados );
+			const r = colocarRotulo( e, pv, pxPorMetro, sup, extra, ocupados );
 			ocupados.push( r.caja );
 			const div = document.createElement( 'div' );
 			div.className = `etiqueta ${ r.formato === 'solo-nombre-2' ? 'solo-nombre' : r.formato }`;
@@ -245,7 +312,7 @@ async function iniciar() {
 
 			}
 			const o = new CSS2DObject( div );
-			o.position.set( r.x, 0.05, - r.y );
+			o.position.set( r.x, cotaActiva() + 0.05, - r.y );
 			grupoEtiquetas.add( o );
 
 		}
@@ -258,7 +325,7 @@ async function iniciar() {
 	 */
 	const encajePlanta = (): Vista => {
 
-		const v = vivienda;
+		const v = dePlanta( vivienda, plantaActiva );
 		const xs = [ ...v.muros.flatMap( ( m ) => [ m.rect[ 0 ], m.rect[ 2 ] ] ), ...v.exterior.barandilla.recorrido.map( ( p ) => p[ 0 ] ) ];
 		const ys = [ ...v.muros.flatMap( ( m ) => [ m.rect[ 1 ], m.rect[ 3 ] ] ), ...v.exterior.barandilla.recorrido.map( ( p ) => p[ 1 ] ) ];
 		const b = [ Math.min( ...xs ) - 0.3, Math.min( ...ys ) - 0.3, Math.max( ...xs ) + 0.3, Math.max( ...ys ) + 0.3 ];
@@ -288,13 +355,21 @@ async function iniciar() {
 		const dx = ( mejor.l + mejor.r ) / 2 - W / 2, dy = ( mejor.t + mejor.b ) / 2 - H / 2;
 		const cx = ( b[ 0 ] + b[ 2 ] ) / 2 - dx / s, cz = - ( b[ 1 ] + b[ 3 ] ) / 2 - dy / s;
 		pxPorMetro = s;
-		return { ...base, pos: [ cx, alto, cz ], obj: [ cx, 0, cz - 0.02 ] };
+		return { ...base, pos: [ cx, cotaActiva() + alto, cz ], obj: [ cx, cotaActiva(), cz - 0.02 ] };
 
 	};
 
 	let interiores = vivienda.estancias.filter( ( e ) => e.uso !== 'exterior' );
+	// las de la planta que se recorre (para saber si la cámara está dentro)
+	let interioresPlanta = interiores;
 	const utilInterior = () => interiores.reduce( ( t, x ) => t + x.superficie, 0 );
-	const construirLineasActuales = () => volcar( c.lineas, construirLineas( vivienda, { piscina: conf.piscina ? modelo.tipologia.piscina?.rect : undefined } ), true );
+	const construirLineasActuales = () => {
+
+		const g = construirLineas( dePlanta( vivienda, plantaActiva ), { piscina: conf.piscina && plantaActiva === 0 ? modelo.tipologia.piscina?.rect : undefined } );
+		for ( const h of g.children ) h.position.y += cotaActiva();
+		volcar( c.lineas, g, true );
+
+	};
 
 	/** Reconstruye la vivienda según la distribución elegida. Devuelve el informe de cambios. */
 	let estados: Estados | undefined;
@@ -303,38 +378,75 @@ async function iniciar() {
 		const alternativa = modelo.alternativas.find( ( v ) => v.id === conf.alternativa ) ?? null;
 		const r = aplicarAlternativa( modelo.vivienda, alternativa );
 		vivienda = r.vivienda;
-		const { geos } = construirMuros( vivienda );
-		const muros = new THREE.Group();
-		for ( const k of Object.keys( geos ) as ( keyof typeof geos )[] ) {
+		// cada planta se construye por separado y se sube a su cota (dúplex,
+		// unifamiliares); con una sola planta, todo queda como siempre
+		const capas = { muros: grupo( 'muros' ), suelos: grupo( 's' ), techos: grupo( 't' ), volumenes: grupo( 'v' ), carpinterias: grupo( 'c' ),
+			barandilla: grupo( 'b' ), fijo: grupo( 'f' ), mobiliario: grupo( 'm' ), luces: grupo( 'l' ) };
+		const subir = ( destino: THREE.Group, origen: THREE.Object3D, i: number, cota: number ) => {
 
-			const m = new THREE.Mesh( geos[ k ], matMuros[ k ] );
-			m.castShadow = m.receiveShadow = true;
-			muros.add( m );
+			for ( const hijo of [ ...origen.children ] ) {
 
-		}
+				hijo.position.y += cota;
+				hijo.userData.planta = i;
+				destino.add( hijo );
 
-		volcar( c.muros, muros );
-		const s = construirSuelos( vivienda, false );
-		volcar( c.suelos, s.suelos );
-		s.techos.add( construirDownlights( vivienda ) );
-		volcar( c.techos, s.techos );
-		volcar( c.volumenes, s.volumenes );
-		const k = construirCarpinterias( vivienda );
-		volcar( c.carpinterias, k.carpinterias );
-		volcar( c.barandilla, k.barandilla );
-		const e = construirEquipamiento( vivienda, modelo.ambientacion );
-		if ( e.decoracion.children.length ) e.mobiliario.add( ...e.decoracion.children );
-		e.fijo.add( Object.assign( construirRodapies( vivienda ), { userData: { x: 6 } } ) );
-		e.fijo.add( Object.assign( construirMecanismos( vivienda ), { userData: { x: 6 } } ) );
-		volcar( lucesVentana, construirLucesVentana( vivienda ) );
-		// paisaje de zonas comunes: va con el mobiliario para que no aparezca en el plano
-		e.mobiliario.add( Object.assign( construirPaisaje( vivienda ), { userData: { x: 13 } } ) );
-		volcar( c.fijo, e.fijo );
-		volcar( c.mobiliario, e.mobiliario );
+			}
+
+		};
+		plantasDe( vivienda ).forEach( ( planta, i ) => {
+
+			const pv = dePlanta( vivienda, i );
+			const { geos } = construirMuros( pv );
+			const muros = new THREE.Group();
+			for ( const k of Object.keys( geos ) as ( keyof typeof geos )[] ) {
+
+				const m = new THREE.Mesh( geos[ k ], matMuros[ k ] );
+				m.castShadow = m.receiveShadow = true;
+				muros.add( m );
+
+			}
+			subir( capas.muros, muros, i, planta.cota );
+			const s = construirSuelos( pv, false );
+			s.techos.add( construirDownlights( pv ) );
+			subir( capas.suelos, s.suelos, i, planta.cota );
+			subir( capas.techos, s.techos, i, planta.cota );
+			subir( capas.volumenes, s.volumenes, i, planta.cota );
+			const k = construirCarpinterias( pv );
+			subir( capas.carpinterias, k.carpinterias, i, planta.cota );
+			subir( capas.barandilla, k.barandilla, i, planta.cota );
+			// la decoración, en la planta de su estancia
+			const ids = new Set( pv.estancias.map( ( x ) => x.id ) );
+			const amb = modelo.ambientacion && esMultiplanta( vivienda )
+				? { ...modelo.ambientacion, decoracion: modelo.ambientacion.decoracion.filter( ( d ) => ids.has( d.estancia ) || ( i === 0 && ! vivienda.estancias.some( ( x ) => x.id === d.estancia ) ) ) }
+				: modelo.ambientacion;
+			const e = construirEquipamiento( pv, amb );
+			if ( e.decoracion.children.length ) e.mobiliario.add( ...e.decoracion.children );
+			e.fijo.add( Object.assign( construirRodapies( pv ), { userData: { x: 6 } } ) );
+			e.fijo.add( Object.assign( construirMecanismos( pv ), { userData: { x: 6 } } ) );
+			subir( capas.luces, construirLucesVentana( pv ), i, planta.cota );
+			// paisaje de zonas comunes: va con el mobiliario para que no aparezca en el plano
+			if ( i === 0 ) e.mobiliario.add( Object.assign( construirPaisaje( pv ), { userData: { x: 13 } } ) );
+			subir( capas.fijo, e.fijo, i, planta.cota );
+			subir( capas.mobiliario, e.mobiliario, i, planta.cota );
+
+		} );
+		volcar( c.muros, capas.muros );
+		volcar( c.suelos, capas.suelos );
+		volcar( c.techos, capas.techos );
+		volcar( c.volumenes, capas.volumenes );
+		volcar( c.carpinterias, capas.carpinterias );
+		volcar( c.barandilla, capas.barandilla );
+		volcar( lucesVentana, capas.luces );
+		volcar( c.fijo, capas.fijo );
+		volcar( c.mobiliario, capas.mobiliario );
+		if ( plantaActiva >= plantasDe( vivienda ).length ) plantaActiva = 0;
+		pintarBotonesPlanta();
+		mostrarPlantas();
 		construirLineasActuales();
 		construirEtiquetas();
 		interiores = vivienda.estancias.filter( ( x ) => x.uso !== 'exterior' );
-		nav.actualizarObstaculos( vivienda, obstaculos( modelo.ambientacion ) );
+		interioresPlanta = dePlanta( vivienda, plantaActiva ).estancias.filter( ( x ) => x.uso !== 'exterior' );
+		nav.actualizarObstaculos( dePlanta( vivienda, plantaActiva ), obstaculos( modelo.ambientacion ), plantasDe( vivienda )[ plantaActiva ]?.cota ?? 0 );
 		actualizarFicha();
 		estados?.refrescar();
 		despertar();
@@ -522,6 +634,10 @@ async function iniciar() {
 	/** Mueve la cámara a una vista (una sola vez; si ya está allí no hace nada). */
 	const irVista = ( v: string | Vista ) => {
 
+		// la vista de una estancia de otra planta lleva a esa planta
+		const vista = typeof v === 'string' ? ( modelo.tipologia.vistas as Record<string, Vista> )[ v ] : v;
+		const est = vista?.estancia && vivienda.estancias.find( ( e ) => e.id === vista.estancia );
+		if ( est && ( est.planta ?? 0 ) !== plantaActiva ) cambiarPlanta( est.planta ?? 0, false );
 		cam.ir( v );
 		marcarVista( typeof v === 'string' ? v : '' );
 
@@ -674,6 +790,7 @@ async function iniciar() {
 		document.body.dataset.estado = String( n );
 		$( '#configurador' ).hidden = m !== 'personalizar';
 		actualizarEtiquetas();
+		mostrarPlantas();
 		if ( m === 'plano' ) {
 
 			( modelo.tipologia.vistas as Record<string, Vista> ).planta = encajePlanta();
@@ -1365,7 +1482,7 @@ async function iniciar() {
 		}
 
 		// dentro de la vivienda los techos proyectan sombra; en la maqueta no
-		const bajo = camara.position.y < H + 0.2;
+		const bajo = camara.position.y < cotaActiva() + H + 0.2;
 		for ( const tc of c.techos.children ) tc.castShadow = bajo || tc.userData.porche;
 		c.techos.visible = est.valores.muros > 0.98;
 		// luz de ventana: con el sol (no en el plano, donde no aporta y cuesta sombras)
@@ -1384,7 +1501,13 @@ async function iniciar() {
 		c.piscina.visible = ep > 0.003;
 		c.piscina.scale.y = Math.max( 0.001, ep );
 		// exposición automática: dentro de la vivienda se abre el "diafragma"
-		const dentro = bajo && interiores.some( ( e ) => puntoEnPoligono( camara.position.x, - camara.position.z, e.poligono ) );
+		const dentro = bajo && interioresPlanta.some( ( e ) => puntoEnPoligono( camara.position.x, - camara.position.z, e.poligono ) );
+		if ( dentro !== dentroVivienda ) {
+
+			dentroVivienda = dentro;
+			if ( esMultiplanta( vivienda ) ) mostrarPlantas();
+
+		}
 		const expObjetivo = dentro ? 1.5 : 0.95;
 		exposicion = Math.abs( expObjetivo - exposicion ) < 0.001 ? expObjetivo : exposicion + ( expObjetivo - exposicion ) * 0.06;
 		renderer.toneMappingExposure = exposicion;

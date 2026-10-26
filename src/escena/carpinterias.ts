@@ -250,6 +250,7 @@ function barandilla( v: Vivienda, m: NonNullable<typeof MAT> ) {
 	const alto = v.alturas.barandilla.valor;
 	const g = new THREE.Group();
 	g.name = 'barandilla';
+	if ( recorrido.length < 2 ) return g; // planta sin terraza
 	const base: THREE.BufferGeometry[] = [], alu: THREE.BufferGeometry[] = [], vid: THREE.BufferGeometry[] = [];
 	const zb = 0.08; // peto de apoyo
 

@@ -15,6 +15,8 @@ export interface Muro {
 	id: string;
 	tipo: 'envolvente' | 'tabique' | 'pilar';
 	rect: Rect;
+	/** planta (índice de Vivienda.plantas; por defecto, la 0) */
+	planta?: number;
 	origen: string;
 }
 
@@ -68,6 +70,8 @@ export interface Estancia {
 	 * a `alto` subiendo hacia `sube`.
 	 */
 	techo?: { altura?: number; inclinado?: { bajo: number; alto: number; sube: Orientacion }; origen?: string };
+	/** planta (índice de Vivienda.plantas; por defecto, la 0) */
+	planta?: number;
 	origen: string;
 }
 
@@ -81,6 +85,10 @@ export interface Equipamiento {
 	placa?: [ number, number ];
 	fregadero?: [ number, number ];
 	lavavajillas?: [ number, number ];
+	/** planta (índice de Vivienda.plantas; por defecto, la 0). Una escalera sube de esta planta a la siguiente, hacia `frente`. */
+	planta?: number;
+	/** escalera: altura que salva (por defecto, la que hay hasta la planta siguiente) */
+	sube?: number;
 }
 
 export interface Vivienda {
@@ -108,6 +116,11 @@ export interface Vivienda {
 	exterior: {
 		barandilla: { recorrido: Punto[]; postes_x: number[] };
 	};
+	/**
+	 * Viviendas en varias plantas (dúplex, unifamiliares): nombre y cota del
+	 * suelo de cada una sobre la primera. Sin esto, una sola planta.
+	 */
+	plantas?: { id: string; nombre: string; cota: number }[];
 }
 
 // ------------------------------------------------------------ configurador

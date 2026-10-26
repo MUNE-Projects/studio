@@ -21,9 +21,12 @@ let matTecho: THREE.MeshStandardNodeMaterial | null = null;
 const matVolumen = new Map<string, THREE.Material>();
 
 /** Geometría horizontal (normal arriba o abajo) a partir de un polígono de planta. */
-function plano( pol: [ number, number ][], altura: number, haciaAbajo = false ) {
+function plano( pol: [ number, number ][], altura: number, haciaAbajo = false, huecos: Rect[] = [] ) {
 
-	const g = new THREE.ShapeGeometry( forma( pol ) );
+	const f = forma( pol );
+	// huecos (escaleras que suben a la planta de arriba): el techo se abre
+	for ( const [ x0, y0, x1, y1 ] of huecos ) f.holes.push( new THREE.Path( [ new THREE.Vector2( x0, y0 ), new THREE.Vector2( x0, y1 ), new THREE.Vector2( x1, y1 ), new THREE.Vector2( x1, y0 ) ] ) );
+	const g = new THREE.ShapeGeometry( f );
 	g.rotateX( - Math.PI / 2 ); // (x, y) de planta -> (x, -z) de mundo, normal hacia arriba
 	if ( haciaAbajo ) {
 
@@ -101,7 +104,8 @@ export function construirSuelos( v: Vivienda, conEntorno = true ) {
 
 		if ( e.uso === 'exterior' && e.id !== 'porche' ) continue;
 		// falso techo o techo inclinado: cada vértice a su altura
-		const g = plano( e.poligono, 0, true );
+		const escaleras = v.equipamiento.filter( ( q ) => q.tipo === 'escalera' && puntoEnPoligono( ( q.rect[ 0 ] + q.rect[ 2 ] ) / 2, ( q.rect[ 1 ] + q.rect[ 3 ] ) / 2, e.poligono ) );
+		const g = plano( e.poligono, 0, true, escaleras.map( ( q ) => q.rect ) );
 		const pos = g.attributes.position;
 		for ( let i = 0; i < pos.count; i ++ ) pos.setY( i, alturaEn( e, v, pos.getX( i ), - pos.getZ( i ) ) );
 		if ( e.techo?.inclinado ) g.computeVertexNormals();

@@ -151,6 +151,49 @@ export class Pieza {
 
 // ------------------------------------------------------------ piezas
 
+/**
+ * Escalera recta: sube hacia el frente (+z local) salvando `sube` metros, con
+ * peldaños de unos 17,5 cm, zanca a los lados y pasamanos en el lado abierto.
+ */
+function escalera( p: Pieza, W: number, D: number, sube: number ) {
+
+	const n = Math.max( 2, Math.round( sube / 0.175 ) );
+	const c = sube / n, h = D / n;
+	const z0 = - D / 2;
+	for ( let k = 0; k < n; k ++ ) {
+
+		const za = z0 + k * h, zb = za + h;
+		// peldaño (huella de madera) sobre su tabica
+		p.caja( 'lacado', - W / 2 + 0.04, k * c, za, W / 2 - 0.04, ( k + 1 ) * c - 0.03, zb );
+		p.caja( 'madera', - W / 2 + 0.04, ( k + 1 ) * c - 0.03, za - 0.015, W / 2 - 0.04, ( k + 1 ) * c, zb );
+
+	}
+	// zancas laterales
+	for ( const x of [ - W / 2, W / 2 - 0.04 ] ) {
+
+		for ( let k = 0; k < n; k ++ ) p.caja( 'lacado', x, Math.max( 0, k * c - 0.1 ), z0 + k * h, x + 0.04, ( k + 1 ) * c + 0.05, z0 + ( k + 1 ) * h );
+
+	}
+	// pasamanos continuo a 0,9 m sobre la línea de peldaños, con montantes cada tres peldaños
+	const largo = Math.hypot( D - h, sube - c );
+	const pasamanos = new THREE.BoxGeometry( 0.02, 0.04, largo );
+	pasamanos.rotateX( - Math.atan2( sube - c, D - h ) );
+	pasamanos.translate( W / 2 - 0.02, ( c + sube ) / 2 + 0.9, 0 );
+	p.add( 'metalNegro', pasamanos );
+	for ( let k = 0; k < n; k += 3 ) p.caja( 'metalNegro', W / 2 - 0.025, ( k + 1 ) * c, z0 + k * h + h / 2 - 0.01, W / 2 - 0.015, ( k + 1 ) * c + 0.9, z0 + k * h + h / 2 + 0.01 );
+
+}
+
+/** Barandilla interior (hueco de escalera, altillos): vidrio con pasamanos, 1 m. */
+function barandillaInterior( p: Pieza, W: number, D: number ) {
+
+	const z = 0;
+	p.caja( 'metalNegro', - W / 2, 0, z - Math.min( 0.03, D / 2 ), W / 2, 0.04, z + Math.min( 0.03, D / 2 ) );
+	p.caja( 'vidrio', - W / 2, 0.04, z - 0.006, W / 2, 0.96, z + 0.006 );
+	p.caja( 'metalNegro', - W / 2, 0.96, z - 0.025, W / 2, 1.0, z + 0.025 );
+
+}
+
 function armario( p: Pieza, W: number, D: number, H: number ) {
 
 	const z1 = D / 2, z0 = - D / 2;
@@ -562,6 +605,8 @@ export function construirEquipamiento( v: Vivienda, amb?: Ambientacion | null ) 
 				case 'mueble-tv': muebleTV( p, W, D ); break;
 				case 'cama': cama( p, W, D, W > 1.2 ); break;
 				case 'mesilla': mesilla( p, W, D ); break;
+				case 'escalera': escalera( p, W, D, e.sube ?? v.alturas.libre.valor + v.alturas.forjado.valor ); break;
+				case 'barandilla': barandillaInterior( p, W, D ); break;
 				default: console.warn( 'Equipamiento sin modelo:', e.tipo );
 
 			}

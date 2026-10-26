@@ -610,3 +610,7 @@ body.perfil-promotora:not([data-modo="plano"]) #foto, body.en-studio:not([data-m
 .no-disponible > div { max-width: 420px; }
 .no-disponible h1 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
 .no-disponible p { margin: 0 0 16px; color: var(--tinta-2); font-size: 14px; }
+
+/* ------------------------------------------------ plantas (dúplex, unifamiliares) */
+.plantas[hidden] { display: none; }
+.plantas button { min-width: 0; padding: 7px 14px; font-size: 12.5px; }
