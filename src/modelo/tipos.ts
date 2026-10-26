@@ -29,11 +29,12 @@ export interface Muro {
  *  · paso: hueco sin puerta.
  *  · balconera: puerta-ventana hasta el suelo (acceso a terraza, balcón…).
  *  · ventana: ventana con antepecho (alféizar a media altura).
+ *  · garaje: puerta de garaje (seccional, de paneles horizontales).
  */
 export interface Hueco {
 	id: string;
 	muro: string;
-	tipo: 'entrada' | 'puerta' | 'paso' | 'balconera' | 'ventana';
+	tipo: 'entrada' | 'puerta' | 'paso' | 'balconera' | 'ventana' | 'garaje';
 	eje: 'x' | 'y';
 	desde: number;
 	hasta: number;
@@ -55,7 +56,8 @@ export interface Hueco {
 	origen: string;
 }
 
-export type Uso = 'dia' | 'noche' | 'humedo' | 'servicio' | 'circulacion' | 'exterior';
+/** garaje: cerrado, pero no cuenta en la superficie útil de la vivienda (se da aparte). */
+export type Uso = 'dia' | 'noche' | 'humedo' | 'servicio' | 'circulacion' | 'exterior' | 'garaje';
 
 export interface Estancia {
 	id: string;
@@ -117,10 +119,13 @@ export interface Vivienda {
 		barandilla: { recorrido: Punto[]; postes_x: number[] };
 	};
 	/**
-	 * Viviendas en varias plantas (dúplex, unifamiliares): nombre y cota del
-	 * suelo de cada una sobre la primera. Sin esto, una sola planta.
+	 * Viviendas en varias plantas (dúplex, unifamiliares, con sótano o garaje):
+	 * de abajo arriba, nombre y cota del suelo de cada una respecto a la planta
+	 * de calle (cota 0; un sótano tiene cota negativa). Sin esto, una sola planta.
 	 */
 	plantas?: { id: string; nombre: string; cota: number }[];
+	/** (interno) altura hasta la que suben los muros: en varias plantas, hasta el suelo de la de encima */
+	alturaMuros?: number;
 }
 
 // ------------------------------------------------------------ configurador

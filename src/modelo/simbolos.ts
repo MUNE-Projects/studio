@@ -3,7 +3,7 @@
 // líneas de planta de la visita 3D, para que dibujen lo mismo.
 
 import type { Hueco, Vivienda } from './tipos';
-import { esCarpinteriaExterior, hojasDe, ladoInterior } from './huecos';
+import { alturasHueco, esCarpinteriaExterior, hojasDe, ladoInterior } from './huecos';
 
 /** jamba: límites del hueco · carpinteria: perfiles · vidrio · exterior: línea de fachada · hoja · giro: arco de la hoja · fino: corredera escondida */
 export type Estilo = 'jamba' | 'carpinteria' | 'vidrio' | 'exterior' | 'hoja' | 'giro' | 'fino';
@@ -52,6 +52,19 @@ export function simbolosHueco( h: Hueco, v: Vivienda ): Trazo[] {
 			lin( 'exterior', [ h.desde, caraInt ], [ h.hasta, caraInt ] );
 
 		}
+		return t;
+
+	}
+
+	if ( h.tipo === 'garaje' ) {
+
+		// puerta seccional: la hoja en la fachada y, a trazos finos, por dónde sube por dentro
+		const lado = ladoInterior( h, v );
+		const wi = lado > 0 ? c1 : c0, fondo = Math.min( 2.4, alturasHueco( h, v )[ 1 ] );
+		lin( 'jamba', [ h.desde, c0 ], [ h.desde, c1 ] );
+		lin( 'jamba', [ h.hasta, c0 ], [ h.hasta, c1 ] );
+		lin( 'hoja', [ h.desde, ( c0 + c1 ) / 2 ], [ h.hasta, ( c0 + c1 ) / 2 ] );
+		lin( 'fino', [ h.desde + 0.05, wi ], [ h.desde + 0.05, wi + lado * fondo ], [ h.hasta - 0.05, wi + lado * fondo ], [ h.hasta - 0.05, wi ] );
 		return t;
 
 	}

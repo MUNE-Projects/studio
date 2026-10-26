@@ -22,6 +22,7 @@ function materiales() {
 		aluminio: M.liso( '#3a3d3f', 0.34, 0.8 ),
 		vidrio: M.vidrio(),
 		sate: M.sate( '#f1efea', false ),
+		seccional: M.lacado( '#d6d3cd', 0.5 ),
 	};
 
 }
@@ -244,6 +245,33 @@ function carpinteriaExterior( h: Hueco, v: Vivienda, m: NonNullable<typeof MAT> 
 
 }
 
+/** Puerta de garaje seccional: paneles horizontales en la cara exterior, con su cerco. */
+function puertaGaraje( h: Hueco, v: Vivienda, m: NonNullable<typeof MAT> ) {
+
+	const [ x0, y0, x1, y1 ] = v.muros.find( ( w ) => w.id === h.muro )!.rect;
+	const enX = h.eje === 'x';
+	const [ c0, c1 ] = enX ? [ y0, y1 ] : [ x0, x1 ];
+	const lado = ladoInterior( h, v );
+	const hd = alturaHueco( h, v );
+	const a = h.desde, b = h.hasta;
+	const P = ( u0: number, w0: number, u1: number, w1: number, z0: number, z1: number ) =>
+		enX ? cajaLocal( u0, w0, u1, w1, z0, z1 ) : cajaLocal( w0, u0, w1, u1, z0, z1 );
+	const g = new THREE.Group();
+	g.name = h.id;
+	// la hoja, un poco metida respecto a la fachada
+	const wE = ( lado > 0 ? c0 : c1 ) + lado * 0.06, gr = 0.04;
+	const n = Math.max( 3, Math.round( hd / 0.55 ) ), alto = hd / n;
+	const paneles = [];
+	for ( let i = 0; i < n; i ++ ) paneles.push( P( a, wE, b, wE + lado * gr, i * alto + ( i ? 0.006 : 0 ), ( i + 1 ) * alto ) );
+	const mPan = new THREE.Mesh( unir( paneles )!, m.seccional );
+	mPan.castShadow = mPan.receiveShadow = true;
+	const cerco = unir( [ P( a, wE - lado * 0.01, a + 0.03, wE + lado * 0.05, 0, hd ), P( b - 0.03, wE - lado * 0.01, b, wE + lado * 0.05, 0, hd ), P( a, wE - lado * 0.01, b, wE + lado * 0.05, hd - 0.03, hd ) ] );
+	g.add( mPan, new THREE.Mesh( cerco!, m.aluminio ) );
+	g.userData.ancho = b - a;
+	return g;
+
+}
+
 function barandilla( v: Vivienda, m: NonNullable<typeof MAT> ) {
 
 	const { recorrido, postes_x } = v.exterior.barandilla;
@@ -297,7 +325,7 @@ export function construirCarpinterias( v: Vivienda ) {
 	for ( const h of v.huecos ) {
 
 		if ( h.tipo === 'paso' ) continue; // hueco sin puerta: solo el corte del muro
-		g.add( esCarpinteriaExterior( h ) ? carpinteriaExterior( h, v, MAT ) : puerta( h, v, MAT ) );
+		g.add( esCarpinteriaExterior( h ) ? carpinteriaExterior( h, v, MAT ) : h.tipo === 'garaje' ? puertaGaraje( h, v, MAT ) : puerta( h, v, MAT ) );
 
 	}
 	const baranda = barandilla( v, MAT );

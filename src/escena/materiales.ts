@@ -678,6 +678,7 @@ const COLORES_USO: Record<string, string> = {
 	servicio: '#cfc6b4',
 	circulacion: '#e3ddd3',
 	exterior: '#c9d3bb',
+	garaje: '#c4c2bd',
 };
 
 export function volumen( uso: string ) {

@@ -21,6 +21,7 @@ import { activoPara, BIBLIOTECA } from '../biblioteca/biblioteca';
 import { aplicarAlternativa } from '../configurador/alternativas';
 import { planoPDF, planoPNG, type DatosPlano } from './plano';
 import type { Alternativa, ViviendaPromocion } from '../modelo/tipos';
+import { esUtil } from '../modelo/estancias';
 
 export interface PlanoLote {
 	clave: string;
@@ -120,7 +121,7 @@ export async function generarLote( avisar: ( t: string ) => void = () => {} ): P
 			distribucion: e.alternativa ? e.alternativa.nombre : 'base',
 		};
 		// la misma superficie útil que figura en el plano
-		const util = vivienda.estancias.filter( ( x ) => x.uso !== 'exterior' ).reduce( ( t, x ) => t + x.superficie, 0 );
+		const util = vivienda.estancias.filter( esUtil ).reduce( ( t, x ) => t + x.superficie, 0 );
 		const t = modelo.tipologia;
 		salida.push( {
 			clave: e.clave,

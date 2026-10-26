@@ -1,4 +1,4 @@
-// Viviendas en varias plantas (dúplex, unifamiliares). Cada muro, estancia y
+// Viviendas en varias plantas (dúplex, unifamiliares, sótano, garaje). Cada muro, estancia y
 // elemento dice en qué planta está; los huecos van con su muro. La visita y el
 // plano trabajan planta a planta con `dePlanta`.
 
@@ -10,6 +10,14 @@ export interface Planta { id: string; nombre: string; cota: number }
 export const plantasDe = ( v: Vivienda ): Planta[] => v.plantas?.length ? v.plantas : [ { id: 'unica', nombre: 'Planta', cota: 0 } ];
 
 export const esMultiplanta = ( v: Vivienda ) => plantasDe( v ).length > 1;
+
+/** Planta de calle: la de cota 0 (o la más cercana). Ahí van la terraza general y el paisaje. */
+export function plantaCalle( v: Vivienda ): number {
+
+	const ps = plantasDe( v );
+	return ps.reduce( ( m, p, i ) => Math.abs( p.cota ) < Math.abs( ps[ m ].cota ) ? i : m, 0 );
+
+}
 
 const en = ( i: number ) => ( x: { planta?: number } ) => ( x.planta ?? 0 ) === i;
 
@@ -25,9 +33,11 @@ export function dePlanta( v: Vivienda, i: number ): Vivienda {
 		huecos: v.huecos.filter( ( h ) => ids.has( h.muro ) ),
 		estancias: v.estancias.filter( en( i ) ),
 		equipamiento: v.equipamiento.filter( en( i ) ).map( ( e ) => e.tipo === 'escalera' && e.sube === undefined ? { ...e, sube: alturaEntrePlantas( v, i ) } : e ),
-		// la terraza de la barandilla general es de la primera planta
-		exterior: i === 0 ? v.exterior : { ...v.exterior, barandilla: { recorrido: [], postes_x: [] } },
+		// la terraza de la barandilla general es de la planta de calle
+		exterior: i === plantaCalle( v ) ? v.exterior : { ...v.exterior, barandilla: { recorrido: [], postes_x: [] } },
 		plantas: undefined,
+		// los muros suben hasta el suelo de la planta de encima (sin hueco entre plantas)
+		alturaMuros: i < plantasDe( v ).length - 1 ? alturaEntrePlantas( v, i ) : undefined,
 	};
 
 }

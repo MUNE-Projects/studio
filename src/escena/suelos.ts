@@ -13,6 +13,8 @@ const MAT_SUELO: Record<string, () => THREE.Material> = {
 	'porcelanico-bano': () => M.porcelanico( M.P.banos.suelo, 0.6, 0.002, 0.28 ),
 	'ceramico': () => M.porcelanico( '#cfcac1', 0.33, 0.003, 0.5 ),
 	'exterior': () => M.porcelanico( '#b8b1a6', 0.6, 0.004, 0.72 ),
+	// garaje: solera de hormigón pulido (juntas de retracción cada 3 m)
+	'hormigon': () => M.porcelanico( '#a8a49d', 3, 0.004, 0.62 ),
 };
 
 // Materiales compartidos entre reconstrucciones (cambiar de distribución no recompila shaders).
@@ -82,7 +84,7 @@ export function construirSuelos( v: Vivienda, conEntorno = true ) {
 			? [ [ h.desde, y0 ], [ h.hasta, y0 ], [ h.hasta, y1 ], [ h.desde, y1 ] ]
 			: [ [ x0, h.desde ], [ x1, h.desde ], [ x1, h.hasta ], [ x0, h.hasta ] ];
 		// umbral del mismo suelo que la estancia a la que abre la puerta (o gres en balconeras)
-		const destino = h.tipo === 'balconera' ? 'porcelanico' : ( v.estancias.find( ( e ) => e.suelo === 'madera' && estanciaJunto( e, h, muro.rect ) )?.suelo ?? 'porcelanico' );
+		const destino = h.tipo === 'garaje' ? 'hormigon' : h.tipo === 'balconera' ? 'porcelanico' : ( v.estancias.find( ( e ) => e.suelo === 'madera' && estanciaJunto( e, h, muro.rect ) )?.suelo ?? 'porcelanico' );
 		const m = new THREE.Mesh( plano( r, h.tipo === 'balconera' ? - 0.005 : 0 ), mat( destino ) );
 		m.receiveShadow = true;
 		suelos.add( m );

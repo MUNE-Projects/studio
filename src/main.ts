@@ -32,7 +32,8 @@ import { Panel } from './configurador/panel';
 import { fmtFecha, packsDeVivienda } from './configurador/packs';
 import { CATALOGO, PROMOCION, accesoProfesional, cargarModelo, catalogoPara, estadoPublico, extraerCodigo, guardarSeleccion as guardarEnSupabase, paseInicial, resolverAcceso, resolverProfesional, salirProfesional, viviendaDeUnidad, viviendaPublica, type Modelo } from './promocion/promocion';
 import { aplicarMarca } from './promocion/marca';
-import { dePlanta, esMultiplanta, plantasDe } from './modelo/plantas';
+import { dePlanta, esMultiplanta, plantaCalle, plantasDe } from './modelo/plantas';
+import { esCerrada, esGaraje, esUtil } from './modelo/estancias';
 import { generarPDF } from './documento/pdf';
 import { planoPDF, planoPNG, type DatosPlano } from './documento/plano';
 import { RenderHD } from './escena/renderHD';
@@ -211,7 +212,7 @@ async function iniciar() {
 	// Viviendas en varias plantas: en el plano se ve solo la planta elegida; en
 	// 3D, esa y las de debajo (las de encima se levantan, como en una maqueta),
 	// y se recorre la elegida.
-	let plantaActiva = 0;
+	let plantaActiva = plantaCalle( modelo.vivienda );
 	// dentro de la vivienda se ven también las plantas de encima (por el hueco de la escalera)
 	let dentroVivienda = false;
 	const cotaActiva = () => plantasDe( vivienda )[ plantaActiva ]?.cota ?? 0;
@@ -219,6 +220,8 @@ async function iniciar() {
 
 		const multi = esMultiplanta( vivienda );
 		const enPlano = document.body.dataset.modo === 'plano';
+		// en un sótano, el terreno de alrededor se aparta para verlo (desde dentro, se queda)
+		suelo!.visible = cotaActiva() >= 0 || ( dentroVivienda && ! enPlano );
 		for ( const g of [ c.muros, c.suelos, c.techos, c.volumenes, c.carpinterias, c.barandilla, c.fijo, c.mobiliario, lucesVentana ] ) {
 
 			for ( const h of g.children ) {
@@ -239,7 +242,7 @@ async function iniciar() {
 	const cambiarPlanta = ( i: number, encuadrar = true ) => {
 
 		plantaActiva = i;
-		interioresPlanta = dePlanta( vivienda, i ).estancias.filter( ( x ) => x.uso !== 'exterior' );
+		interioresPlanta = dePlanta( vivienda, i ).estancias.filter( esCerrada );
 		botonesPlanta.querySelectorAll( 'button' ).forEach( ( b, k ) => b.setAttribute( 'aria-current', String( k === i ) ) );
 		mostrarPlantas();
 		construirLineasActuales();
@@ -359,9 +362,9 @@ async function iniciar() {
 
 	};
 
-	let interiores = vivienda.estancias.filter( ( e ) => e.uso !== 'exterior' );
+	let interiores = vivienda.estancias.filter( esUtil );
 	// las de la planta que se recorre (para saber si la cámara está dentro)
-	let interioresPlanta = interiores;
+	let interioresPlanta = vivienda.estancias.filter( esCerrada );
 	const utilInterior = () => interiores.reduce( ( t, x ) => t + x.superficie, 0 );
 	const construirLineasActuales = () => {
 
@@ -417,7 +420,7 @@ async function iniciar() {
 			// la decoración, en la planta de su estancia
 			const ids = new Set( pv.estancias.map( ( x ) => x.id ) );
 			const amb = modelo.ambientacion && esMultiplanta( vivienda )
-				? { ...modelo.ambientacion, decoracion: modelo.ambientacion.decoracion.filter( ( d ) => ids.has( d.estancia ) || ( i === 0 && ! vivienda.estancias.some( ( x ) => x.id === d.estancia ) ) ) }
+				? { ...modelo.ambientacion, decoracion: modelo.ambientacion.decoracion.filter( ( d ) => ids.has( d.estancia ) || ( i === plantaCalle( vivienda ) && ! vivienda.estancias.some( ( x ) => x.id === d.estancia ) ) ) }
 				: modelo.ambientacion;
 			const e = construirEquipamiento( pv, amb );
 			if ( e.decoracion.children.length ) e.mobiliario.add( ...e.decoracion.children );
@@ -425,7 +428,7 @@ async function iniciar() {
 			e.fijo.add( Object.assign( construirMecanismos( pv ), { userData: { x: 6 } } ) );
 			subir( capas.luces, construirLucesVentana( pv ), i, planta.cota );
 			// paisaje de zonas comunes: va con el mobiliario para que no aparezca en el plano
-			if ( i === 0 ) e.mobiliario.add( Object.assign( construirPaisaje( pv ), { userData: { x: 13 } } ) );
+			if ( i === plantaCalle( vivienda ) ) e.mobiliario.add( Object.assign( construirPaisaje( pv ), { userData: { x: 13 } } ) );
 			subir( capas.fijo, e.fijo, i, planta.cota );
 			subir( capas.mobiliario, e.mobiliario, i, planta.cota );
 
@@ -439,13 +442,13 @@ async function iniciar() {
 		volcar( lucesVentana, capas.luces );
 		volcar( c.fijo, capas.fijo );
 		volcar( c.mobiliario, capas.mobiliario );
-		if ( plantaActiva >= plantasDe( vivienda ).length ) plantaActiva = 0;
+		if ( plantaActiva >= plantasDe( vivienda ).length ) plantaActiva = plantaCalle( vivienda );
 		pintarBotonesPlanta();
 		mostrarPlantas();
 		construirLineasActuales();
 		construirEtiquetas();
-		interiores = vivienda.estancias.filter( ( x ) => x.uso !== 'exterior' );
-		interioresPlanta = dePlanta( vivienda, plantaActiva ).estancias.filter( ( x ) => x.uso !== 'exterior' );
+		interiores = vivienda.estancias.filter( esUtil );
+		interioresPlanta = dePlanta( vivienda, plantaActiva ).estancias.filter( esCerrada );
 		nav.actualizarObstaculos( dePlanta( vivienda, plantaActiva ), obstaculos( modelo.ambientacion ), plantasDe( vivienda )[ plantaActiva ]?.cota ?? 0 );
 		actualizarFicha();
 		estados?.refrescar();
@@ -845,7 +848,8 @@ async function iniciar() {
 		$<HTMLSelectElement>( '#elegir-vivienda' ).value = v.ref;
 		const plural = ( n: number, uno: string, varios: string ) => `${ n } ${ n === 1 ? uno : varios }`;
 		const exterior = vivienda.estancias.some( ( e ) => e.id === 'porche' ) ? 'terraza y porche' : 'terraza';
-		$( '#ficha-datos' ).textContent = `${ plural( t.dormitorios, 'dormitorio', 'dormitorios' ) } · ${ plural( t.banos, 'baño', 'baños' ) } · ${ fmtM2( utilInterior() ) } útiles · ${ exterior } de ${ fmtM2( v.superficies.exterior ) }`;
+		const garaje = vivienda.estancias.filter( esGaraje ).reduce( ( a, e ) => a + e.superficie, 0 );
+		$( '#ficha-datos' ).textContent = `${ plural( t.dormitorios, 'dormitorio', 'dormitorios' ) } · ${ plural( t.banos, 'baño', 'baños' ) } · ${ fmtM2( utilInterior() ) } útiles${ garaje ? ` · garaje de ${ fmtM2( garaje ) }` : '' } · ${ exterior } de ${ fmtM2( v.superficies.exterior ) }`;
 		document.body.classList.toggle( 'comprador', !! comprador );
 
 	}

@@ -184,6 +184,16 @@ function escalera( p: Pieza, W: number, D: number, sube: number ) {
 
 }
 
+/** Plaza de aparcamiento: líneas pintadas en el suelo (se entra por el frente). */
+function plaza( p: Pieza, W: number, D: number ) {
+
+	const a = 0.1, z = 0.003;
+	p.caja( 'lacado', - W / 2, 0, - D / 2, - W / 2 + a, z, D / 2 );
+	p.caja( 'lacado', W / 2 - a, 0, - D / 2, W / 2, z, D / 2 );
+	p.caja( 'lacado', - W / 2, 0, - D / 2, W / 2, z, - D / 2 + a );
+
+}
+
 /** Barandilla interior (hueco de escalera, altillos): vidrio con pasamanos, 1 m. */
 function barandillaInterior( p: Pieza, W: number, D: number ) {
 
@@ -607,6 +617,7 @@ export function construirEquipamiento( v: Vivienda, amb?: Ambientacion | null ) 
 				case 'mesilla': mesilla( p, W, D ); break;
 				case 'escalera': escalera( p, W, D, e.sube ?? v.alturas.libre.valor + v.alturas.forjado.valor ); break;
 				case 'barandilla': barandillaInterior( p, W, D ); break;
+				case 'plaza': plaza( p, W, D ); break;
 				default: console.warn( 'Equipamiento sin modelo:', e.tipo );
 
 			}

@@ -15,8 +15,9 @@ import { revisarVistas } from '../escena/vistas';
 import { alturasHueco } from '../modelo/huecos';
 import { alturaEn, alturasEstancia } from '../modelo/alturas';
 import { plantasDe } from '../modelo/plantas';
+import { esUtil } from '../modelo/estancias';
 
-const TIPOS_HUECO = [ 'entrada', 'puerta', 'paso', 'balconera', 'ventana' ];
+const TIPOS_HUECO = [ 'entrada', 'puerta', 'paso', 'balconera', 'ventana', 'garaje' ];
 const TIPOS_PUERTA = [ 'abatible', 'doble', 'corredera', 'corredera-empotrada' ];
 const APERTURAS = [ 'corredera', 'oscilobatiente', 'abatible', 'fija', 'proyectante' ];
 
@@ -111,13 +112,15 @@ export function revisarPromocion( v: Vivienda, t: Tipologia, alternativas: Alter
 
 	}
 
-	const util = v.estancias.filter( ( e ) => e.uso !== 'exterior' ).reduce( ( s, e ) => s + e.superficie, 0 );
+	const util = v.estancias.filter( esUtil ).reduce( ( s, e ) => s + e.superficie, 0 );
 	const oficial = v.meta.superficies_oficiales.interior;
 	if ( Math.abs( util - oficial ) > 0.05 ) add( 'aviso', 'Superficies', `La suma de estancias (${ r2( util ) } m²) no coincide con la superficie útil oficial (${ oficial } m²).` );
 	else add( 'ok', 'Superficies', `Superficie útil coherente: ${ r2( util ) } m².` );
 
 	// varias plantas: cada elemento en una planta que existe, escalera para llegar y hueco libre arriba
 	const ps = plantasDe( v );
+	if ( ps.some( ( p, i ) => i && p.cota <= ps[ i - 1 ].cota ) ) add( 'error', 'Plantas', 'Las plantas tienen que ir de abajo arriba (cada cota, mayor que la anterior).' );
+	if ( ps.length > 1 && ! ps.some( ( p ) => p.cota === 0 ) ) add( 'aviso', 'Plantas', 'Ninguna planta tiene cota 0: la planta de calle debería tenerla (un sótano, cota negativa).' );
 	for ( const x of [ ...v.muros, ...v.estancias, ...v.equipamiento ] ) {
 
 		if ( ( x.planta ?? 0 ) >= ps.length || ( x.planta ?? 0 ) < 0 ) add( 'error', 'Plantas', `«${ x.id }» está en la planta ${ x.planta }, que no existe.` );
@@ -165,6 +168,7 @@ export function revisarPromocion( v: Vivienda, t: Tipologia, alternativas: Alter
 		if ( x.apertura && ! APERTURAS.includes( x.apertura ) ) add( 'error', 'Huecos', `«${ x.id }»: apertura «${ x.apertura }» que la visita aún no sabe representar.` );
 		const [ z0, z1 ] = alturasHueco( x, v );
 		if ( z0 >= z1 || z1 > v.alturas.libre.valor + 0.01 ) add( 'error', 'Huecos', `«${ x.id }»: alturas imposibles (de ${ z0 } a ${ z1 } m, con ${ v.alturas.libre.valor } m de altura libre).` );
+		if ( x.tipo === 'garaje' && x.alto === undefined ) add( 'aviso', 'Huecos', `«${ x.id }»: puerta de garaje sin altura; se supone 2,20 m. Compruébala en alzados o secciones.` );
 		if ( x.tipo === 'ventana' && x.antepecho === undefined && ! v.alturas.antepecho ) add( 'aviso', 'Huecos', `«${ x.id }»: ventana sin altura de alféizar; se supone 0,9 m. Compruébala en alzados o secciones.` );
 		if ( ( x.hojas ?? 1 ) > 4 ) add( 'aviso', 'Huecos', `«${ x.id }»: ${ x.hojas } hojas; se dibujan como máximo 4.` );
 		// el dintel no puede quedar por encima del techo de las estancias a las que da
