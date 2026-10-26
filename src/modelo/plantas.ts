@@ -33,8 +33,12 @@ export function dePlanta( v: Vivienda, i: number ): Vivienda {
 		huecos: v.huecos.filter( ( h ) => ids.has( h.muro ) ),
 		estancias: v.estancias.filter( en( i ) ),
 		equipamiento: v.equipamiento.filter( en( i ) ).map( ( e ) => e.tipo === 'escalera' && e.sube === undefined ? { ...e, sube: alturaEntrePlantas( v, i ) } : e ),
-		// la terraza de la barandilla general es de la planta de calle
-		exterior: i === plantaCalle( v ) ? v.exterior : { ...v.exterior, barandilla: { recorrido: [], postes_x: [] } },
+		// la barandilla general es de la planta de calle; las demás dicen su planta
+		exterior: {
+			barandilla: i === plantaCalle( v ) ? v.exterior.barandilla : undefined,
+			barandillas: ( v.exterior.barandillas ?? [] ).filter( en( i ) ),
+		},
+		cotaPlanta: plantasDe( v )[ i ].cota,
 		plantas: undefined,
 		// los muros suben hasta el suelo de la planta de encima (sin hueco entre plantas)
 		alturaMuros: i < plantasDe( v ).length - 1 ? alturaEntrePlantas( v, i ) : undefined,

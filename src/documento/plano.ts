@@ -18,6 +18,7 @@ import { barridoHueco, simbolosHueco, type Estilo } from '../modelo/simbolos';
 import { esCarpinteriaExterior } from '../modelo/huecos';
 import { dePlanta, esMultiplanta, plantasDe } from '../modelo/plantas';
 import { esGaraje, esUtil } from '../modelo/estancias';
+import { HACIA, barandillasDe, bordesLibres, esCubierta, esJardin, limites } from '../modelo/exteriores';
 
 type P2 = [ number, number ];
 
@@ -303,11 +304,11 @@ export interface DatosPlano {
 const COLORES = {
 	papel: '#ffffff', tinta: '#1c1c1a', gris: '#6e6a63', grisClaro: '#9a958d', linea: '#dedad3',
 	muro: '#2b2a28', mueble: '#8d8a84', muebleFijo: '#5d5a55',
-	suelo: { madera: '#f1e9dc', ceramico: '#ebeeee', humedo: '#e5ecee', exterior: '#f1f0ea', garaje: '#e6e5e2' } as Record<string, string>,
-	vetas: { madera: '#e6dac7', ceramico: '#dde1e1', humedo: '#d7e0e2', exterior: '#e3e1d9', garaje: '#d6d4d0' } as Record<string, string>,
+	suelo: { madera: '#f1e9dc', ceramico: '#ebeeee', humedo: '#e5ecee', exterior: '#f1f0ea', garaje: '#e6e5e2', jardin: '#e4eddc' } as Record<string, string>,
+	vetas: { madera: '#e6dac7', ceramico: '#dde1e1', humedo: '#d7e0e2', exterior: '#e3e1d9', garaje: '#d6d4d0', jardin: '#e4eddc' } as Record<string, string>,
 };
 
-const claseSuelo = ( e: Estancia ) => e.uso === 'exterior' ? 'exterior' : e.uso === 'garaje' ? 'garaje' : e.suelo === 'madera' ? 'madera' : e.suelo === 'porcelanico-bano' ? 'humedo' : 'ceramico';
+const claseSuelo = ( e: Estancia ) => e.rampa ? 'garaje' : e.uso === 'exterior' ? ( esJardin( e ) ? 'jardin' : 'exterior' ) : e.uso === 'garaje' ? 'garaje' : e.suelo === 'madera' ? 'madera' : e.suelo === 'porcelanico-bano' ? 'humedo' : 'ceramico';
 
 /** Nombre visible de la distribución: «base» se muestra con el nombre de la opción incluida del catálogo. */
 const nombreDistribucion = ( d: string ) => d !== 'base' ? d
@@ -327,9 +328,7 @@ function componer( D: Dibujo, d: DatosPlano, logos: { promotora: { url: string; 
 	D.pol( [ [ 0, 0 ], [ HOJA.ancho, 0 ], [ HOJA.ancho, HOJA.alto ], [ 0, HOJA.alto ] ], COLORES.papel );
 
 	// ---------------------------------------------------------------- plano
-	const xs = [ ...v.muros.flatMap( ( m ) => [ m.rect[ 0 ], m.rect[ 2 ] ] ), ...v.exterior.barandilla.recorrido.map( ( q ) => q[ 0 ] ) ];
-	const ys = [ ...v.muros.flatMap( ( m ) => [ m.rect[ 1 ], m.rect[ 3 ] ] ), ...v.exterior.barandilla.recorrido.map( ( q ) => q[ 1 ] ) ];
-	const bx0 = Math.min( ...xs ), bx1 = Math.max( ...xs ), by0 = Math.min( ...ys ), by1 = Math.max( ...ys );
+	const [ bx0, by0, bx1, by1 ] = limites( v );
 	const area = { x: M + 2, y: M, w: colX - M - 14, h: HOJA.alto - 2 * M - 16 };
 	// escala normalizada que quepa (1:50, 1:75, 1:100…)
 	const den = [ 50, 75, 100, 125, 150, 200, 250 ].find( ( n ) => ( bx1 - bx0 ) * 1000 / n <= area.w && ( by1 - by0 ) * 1000 / n <= area.h ) ?? 300;
@@ -344,20 +343,27 @@ function componer( D: Dibujo, d: DatosPlano, logos: { promotora: { url: string; 
 		const c = claseSuelo( e );
 		D.pol( TT( e.poligono ), COLORES.suelo[ c ] );
 		const vy = e.poligono.map( ( q ) => q[ 1 ] ), vx = e.poligono.map( ( q ) => q[ 0 ] );
-		const paso = c === 'madera' ? 0.19 : c === 'exterior' ? 0.6 : c === 'garaje' ? 3 : 0.45;
+		const paso = c === 'madera' ? 0.19 : c === 'exterior' ? 0.6 : c === 'garaje' || c === 'jardin' ? 1e3 : 0.45;
 		for ( let y = Math.min( ...vy ) + paso; y < Math.max( ...vy ); y += paso ) for ( const [ a, b ] of cortesH( e.poligono, y ) ) D.lin( [ T( a, y ), T( b, y ) ], COLORES.vetas[ c ], 0.08 );
 		if ( c !== 'madera' ) for ( let x = Math.min( ...vx ) + paso; x < Math.max( ...vx ); x += paso ) for ( const [ a, b ] of cortesH( trasponer( e.poligono ), x ) ) D.lin( [ T( x, a ), T( x, b ) ], COLORES.vetas[ c ], 0.08 );
 
 	}
 
-	// proyección del porche (discontinua)
-	const porche = v.estancias.find( ( e ) => e.id === 'porche' );
-	if ( porche ) {
+	// rampas: flecha en el sentido en que suben
+	for ( const e of v.estancias.filter( ( x ) => x.rampa ) ) {
 
-		const px = porche.poligono.map( ( q ) => q[ 0 ] ), py = porche.poligono.map( ( q ) => q[ 1 ] );
-		D.lin( [ T( Math.min( ...px ), Math.max( ...py ) ), T( Math.min( ...px ), Math.min( ...py ) ), T( Math.max( ...px ), Math.min( ...py ) ) ], COLORES.gris, 0.18, [ 1.4, 1 ] );
+		const xs = e.poligono.map( ( q ) => q[ 0 ] ), ys = e.poligono.map( ( q ) => q[ 1 ] );
+		const [ x0, x1, y0, y1 ] = [ Math.min( ...xs ), Math.max( ...xs ), Math.min( ...ys ), Math.max( ...ys ) ];
+		const [ dx, dy ] = HACIA[ e.rampa!.sube ];
+		const cx = ( x0 + x1 ) / 2, cy = ( y0 + y1 ) / 2, l = ( dx ? x1 - x0 : y1 - y0 ) * 0.35;
+		const a: Punto = [ cx - dx * l, cy - dy * l ], b: Punto = [ cx + dx * l, cy + dy * l ];
+		D.lin( TT( [ a, b ] ), COLORES.tinta, 0.25 );
+		D.pol( TT( [ [ b[ 0 ] + dx * 0.2, b[ 1 ] + dy * 0.2 ], [ b[ 0 ] - dy * 0.1, b[ 1 ] + dx * 0.1 ], [ b[ 0 ] + dy * 0.1, b[ 1 ] - dx * 0.1 ] ] ), COLORES.tinta );
 
 	}
+
+	// proyección de porches y exteriores cubiertos (discontinua, en sus bordes libres)
+	for ( const tramo of v.estancias.filter( esCubierta ).flatMap( ( e ) => bordesLibres( e, v ) ) ) D.lin( TT( tramo ), COLORES.gris, 0.18, [ 1.4, 1 ] );
 
 	// techos inclinados: línea donde la altura libre es de 1,50 m (punto y raya)
 	const lineas150: [ number, number ][][] = [];
@@ -377,9 +383,13 @@ function componer( D: Dibujo, d: DatosPlano, logos: { promotora: { url: string; 
 
 	}
 
-	// barandilla de la terraza
-	const rec = v.exterior.barandilla.recorrido;
-	if ( rec.length > 1 ) D.lin( TT( rec ), '#4a4845', 0.35 );
+	// barandillas: línea fina; los petos de obra, como un muro bajo (doble trazo relleno)
+	for ( const b of barandillasDe( v ) ) {
+
+		if ( b.modelo === 'peto' || b.modelo === 'peto-vidrio' ) D.lin( TT( b.recorrido ), '#8d8a84', 0.9 );
+		D.lin( TT( b.recorrido ), '#4a4845', 0.35 );
+
+	}
 
 	// mobiliario y equipamiento (trazo fino)
 	for ( const e of v.equipamiento ) dibujarEquipo( D, e, T, s );
@@ -553,7 +563,8 @@ function componer( D: Dibujo, d: DatosPlano, logos: { promotora: { url: string; 
 	const util = interiores.reduce( ( a, e ) => a + e.superficie, 0 );
 	fila( d.planta ? `Superficie útil · ${ d.planta.nombre.toLowerCase() }` : 'Superficie útil interior', fmtM2( util ), { negrita: true } );
 	if ( d.planta ) fila( 'Superficie útil de la vivienda', fmtM2( d.planta.utilTotal ), { negrita: true } );
-	const garajes = v.estancias.filter( esGaraje );
+	// el garaje y su rampa de acceso, aparte de la superficie útil y de los exteriores
+	const garajes = v.estancias.filter( ( e ) => esGaraje( e ) || !! e.rampa );
 	if ( garajes.length ) {
 
 		y += 2;
@@ -563,7 +574,7 @@ function componer( D: Dibujo, d: DatosPlano, logos: { promotora: { url: string; 
 		if ( garajes.length > 1 ) fila( 'Total garaje', fmtM2( garajes.reduce( ( a, e ) => a + e.superficie, 0 ) ), { negrita: true } );
 
 	}
-	const exteriores = v.estancias.filter( ( e ) => e.uso === 'exterior' );
+	const exteriores = v.estancias.filter( ( e ) => e.uso === 'exterior' && ! e.rampa );
 	if ( exteriores.length ) {
 
 		y += 2;
@@ -588,14 +599,16 @@ function componer( D: Dibujo, d: DatosPlano, logos: { promotora: { url: string; 
 	y += 4.5;
 	// solo lo que aparece en este plano (cada promoción es distinta)
 	const hay = ( f: ( e: typeof v.estancias[ number ] ) => boolean ) => v.estancias.some( f );
-	const conPorche = hay( ( e ) => e.id === 'porche' ), conExterior = hay( ( e ) => e.uso === 'exterior' );
-	const nombresExteriores = [ ...new Set( v.estancias.filter( ( e ) => e.uso === 'exterior' ).map( ( e ) => e.nombre.toLowerCase() ) ) ];
+	const pavimentado = ( e: Estancia ) => e.uso === 'exterior' && ! esJardin( e ) && ! e.rampa;
+	const conPorche = hay( esCubierta ), conExterior = hay( pavimentado );
+	const nombresExteriores = [ ...new Set( v.estancias.filter( pavimentado ).map( ( e ) => e.nombre.toLowerCase() ) ) ];
 	const textoExterior = nombresExteriores.length ? nombresExteriores.join( ', ' ).replace( /, ([^,]*)$/, ' y $1' ) : '';
 	const leyenda: [ string, ( x: number, y: number ) => void ][] = [
 		...( hay( ( e ) => e.suelo === 'madera' ) ? [ [ 'Pavimento de madera', ( x: number, yy: number ) => D.pol( [ [ x, yy - 2.6 ], [ x + 6, yy - 2.6 ], [ x + 6, yy + 0.6 ], [ x, yy + 0.6 ] ], COLORES.suelo.madera, COLORES.vetas.madera, 0.15 ) ] as [ string, ( x: number, y: number ) => void ] ] : [] ),
 		...( hay( ( e ) => esUtil( e ) && e.suelo !== 'madera' ) ? [ [ 'Pavimento cerámico', ( x: number, yy: number ) => D.pol( [ [ x, yy - 2.6 ], [ x + 6, yy - 2.6 ], [ x + 6, yy + 0.6 ], [ x, yy + 0.6 ] ], COLORES.suelo.ceramico, COLORES.vetas.ceramico, 0.15 ) ] as [ string, ( x: number, y: number ) => void ] ] : [] ),
 		...( conExterior ? [ [ textoExterior.charAt( 0 ).toUpperCase() + textoExterior.slice( 1 ), ( x: number, yy: number ) => D.pol( [ [ x, yy - 2.6 ], [ x + 6, yy - 2.6 ], [ x + 6, yy + 0.6 ], [ x, yy + 0.6 ] ], COLORES.suelo.exterior, COLORES.vetas.exterior, 0.15 ) ] as [ string, ( x: number, y: number ) => void ] ] : [] ),
-		...( hay( esGaraje ) ? [ [ 'Garaje', ( x: number, yy: number ) => D.pol( [ [ x, yy - 2.6 ], [ x + 6, yy - 2.6 ], [ x + 6, yy + 0.6 ], [ x, yy + 0.6 ] ], COLORES.suelo.garaje, COLORES.vetas.garaje, 0.15 ) ] as [ string, ( x: number, y: number ) => void ] ] : [] ),
+		...( hay( esJardin ) ? [ [ 'Zona ajardinada', ( x: number, yy: number ) => D.pol( [ [ x, yy - 2.6 ], [ x + 6, yy - 2.6 ], [ x + 6, yy + 0.6 ], [ x, yy + 0.6 ] ], COLORES.suelo.jardin, '#b9c9ad', 0.15 ) ] as [ string, ( x: number, y: number ) => void ] ] : [] ),
+		...( hay( ( e ) => esGaraje( e ) || !! e.rampa ) ? [ [ hay( esGaraje ) ? 'Garaje' : 'Rampa de garaje', ( x: number, yy: number ) => D.pol( [ [ x, yy - 2.6 ], [ x + 6, yy - 2.6 ], [ x + 6, yy + 0.6 ], [ x, yy + 0.6 ] ], COLORES.suelo.garaje, COLORES.vetas.garaje, 0.15 ) ] as [ string, ( x: number, y: number ) => void ] ] : [] ),
 		[ 'Muro / tabique', ( x, yy ) => D.pol( [ [ x, yy - 2.6 ], [ x + 6, yy - 2.6 ], [ x + 6, yy + 0.6 ], [ x, yy + 0.6 ] ], COLORES.muro ) ],
 		...( v.huecos.some( esCarpinteriaExterior ) ? [ [ 'Carpintería exterior', ( x: number, yy: number ) => {
 

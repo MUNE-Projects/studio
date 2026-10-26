@@ -34,6 +34,7 @@ import { CATALOGO, PROMOCION, accesoProfesional, cargarModelo, catalogoPara, est
 import { aplicarMarca } from './promocion/marca';
 import { dePlanta, esMultiplanta, plantaCalle, plantasDe } from './modelo/plantas';
 import { esCerrada, esGaraje, esUtil } from './modelo/estancias';
+import { limites, marcoEntorno } from './modelo/exteriores';
 import { generarPDF } from './documento/pdf';
 import { planoPDF, planoPNG, type DatosPlano } from './documento/plano';
 import { RenderHD } from './escena/renderHD';
@@ -203,7 +204,9 @@ async function iniciar() {
 	};
 
 	const { entorno: suelo } = construirSuelos( modelo.vivienda );
-	const luzSol = crearSol( new THREE.Vector3( 6.35, 0, - 3.3 ) );
+	// el sol apunta al centro de la vivienda (sus sombras la cubren entera)
+	const mc = marcoEntorno( dePlanta( modelo.vivienda, plantaCalle( modelo.vivienda ) ) );
+	const luzSol = crearSol( new THREE.Vector3( mc.cx, 0, mc.cz ) );
 	escena.add( ...Object.values( c ), suelo!, luzSol, luzSol.target );
 	const lucesVentana = new THREE.Group();
 	escena.add( lucesVentana );
@@ -213,21 +216,21 @@ async function iniciar() {
 	// 3D, esa y las de debajo (las de encima se levantan, como en una maqueta),
 	// y se recorre la elegida.
 	let plantaActiva = plantaCalle( modelo.vivienda );
-	// dentro de la vivienda se ven también las plantas de encima (por el hueco de la escalera)
-	let dentroVivienda = false;
+	// a pie (dentro, en el jardín, en la rampa…) se ven también las plantas de encima
+	let aPie = false;
 	const cotaActiva = () => plantasDe( vivienda )[ plantaActiva ]?.cota ?? 0;
 	const mostrarPlantas = () => {
 
 		const multi = esMultiplanta( vivienda );
 		const enPlano = document.body.dataset.modo === 'plano';
 		// en un sótano, el terreno de alrededor se aparta para verlo (desde dentro, se queda)
-		suelo!.visible = cotaActiva() >= 0 || ( dentroVivienda && ! enPlano );
+		suelo!.visible = cotaActiva() >= 0 || ( aPie && ! enPlano );
 		for ( const g of [ c.muros, c.suelos, c.techos, c.volumenes, c.carpinterias, c.barandilla, c.fijo, c.mobiliario, lucesVentana ] ) {
 
 			for ( const h of g.children ) {
 
 				const p = h.userData.planta ?? 0;
-				const oculta = multi && ( enPlano ? p !== plantaActiva : p > plantaActiva && ! dentroVivienda );
+				const oculta = multi && ( enPlano ? p !== plantaActiva : p > plantaActiva && ! aPie );
 				h.userData.oculta = oculta;
 				h.visible = ! oculta;
 
@@ -329,9 +332,8 @@ async function iniciar() {
 	const encajePlanta = (): Vista => {
 
 		const v = dePlanta( vivienda, plantaActiva );
-		const xs = [ ...v.muros.flatMap( ( m ) => [ m.rect[ 0 ], m.rect[ 2 ] ] ), ...v.exterior.barandilla.recorrido.map( ( p ) => p[ 0 ] ) ];
-		const ys = [ ...v.muros.flatMap( ( m ) => [ m.rect[ 1 ], m.rect[ 3 ] ] ), ...v.exterior.barandilla.recorrido.map( ( p ) => p[ 1 ] ) ];
-		const b = [ Math.min( ...xs ) - 0.3, Math.min( ...ys ) - 0.3, Math.max( ...xs ) + 0.3, Math.max( ...ys ) + 0.3 ];
+		const [ lx0, ly0, lx1, ly1 ] = limites( v );
+		const b = [ lx0 - 0.3, ly0 - 0.3, lx1 + 0.3, ly1 + 0.3 ];
 		const bw = b[ 2 ] - b[ 0 ], bh = b[ 3 ] - b[ 1 ];
 		const W = innerWidth, H = innerHeight, margen = 24;
 		const ficha = $( '.ficha' ).getBoundingClientRect(), dock = $( '.dock' ).getBoundingClientRect();
@@ -847,9 +849,11 @@ async function iniciar() {
 		$( '.elegir-vivienda' ).hidden = ! profesional;
 		$<HTMLSelectElement>( '#elegir-vivienda' ).value = v.ref;
 		const plural = ( n: number, uno: string, varios: string ) => `${ n } ${ n === 1 ? uno : varios }`;
-		const exterior = vivienda.estancias.some( ( e ) => e.id === 'porche' ) ? 'terraza y porche' : 'terraza';
+		// los exteriores por su nombre: «terraza y porche», «jardín, porche y balcón»…
+		const nombres = [ ...new Set( vivienda.estancias.filter( ( e ) => e.uso === 'exterior' && ! e.rampa ).map( ( e ) => e.nombre.toLowerCase() ) ) ];
+		const exterior = nombres.join( ', ' ).replace( /, ([^,]*)$/, ' y $1' );
 		const garaje = vivienda.estancias.filter( esGaraje ).reduce( ( a, e ) => a + e.superficie, 0 );
-		$( '#ficha-datos' ).textContent = `${ plural( t.dormitorios, 'dormitorio', 'dormitorios' ) } · ${ plural( t.banos, 'baño', 'baños' ) } · ${ fmtM2( utilInterior() ) } útiles${ garaje ? ` · garaje de ${ fmtM2( garaje ) }` : '' } · ${ exterior } de ${ fmtM2( v.superficies.exterior ) }`;
+		$( '#ficha-datos' ).textContent = `${ plural( t.dormitorios, 'dormitorio', 'dormitorios' ) } · ${ plural( t.banos, 'baño', 'baños' ) } · ${ fmtM2( utilInterior() ) } útiles${ garaje ? ` · garaje de ${ fmtM2( garaje ) }` : '' }${ exterior && v.superficies.exterior ? ` · ${ exterior } de ${ fmtM2( v.superficies.exterior ) }` : '' }`;
 		document.body.classList.toggle( 'comprador', !! comprador );
 
 	}
@@ -1506,9 +1510,13 @@ async function iniciar() {
 		c.piscina.scale.y = Math.max( 0.001, ep );
 		// exposición automática: dentro de la vivienda se abre el "diafragma"
 		const dentro = bajo && interioresPlanta.some( ( e ) => puntoEnPoligono( camara.position.x, - camara.position.z, e.poligono ) );
-		if ( dentro !== dentroVivienda ) {
+		// a pie (dentro, en el jardín, en la rampa…) se ve la casa entera; desde
+		// encima del tejado, la maqueta se levanta hasta la planta elegida
+		const ps = plantasDe( vivienda );
+		const pie = camara.position.y < ps[ ps.length - 1 ].cota + H + 1;
+		if ( pie !== aPie ) {
 
-			dentroVivienda = dentro;
+			aPie = pie;
 			if ( esMultiplanta( vivienda ) ) mostrarPlantas();
 
 		}

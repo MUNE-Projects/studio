@@ -7,6 +7,7 @@ import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Pieza } from './equipamiento';
 import { azar } from '../biblioteca/generadores';
 import type { Vivienda } from '../modelo/tipos';
+import { marcoEntorno } from '../modelo/exteriores';
 
 /** Copa irregular: icosaedro deformado con ruido determinista. */
 function copa( k: Pieza, mat: string, x: number, y: number, z: number, r: number, rnd: () => number, achatado = 0.8 ) {
@@ -56,26 +57,37 @@ export function construirPaisaje( v: Vivienda ) {
 
 	const rnd = azar( 'paisaje' );
 	const k = new Pieza();
-	const xs = v.exterior.barandilla.recorrido.map( ( p ) => p[ 0 ] );
-	const ySur = Math.min( ...v.exterior.barandilla.recorrido.map( ( p ) => p[ 1 ] ) );
-	const x0 = Math.min( ...xs ), x1 = Math.max( ...xs );
-	const z0 = - ySur; // borde sur de la terraza en mundo
+	// todo se coloca respecto a la fachada de los exteriores (la del jardín o la terraza)
+	const m = marcoEntorno( v );
+	const P = ( t: number, d: number ): [ number, number ] => [ m.cx + m.u[ 0 ] * t + m.w[ 0 ] * ( m.frente + d ), m.cz + m.u[ 1 ] * t + m.w[ 1 ] * ( m.frente + d ) ];
 
-	// seto bajo a lo largo de la barandilla (no tapa las vistas desde dentro)
-	for ( let x = x0 - 1.5; x < x1 + 1.5; x += 0.55 ) copa( k, 'hoja:#5b7442', x + ( rnd() - 0.5 ) * 0.1, 0.2, z0 + 0.5, 0.34, rnd, 1.0 );
+	// seto bajo a lo largo de los exteriores (no tapa las vistas desde dentro)
+	for ( let t = m.t0 - 1.5; t < m.t1 + 1.5; t += 0.55 ) {
 
-	// árboles de las zonas comunes, alejados para que se lean como fondo
+		const [ x, z ] = P( t + ( rnd() - 0.5 ) * 0.1, 0.5 );
+		copa( k, 'hoja:#5b7442', x, 0.2, z, 0.34, rnd, 1.0 );
+
+	}
+
+	// árboles de las zonas comunes, alejados para que se lean como fondo (a lo largo
+	// de la fachada, desde el comienzo de los exteriores; y hacia fuera)
 	const arboles: [ number, number, number, 'olivo' | 'pino' | 'frondoso' ][] = [
-		[ - 3.5, 6.5, 4.2, 'olivo' ], [ 2.8, 9.5, 5.5, 'frondoso' ], [ 8.2, 7.5, 4.0, 'olivo' ], [ 13.5, 10.5, 7.5, 'pino' ],
-		[ 17.5, 6.0, 4.4, 'olivo' ], [ - 7.5, 12.5, 8.0, 'pino' ], [ 6.0, 15.5, 6.5, 'frondoso' ], [ 20.5, 14, 7, 'pino' ],
+		[ - 3.674, 6.5, 4.2, 'olivo' ], [ 2.626, 9.5, 5.5, 'frondoso' ], [ 8.026, 7.5, 4.0, 'olivo' ], [ 13.326, 10.5, 7.5, 'pino' ],
+		[ 17.326, 6.0, 4.4, 'olivo' ], [ - 7.674, 12.5, 8.0, 'pino' ], [ 5.826, 15.5, 6.5, 'frondoso' ], [ 20.326, 14, 7, 'pino' ],
 	];
-	for ( const [ x, dz, alto, tipo ] of arboles ) arbol( k, x, z0 + dz, alto, rnd, tipo );
+	for ( const [ t, d, alto, tipo ] of arboles ) {
+
+		const [ x, z ] = P( m.t0 + t, d );
+		arbol( k, x, z, alto, rnd, tipo );
+
+	}
 
 	// macizos de arbustos junto al paseo
 	for ( let i = 0; i < 14; i ++ ) {
 
-		const x = x0 - 4 + i * 1.6 + rnd() * 0.6;
-		copa( k, i % 3 ? 'hoja:#667d4c' : 'hoja:#8a8f5c', x, 0.35, z0 + 4.1 + rnd() * 0.5, 0.45 + rnd() * 0.25, rnd, 0.9 );
+		const t = m.t0 - 4 + i * 1.6 + rnd() * 0.6;
+		const [ x, z ] = P( t, 4.1 + rnd() * 0.5 );
+		copa( k, i % 3 ? 'hoja:#667d4c' : 'hoja:#8a8f5c', x, 0.35, z, 0.45 + rnd() * 0.25, rnd, 0.9 );
 
 	}
 

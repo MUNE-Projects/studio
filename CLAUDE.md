@@ -13,19 +13,19 @@ Contexto permanente para cualquier sesión de Claude que trabaje en este almacé
 
 «Inmobiliarias» de MUNE Projects es una plataforma para **promotoras inmobiliarias**. Cada promoción tiene **una representación digital viva** de la que sale todo:
 
-- la visita pública 3D/VR (visor Three.js en `src/`);
+- la visita pública 3D (visor Three.js en `src/`);
 - los renders, los planos comerciales, los packs de personalización y los PDF.
 
 Claude se usa **solo en producción** (preparar, interpretar, revisar), **nunca por visitante**.
 
 - **Modelo:** Promoción → Tipología → Variante (modificación fija: espejo, bajo, ático…) → Unidad (vivienda concreta). *Alternativa* = elección del comprador. En las plurifamiliares se produce por tipología y variante; en las unifamiliares, más individual por unidad. **No se gestionan disponibilidad ni precios de venta.**
 - **Códigos de comprador** (Fase 1): se validan en Supabase. Se guarda solo su hash, con límite de intentos, regeneración y revocación. La web pública es estática y no depende de Supabase.
-- **Entorno en tres capas** (A precisa, B próxima, C lejana), con su fiabilidad indicada. Fuentes: generación propia, Catastro, IGN/PNOA/LiDAR y OSM. Google 3D Tiles queda excluido salvo aprobación expresa. Dron: solo un añadido opcional futuro.
+- **Entorno en tres capas** (A precisa, B próxima, C lejana), con su fiabilidad indicada. Fuentes: generación propia, Catastro, IGN/PNOA/LiDAR y OSM. Google 3D Tiles queda excluido salvo aprobación expresa. Dron: descartado (decisión 49).
 - **3D híbrido:** la arquitectura se genera desde datos; el mobiliario y los objetos son GLB reutilizables de la biblioteca. Se permiten assets externos gratuitos (también modelos 3D) si su licencia permite uso comercial y redistribución, y siempre registrados.
 - **Marca (decisión 39):** MUNE Projects = la empresa; **MUNE** = la plataforma y la marca visible («The agile visual platform»). Capas: **MUNE Portal** (la promotora), **MUNE Studio** (lo interno de MUNE: el Panel y el Studio) y la **experiencia pública de la promoción** (marca blanca). «Escaparate» es solo un nombre técnico interno. Textos: claros, directos, poco técnicos; tú en singular; «MUNE» para la plataforma y «el equipo de MUNE» para las personas; versiones «v7»; nunca errores técnicos a la vista. Arquitectura completa aprobada (decisión 40) en `docs/arquitectura-mune.md`: se implementa siguiendo su **lista maestra** (apartado 10, decisión 41), una propuesta por paso; en el paso de nombres definitivos desaparecen «Panel», «taller» y «escaparate» como nombres técnicos.
 - **Personas:**
   - la **administradora** (Carolina) usa **MUNE Studio** (el Panel);
-  - las **promotoras** usan **MUNE Portal**: documentación, planos, compradores, ficha y formalización; marca y catálogo en la Fase 2;
+  - las **promotoras** usan **MUNE Portal**: documentación, planos, compradores, ficha y formalización; marca y catálogo, antes del primer cliente (decisión 49);
   - los **compradores** ven la experiencia pública y, con código, su parte privada (personalización, histórico y formalización).
 
 ## Reglas que nunca se rompen
