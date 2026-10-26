@@ -21,7 +21,7 @@ export const alturaHueco = ( h: Hueco, v: Vivienda ) => alturasHueco( h, v )[ 1 
 
 function piezas( v: Vivienda ): Pieza[] {
 
-	const H = v.alturas.libre.valor;
+	const H = v.alturaMuros ?? v.alturas.libre.valor;
 	const out: Pieza[] = [];
 	for ( const m of v.muros ) {
 
@@ -65,7 +65,7 @@ function clasificar( x: number, y: number, estancias: Estancia[] ): Estancia | n
 
 export function construirMuros( v: Vivienda ) {
 
-	const H = v.alturas.libre.valor;
+	const H = v.alturaMuros ?? v.alturas.libre.valor;
 	const lista = piezas( v );
 	const buffers: Record<ClaseCara, number[]> = { pintura: [], alicatado: [], fachada: [] };
 	const normales: Record<ClaseCara, number[]> = { pintura: [], alicatado: [], fachada: [] };

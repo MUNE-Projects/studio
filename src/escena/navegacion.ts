@@ -64,6 +64,7 @@ export class Navegacion {
 	private interiores: [ number, number ][][] = [];
 	private caja: Rect = [ 0, 0, 13, 10 ];
 	private altura = 2.5;
+	private cota = 0;
 	private paso = 0; // metros pendientes de caminar (rueda)
 	private anterior = { pos: new THREE.Vector3(), obj: new THREE.Vector3() };
 	// mirada en interior: rumbo (alrededor de la vertical) e inclinación
@@ -173,7 +174,10 @@ export class Navegacion {
 	}
 
 	/** Obstáculos de la vivienda actual (muros, pilares, mobiliario y decoración). */
-	actualizarObstaculos( v: Vivienda, extra: Rect[] = [] ) {
+	actualizarObstaculos( v: Vivienda, extra: Rect[] = [], cota = 0 ) {
+
+		// planta en la que se camina (viviendas en varias plantas)
+		this.cota = cota;
 
 		// las puertas interiores (abiertas) se pueden cruzar: el muro se trocea en
 		// sus huecos (también los pasos sin puerta); la entrada, las ventanas y las balconeras siguen siendo muro
@@ -218,7 +222,7 @@ export class Navegacion {
 		this.interiores = [ ...v.estancias.filter( ( e ) => e.uso !== 'exterior' ).map( ( e ) => e.poligono ), ...pasos ];
 		const xs = this.muros.flatMap( ( r ) => [ r[ 0 ], r[ 2 ] ] ), ys = this.muros.flatMap( ( r ) => [ r[ 1 ], r[ 3 ] ] );
 		this.caja = [ Math.min( ...xs ), Math.min( ...ys ), Math.max( ...xs ), Math.max( ...ys ) ];
-		this.altura = v.alturas.libre.valor;
+		this.altura = cota + v.alturas.libre.valor;
 
 	}
 
@@ -286,7 +290,7 @@ export class Navegacion {
 	private valido( a: THREE.Vector3, b: THREE.Vector3 ) {
 
 		const H = this.altura;
-		if ( b.y < 0.9 ) return false;
+		if ( b.y < this.cota + 0.9 ) return false;
 		const bx = b.x, by = - b.z, ax = a.x, ay = - a.z;
 		const dentroCaja = bx > this.caja[ 0 ] - 0.2 && bx < this.caja[ 2 ] + 0.2 && by > this.caja[ 1 ] - 0.2 && by < this.caja[ 3 ] + 0.2;
 		if ( this.modo === 'exterior' ) {
@@ -297,7 +301,7 @@ export class Navegacion {
 		}
 
 		if ( this.modo !== 'interior' ) return true;
-		if ( b.y < OJOS.min || b.y > OJOS.max ) return false;
+		if ( b.y < this.cota + OJOS.min || b.y > this.cota + OJOS.max ) return false;
 		if ( ! this.interiores.some( ( p ) => puntoEnPoligono( bx, by, p ) ) && dentroCaja ) return false;
 		// no atravesar muros
 		if ( this.muros.some( ( r ) => cruza( ax, ay, bx, by, r ) ) ) return false;

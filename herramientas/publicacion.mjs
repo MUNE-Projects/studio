@@ -131,7 +131,7 @@ function comprobarSuperficies( id ) {
 			continue;
 
 		}
-		const suma = ( v.estancias ?? [] ).filter( ( e ) => e.uso !== 'exterior' ).reduce( ( a, e ) => a + e.superficie, 0 );
+		const suma = ( v.estancias ?? [] ).filter( ( e ) => e.uso !== 'exterior' && e.uso !== 'garaje' ).reduce( ( a, e ) => a + e.superficie, 0 );
 		if ( Math.abs( suma - oficial ) > MARGEN_SUPERFICIE ) {
 
 			problemas.push( `tipología «${ t }»: las estancias suman ${ suma.toFixed( 2 ) } m² y la superficie útil oficial es ${ oficial } m² (diferencia ${ ( suma - oficial ).toFixed( 2 ) } m²)` );

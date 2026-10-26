@@ -10,6 +10,9 @@ export const esCarpinteriaExterior = ( h: Hueco ) => h.tipo === 'balconera' || h
 /** Huecos por los que se pasa (en la visita y en el plano llevan giro o paso). */
 export const sePuedeCruzar = ( h: Hueco ) => h.tipo === 'puerta' || h.tipo === 'paso';
 
+/** Puerta de garaje sin altura en la documentación: la habitual. */
+export const ALTO_GARAJE = 2.2;
+
 /** Alturas del hueco sobre el suelo: [arranque, dintel]. */
 export function alturasHueco( h: Hueco, v: Vivienda ): [ number, number ] {
 
@@ -18,6 +21,7 @@ export function alturasHueco( h: Hueco, v: Vivienda ): [ number, number ] {
 
 		case 'entrada': return [ 0, h.alto ?? A.puerta_entrada.valor ];
 		case 'balconera': return [ 0, h.alto ?? A.balconera.valor ];
+		case 'garaje': return [ 0, h.alto ?? ALTO_GARAJE ];
 		case 'ventana': return [ h.antepecho ?? A.antepecho?.valor ?? 0.9, h.alto ?? A.ventana?.valor ?? A.balconera.valor ];
 		default: return [ 0, h.alto ?? A.puerta_interior.valor ];
 

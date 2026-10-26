@@ -146,7 +146,7 @@ export function construirMecanismos( v: Vivienda ) {
 	matMecanismo ??= M.lacado( '#f6f5f2', 0.35 );
 	matTecla ??= M.liso( '#e4e2dd', 0.4 );
 	const placas: THREE.BufferGeometry[] = [], teclas: THREE.BufferGeometry[] = [];
-	for ( const h of v.huecos.filter( ( x ) => ! esCarpinteriaExterior( x ) && x.tipo !== 'paso' ) ) {
+	for ( const h of v.huecos.filter( ( x ) => ! esCarpinteriaExterior( x ) && x.tipo !== 'paso' && x.tipo !== 'garaje' ) ) {
 
 		const [ x0, y0, x1, y1 ] = v.muros.find( ( m ) => m.id === h.muro )!.rect;
 		const enX = h.eje === 'x';

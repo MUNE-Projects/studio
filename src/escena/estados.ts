@@ -150,7 +150,7 @@ export class Estados {
 				const x = ( hijo.userData.x ?? 0 ) / 13;
 				const q = THREE.MathUtils.clamp( ( p * 1.45 - x * 0.45 ) , 0, 1 );
 				hijo.scale.y = Math.max( 0.001, easeOut( q ) );
-				hijo.visible = q > 0.002;
+				hijo.visible = q > 0.002 && ! hijo.userData.oculta; // oculta: de una planta que no se enseña
 
 			}
 

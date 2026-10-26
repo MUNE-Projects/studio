@@ -15,6 +15,8 @@ export interface Muro {
 	id: string;
 	tipo: 'envolvente' | 'tabique' | 'pilar';
 	rect: Rect;
+	/** planta (índice de Vivienda.plantas; por defecto, la 0) */
+	planta?: number;
 	origen: string;
 }
 
@@ -27,11 +29,12 @@ export interface Muro {
  *  · paso: hueco sin puerta.
  *  · balconera: puerta-ventana hasta el suelo (acceso a terraza, balcón…).
  *  · ventana: ventana con antepecho (alféizar a media altura).
+ *  · garaje: puerta de garaje (seccional, de paneles horizontales).
  */
 export interface Hueco {
 	id: string;
 	muro: string;
-	tipo: 'entrada' | 'puerta' | 'paso' | 'balconera' | 'ventana';
+	tipo: 'entrada' | 'puerta' | 'paso' | 'balconera' | 'ventana' | 'garaje';
 	eje: 'x' | 'y';
 	desde: number;
 	hasta: number;
@@ -53,7 +56,8 @@ export interface Hueco {
 	origen: string;
 }
 
-export type Uso = 'dia' | 'noche' | 'humedo' | 'servicio' | 'circulacion' | 'exterior';
+/** garaje: cerrado, pero no cuenta en la superficie útil de la vivienda (se da aparte). */
+export type Uso = 'dia' | 'noche' | 'humedo' | 'servicio' | 'circulacion' | 'exterior' | 'garaje';
 
 export interface Estancia {
 	id: string;
@@ -68,6 +72,8 @@ export interface Estancia {
 	 * a `alto` subiendo hacia `sube`.
 	 */
 	techo?: { altura?: number; inclinado?: { bajo: number; alto: number; sube: Orientacion }; origen?: string };
+	/** planta (índice de Vivienda.plantas; por defecto, la 0) */
+	planta?: number;
 	origen: string;
 }
 
@@ -81,6 +87,10 @@ export interface Equipamiento {
 	placa?: [ number, number ];
 	fregadero?: [ number, number ];
 	lavavajillas?: [ number, number ];
+	/** planta (índice de Vivienda.plantas; por defecto, la 0). Una escalera sube de esta planta a la siguiente, hacia `frente`. */
+	planta?: number;
+	/** escalera: altura que salva (por defecto, la que hay hasta la planta siguiente) */
+	sube?: number;
 }
 
 export interface Vivienda {
@@ -108,6 +118,14 @@ export interface Vivienda {
 	exterior: {
 		barandilla: { recorrido: Punto[]; postes_x: number[] };
 	};
+	/**
+	 * Viviendas en varias plantas (dúplex, unifamiliares, con sótano o garaje):
+	 * de abajo arriba, nombre y cota del suelo de cada una respecto a la planta
+	 * de calle (cota 0; un sótano tiene cota negativa). Sin esto, una sola planta.
+	 */
+	plantas?: { id: string; nombre: string; cota: number }[];
+	/** (interno) altura hasta la que suben los muros: en varias plantas, hasta el suelo de la de encima */
+	alturaMuros?: number;
 }
 
 // ------------------------------------------------------------ configurador
