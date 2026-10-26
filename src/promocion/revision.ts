@@ -14,7 +14,8 @@ import { areaPoligono, puntoEnPoligono, puntoEnRect } from '../util/geo';
 import { revisarVistas } from '../escena/vistas';
 import { alturasHueco } from '../modelo/huecos';
 import { alturaEn, alturasEstancia } from '../modelo/alturas';
-import { plantasDe } from '../modelo/plantas';
+import { dePlanta, plantasDe } from '../modelo/plantas';
+import { barandillasDe, conBarandilla, pendiente } from '../modelo/exteriores';
 import { esUtil } from '../modelo/estancias';
 
 const TIPOS_HUECO = [ 'entrada', 'puerta', 'paso', 'balconera', 'ventana', 'garaje' ];
@@ -137,6 +138,30 @@ export function revisarPromocion( v: Vivienda, t: Tipologia, alternativas: Alter
 			if ( encima ) add( 'aviso', 'Plantas', `La escalera «${ e.id }» queda debajo de «${ encima.nombre }»: en «${ ps[ i ].nombre }» el hueco de la escalera debe quedar libre (sin suelo).` );
 
 		}
+
+	}
+
+	// exteriores: barandillas de un tipo conocido y en los exteriores en alto
+	for ( const b of barandillasDe( v ) ) {
+
+		if ( b.modelo && ! [ 'vidrio', 'barrotes', 'peto', 'peto-vidrio' ].includes( b.modelo ) ) add( 'error', 'Exteriores', `La barandilla «${ b.id ?? 'barandilla' }» es de tipo «${ b.modelo }», que la visita aún no sabe representar.` );
+
+	}
+	ps.forEach( ( p, i ) => {
+
+		if ( p.cota <= 0 ) return;
+		const pv = dePlanta( v, i );
+		for ( const e of pv.estancias.filter( ( x ) => x.uso === 'exterior' && ! x.rampa ) ) {
+
+			if ( ! conBarandilla( e, pv ) ) add( 'aviso', 'Exteriores', `«${ e.nombre }» está en «${ p.nombre }» y no tiene barandilla: compruébalo en los planos.` );
+
+		}
+
+	} );
+	for ( const e of v.estancias.filter( ( x ) => x.rampa ) ) {
+
+		if ( e.uso !== 'exterior' ) add( 'aviso', 'Exteriores', `«${ e.nombre }» tiene rampa pero no es un exterior.` );
+		else add( 'ok', 'Exteriores', `Rampa «${ e.nombre }»: pendiente del ${ Math.round( pendiente( e ) * 100 ) } %.` );
 
 	}
 

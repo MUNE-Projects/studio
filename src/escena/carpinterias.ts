@@ -5,6 +5,7 @@ import type { Hueco, Vivienda } from '../modelo/tipos';
 import { caja, unir } from '../util/geo';
 import { alturaHueco } from './muros';
 import { alturasHueco, esCarpinteriaExterior, hojasDe, ladoInterior } from '../modelo/huecos';
+import { barandillasDe } from '../modelo/exteriores';
 import * as M from './materiales';
 
 // puertas totalmente abiertas (contra el muro): no tapan la estancia en las vistas comerciales
@@ -272,47 +273,88 @@ function puertaGaraje( h: Hueco, v: Vivienda, m: NonNullable<typeof MAT> ) {
 
 }
 
-function barandilla( v: Vivienda, m: NonNullable<typeof MAT> ) {
+/**
+ * Barandillas de terrazas y balcones, cada una con su tipo: vidrio con
+ * perfilería (por defecto), barrotes metálicos, peto de obra o peto bajo con
+ * vidrio encima.
+ */
+function barandillas( v: Vivienda, m: NonNullable<typeof MAT> ) {
 
-	const { recorrido, postes_x } = v.exterior.barandilla;
-	const alto = v.alturas.barandilla.valor;
 	const g = new THREE.Group();
 	g.name = 'barandilla';
-	if ( recorrido.length < 2 ) return g; // planta sin terraza
-	const base: THREE.BufferGeometry[] = [], alu: THREE.BufferGeometry[] = [], vid: THREE.BufferGeometry[] = [];
-	const zb = 0.08; // peto de apoyo
+	const base: THREE.BufferGeometry[] = [], alu: THREE.BufferGeometry[] = [], vid: THREE.BufferGeometry[] = [], obra: THREE.BufferGeometry[] = [], albardilla: THREE.BufferGeometry[] = [];
 
-	for ( let i = 0; i < recorrido.length - 1; i ++ ) {
+	for ( const b of barandillasDe( v ) ) {
 
-		const [ ax, ay ] = recorrido[ i ], [ bx, by ] = recorrido[ i + 1 ];
-		const enX = Math.abs( bx - ax ) > Math.abs( by - ay );
-		const L = ( lo: number, hi: number, grosor: number, z0: number, z1: number ) => enX
-			? caja( Math.min( ax, bx ) + lo, ay - grosor / 2, Math.max( ax, bx ) + hi, ay + grosor / 2, z0, z1 )
-			: caja( ax - grosor / 2, Math.min( ay, by ) + lo, ax + grosor / 2, Math.max( ay, by ) + hi, z0, z1 );
-		base.push( L( - 0.1, 0.1, 0.2, - 0.02, zb ) );
-		alu.push( L( - 0.02, 0.02, 0.05, zb, zb + 0.06 ) );
-		vid.push( L( 0, 0, 0.012, zb + 0.06, alto - 0.02 ) );
-		alu.push( L( - 0.02, 0.02, 0.05, alto - 0.03, alto ) );
+		const { recorrido, postes_x } = b;
+		const modelo = b.modelo ?? 'vidrio';
+		const alto = b.alto ?? v.alturas.barandilla.valor;
+		const zb = 0.08; // peto de apoyo
+		const zp = modelo === 'peto' ? alto : modelo === 'peto-vidrio' ? Math.min( 0.5, alto - 0.3 ) : 0; // altura del peto de obra
 
-		// postes: los del plano en el lado sur; en los laterales, en esquinas y a mitad
-		const largo = enX ? Math.abs( bx - ax ) : Math.abs( by - ay );
-		const posiciones = enX ? postes_x.map( ( x ) => x - Math.min( ax, bx ) ) : [ 0.02, largo / 2, largo - 0.02 ];
-		for ( const t of posiciones ) {
+		for ( let i = 0; i < recorrido.length - 1; i ++ ) {
 
-			const p0 = enX ? Math.min( ax, bx ) + t : Math.min( ay, by ) + t;
-			alu.push( enX ? caja( p0 - 0.02, ay - 0.02, p0 + 0.02, ay + 0.02, zb, alto ) : caja( ax - 0.02, p0 - 0.02, ax + 0.02, p0 + 0.02, zb, alto ) );
+			const [ ax, ay ] = recorrido[ i ], [ bx, by ] = recorrido[ i + 1 ];
+			const enX = Math.abs( bx - ax ) > Math.abs( by - ay );
+			const L = ( lo: number, hi: number, grosor: number, z0: number, z1: number ) => enX
+				? caja( Math.min( ax, bx ) + lo, ay - grosor / 2, Math.max( ax, bx ) + hi, ay + grosor / 2, z0, z1 )
+				: caja( ax - grosor / 2, Math.min( ay, by ) + lo, ax + grosor / 2, Math.max( ay, by ) + hi, z0, z1 );
+			const largo = enX ? Math.abs( bx - ax ) : Math.abs( by - ay );
+			const enTramo = ( t: number, grosor: number, z0: number, z1: number ) => {
+
+				const p0 = enX ? Math.min( ax, bx ) + t : Math.min( ay, by ) + t;
+				return enX ? caja( p0 - grosor / 2, ay - grosor / 2, p0 + grosor / 2, ay + grosor / 2, z0, z1 ) : caja( ax - grosor / 2, p0 - grosor / 2, ax + grosor / 2, p0 + grosor / 2, z0, z1 );
+
+			};
+
+			if ( zp > 0 ) {
+
+				// peto de obra con su albardilla
+				obra.push( L( - 0.075, 0.075, 0.15, - 0.02, zp - 0.03 ) );
+				albardilla.push( L( - 0.09, 0.09, 0.19, zp - 0.03, zp + 0.01 ) );
+				if ( modelo === 'peto' ) continue;
+
+			} else base.push( L( - 0.1, 0.1, 0.2, - 0.02, zb ) );
+
+			const z0 = zp > 0 ? zp + 0.01 : zb;
+			alu.push( L( - 0.02, 0.02, 0.05, z0, z0 + 0.06 ) );
+			alu.push( L( - 0.02, 0.02, 0.05, alto - 0.03, alto ) );
+			if ( modelo === 'barrotes' ) {
+
+				// barrotes cada 11 cm (hueco libre menor de 10 cm)
+				const n = Math.max( 1, Math.round( largo / 0.11 ) );
+				for ( let k = 1; k < n; k ++ ) alu.push( enTramo( k * largo / n, 0.016, z0 + 0.06, alto - 0.03 ) );
+
+			} else vid.push( L( 0, 0, 0.012, z0 + 0.06, alto - 0.02 ) );
+
+			// postes: los del plano en los tramos a lo largo de x; si no, en esquinas y repartidos
+			const reparto = () => {
+
+				const n = Math.max( 2, Math.round( largo / 1.3 ) );
+				return [ 0.02, ...Array.from( { length: n - 1 }, ( _, k ) => ( k + 1 ) * largo / n ), largo - 0.02 ];
+
+			};
+			const posiciones = enX && postes_x ? postes_x.map( ( x ) => x - Math.min( ax, bx ) ) : b.id === 'barandilla' && ! enX ? [ 0.02, largo / 2, largo - 0.02 ] : reparto();
+			for ( const t of posiciones ) alu.push( enTramo( t, 0.04, z0, alto ) );
 
 		}
 
 	}
 
-	const mBase = new THREE.Mesh( unir( base )!, m.sate );
-	mBase.castShadow = mBase.receiveShadow = true;
-	const mAlu = new THREE.Mesh( unir( alu )!, m.aluminio );
-	mAlu.castShadow = mAlu.receiveShadow = true;
-	const mVid = new THREE.Mesh( unir( vid )!, m.vidrio );
-	mVid.renderOrder = 2;
-	g.add( mBase, mAlu, mVid );
+	const malla = ( geos: THREE.BufferGeometry[], mat: THREE.Material, sombras = true ) => {
+
+		if ( ! geos.length ) return;
+		const mm = new THREE.Mesh( unir( geos )!, mat );
+		mm.castShadow = mm.receiveShadow = sombras;
+		if ( mat === m.vidrio ) mm.renderOrder = 2;
+		g.add( mm );
+
+	};
+	malla( base, m.sate );
+	malla( alu, m.aluminio );
+	malla( vid, m.vidrio, false );
+	malla( obra, m.sate );
+	malla( albardilla, m.lacado );
 	return g;
 
 }
@@ -328,7 +370,7 @@ export function construirCarpinterias( v: Vivienda ) {
 		g.add( esCarpinteriaExterior( h ) ? carpinteriaExterior( h, v, MAT ) : h.tipo === 'garaje' ? puertaGaraje( h, v, MAT ) : puerta( h, v, MAT ) );
 
 	}
-	const baranda = barandilla( v, MAT );
+	const baranda = barandillas( v, MAT );
 	return { carpinterias: g, barandilla: baranda };
 
 }

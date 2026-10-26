@@ -74,7 +74,29 @@ export interface Estancia {
 	techo?: { altura?: number; inclinado?: { bajo: number; alto: number; sube: Orientacion }; origen?: string };
 	/** planta (índice de Vivienda.plantas; por defecto, la 0) */
 	planta?: number;
+	/** exteriores: cubierto por un forjado o una pérgola (porche, terraza cubierta) */
+	cubierta?: boolean;
+	/** suelo inclinado (rampa de garaje): de `desde` a `hasta` metros sobre la planta, subiendo hacia `sube` */
+	rampa?: { desde: number; hasta: number; sube: Orientacion };
 	origen: string;
+}
+
+/**
+ * Barandilla de un exterior (terraza, balcón, porche, hueco de patio): un
+ * recorrido en planta y su tipo. `postes_x`: postes dibujados en el plano en
+ * los tramos a lo largo de x (si no, se reparten solos).
+ */
+export interface Barandilla {
+	id?: string;
+	recorrido: Punto[];
+	postes_x?: number[];
+	/** vidrio (por defecto), barrotes metálicos, peto de obra, o peto bajo con vidrio encima */
+	modelo?: 'vidrio' | 'barrotes' | 'peto' | 'peto-vidrio';
+	/** altura, si no es la general de la vivienda */
+	alto?: number;
+	planta?: number;
+	tipo?: Valor<string>;
+	origen?: string;
 }
 
 export interface Equipamiento {
@@ -116,7 +138,10 @@ export interface Vivienda {
 	estancias: Estancia[];
 	equipamiento: Equipamiento[];
 	exterior: {
-		barandilla: { recorrido: Punto[]; postes_x: number[] };
+		/** la barandilla de la terraza principal (planta de calle) */
+		barandilla?: Barandilla;
+		/** más barandillas: otras terrazas, balcones, otras plantas */
+		barandillas?: Barandilla[];
 	};
 	/**
 	 * Viviendas en varias plantas (dúplex, unifamiliares, con sótano o garaje):
@@ -126,6 +151,8 @@ export interface Vivienda {
 	plantas?: { id: string; nombre: string; cota: number }[];
 	/** (interno) altura hasta la que suben los muros: en varias plantas, hasta el suelo de la de encima */
 	alturaMuros?: number;
+	/** (interno) cota de la planta que se está construyendo */
+	cotaPlanta?: number;
 }
 
 // ------------------------------------------------------------ configurador

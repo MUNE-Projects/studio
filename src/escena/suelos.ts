@@ -5,6 +5,8 @@ import type { Estancia, Hueco, Rect, Vivienda } from '../modelo/tipos';
 import { forma, puntoEnPoligono } from '../util/geo';
 import * as M from './materiales';
 import { alturaEn, alturasEstancia } from '../modelo/alturas';
+import { alturaSueloEn, esCubierta, marcoEntorno } from '../modelo/exteriores';
+import { dePlanta, plantaCalle, plantasDe } from '../modelo/plantas';
 
 const MAT_SUELO: Record<string, () => THREE.Material> = {
 	'madera': () => M.tarima(),
@@ -13,6 +15,7 @@ const MAT_SUELO: Record<string, () => THREE.Material> = {
 	'porcelanico-bano': () => M.porcelanico( M.P.banos.suelo, 0.6, 0.002, 0.28 ),
 	'ceramico': () => M.porcelanico( '#cfcac1', 0.33, 0.003, 0.5 ),
 	'exterior': () => M.porcelanico( '#b8b1a6', 0.6, 0.004, 0.72 ),
+	'cesped': () => M.cesped(),
 	// garaje: solera de hormigón pulido (juntas de retracción cada 3 m)
 	'hormigon': () => M.porcelanico( '#a8a49d', 3, 0.004, 0.62 ),
 };
@@ -21,6 +24,7 @@ const MAT_SUELO: Record<string, () => THREE.Material> = {
 const cache = new Map<string, THREE.Material>();
 let matTecho: THREE.MeshStandardNodeMaterial | null = null;
 const matVolumen = new Map<string, THREE.Material>();
+let matLosa: THREE.Material | null = null;
 
 /** Geometría horizontal (normal arriba o abajo) a partir de un polígono de planta. */
 function plano( pol: [ number, number ][], altura: number, haciaAbajo = false, huecos: Rect[] = [] ) {
@@ -67,10 +71,32 @@ export function construirSuelos( v: Vivienda, conEntorno = true ) {
 
 	for ( const e of v.estancias ) {
 
-		const m = new THREE.Mesh( plano( e.poligono, e.uso === 'exterior' ? - 0.02 : 0 ), mat( e.suelo ) );
+		const g = plano( e.poligono, e.uso === 'exterior' ? - 0.02 : 0 );
+		if ( e.rampa ) {
+
+			// rampa: cada vértice a su altura
+			const pos = g.attributes.position;
+			for ( let i = 0; i < pos.count; i ++ ) pos.setY( i, alturaSueloEn( e, pos.getX( i ), - pos.getZ( i ) ) - 0.02 );
+			g.computeVertexNormals();
+
+		}
+		const m = new THREE.Mesh( g, mat( e.suelo ) );
 		m.receiveShadow = true;
 		m.name = `suelo-${ e.id }`;
 		suelos.add( m );
+		// terrazas y balcones en alto: se ve el canto y la cara de abajo del forjado
+		if ( e.uso === 'exterior' && ! e.rampa && ( v.cotaPlanta ?? 0 ) > 0 ) {
+
+			const F = v.alturas.forjado.valor;
+			const losa = new THREE.ExtrudeGeometry( forma( e.poligono ), { depth: F, bevelEnabled: false } );
+			losa.rotateX( - Math.PI / 2 );
+			losa.translate( 0, - 0.02 - F, 0 );
+			matLosa ??= M.sate( '#f1efea', false );
+			const ml = new THREE.Mesh( losa, matLosa );
+			ml.castShadow = ml.receiveShadow = true;
+			suelos.add( ml );
+
+		}
 
 	}
 
@@ -104,7 +130,7 @@ export function construirSuelos( v: Vivienda, conEntorno = true ) {
 
 	for ( const e of v.estancias ) {
 
-		if ( e.uso === 'exterior' && e.id !== 'porche' ) continue;
+		if ( e.uso === 'exterior' && ! esCubierta( e ) ) continue;
 		// falso techo o techo inclinado: cada vértice a su altura
 		const escaleras = v.equipamiento.filter( ( q ) => q.tipo === 'escalera' && puntoEnPoligono( ( q.rect[ 0 ] + q.rect[ 2 ] ) / 2, ( q.rect[ 1 ] + q.rect[ 3 ] ) / 2, e.poligono ) );
 		const g = plano( e.poligono, 0, true, escaleras.map( ( q ) => q.rect ) );
@@ -114,7 +140,7 @@ export function construirSuelos( v: Vivienda, conEntorno = true ) {
 		const m = new THREE.Mesh( g, matTecho );
 		m.castShadow = true;
 		m.receiveShadow = true;
-		m.userData.porche = e.id === 'porche';
+		m.userData.porche = esCubierta( e );
 		techos.add( m );
 
 	}
@@ -138,12 +164,23 @@ export function construirSuelos( v: Vivienda, conEntorno = true ) {
 
 	if ( ! conEntorno ) return { suelos, techos, volumenes, entorno: null };
 
-	// entorno: pavimento de urbanización (zonas comunes) bajo y alrededor de la vivienda
-	const centro = new THREE.Vector3( 6.4, 0, - 3.5 );
-	const zCesped = - Math.min( ...v.exterior.barandilla.recorrido.map( ( q ) => q[ 1 ] ) ) + 0.12;
-	const suelo = new THREE.Mesh( new THREE.CircleGeometry( 60, 96 ), M.suelo_exterior( centro, zCesped ) );
+	// entorno: pavimento de urbanización (zonas comunes) bajo y alrededor de la
+	// vivienda, con césped hacia el lado de sus exteriores (terraza, jardín)
+	const mc = marcoEntorno( dePlanta( v, plantaCalle( v ) ) );
+	// huecos en el terreno: rampas y patios de las plantas bajo rasante
+	const ps = plantasDe( v );
+	const bajoRasante = v.estancias.filter( ( e ) => e.uso === 'exterior' && ( ps[ e.planta ?? 0 ]?.cota ?? 0 ) < 0 );
+	let terreno: THREE.BufferGeometry = new THREE.CircleGeometry( 60, 96 );
+	if ( bajoRasante.length ) {
+
+		const f = new THREE.Shape().absarc( 0, 0, 60, 0, Math.PI * 2, false );
+		for ( const e of bajoRasante ) f.holes.push( new THREE.Path( e.poligono.map( ( [ x, y ] ) => new THREE.Vector2( x - mc.cx, y + mc.cz ) ) ) );
+		terreno = new THREE.ShapeGeometry( f, 96 );
+
+	}
+	const suelo = new THREE.Mesh( terreno, M.suelo_exterior( mc.cx, mc.cz, mc.frente + 0.12, mc.angulo ) );
 	suelo.rotation.x = - Math.PI / 2;
-	suelo.position.set( centro.x, - 0.035, centro.z );
+	suelo.position.set( mc.cx, - 0.035, mc.cz );
 	suelo.receiveShadow = true;
 	suelo.name = 'entorno';
 
@@ -152,24 +189,30 @@ export function construirSuelos( v: Vivienda, conEntorno = true ) {
 }
 
 /**
- * Canto del forjado que cubre el porche (la planta de arriba). Solo se muestra
- * con la cámara a la altura de los ojos; en la vista de maqueta taparía el porche.
+ * Canto del forjado que cubre porches y exteriores cubiertos (la planta de
+ * arriba o la cubierta). Solo se muestra con la cámara a la altura de los ojos;
+ * en la vista de maqueta taparía el porche.
  */
 export function construirCantoPorche( v: Vivienda ) {
 
 	const H = v.alturas.libre.valor, F = v.alturas.forjado.valor;
-	const porche = v.estancias.find( ( e ) => e.id === 'porche' );
 	const g = new THREE.Group();
 	g.name = 'canto-porche';
-	if ( ! porche ) return g;
-	const xs = porche.poligono.map( ( p ) => p[ 0 ] ), ys = porche.poligono.map( ( p ) => p[ 1 ] );
-	const x0 = Math.min( ...xs ), x1 = Math.max( ...xs ) + 0.05, y0 = Math.min( ...ys ), y1 = 0;
-	const forma3 = new THREE.BoxGeometry( x1 - x0, F, y1 - y0 );
-	forma3.translate( ( x0 + x1 ) / 2, H + F / 2, - ( y0 + y1 ) / 2 );
-	const m = new THREE.Mesh( forma3, M.sate( '#f1efea', false ) );
-	m.castShadow = true;
-	m.receiveShadow = true;
-	g.add( m );
+	plantasDe( v ).forEach( ( p, i ) => {
+
+		for ( const e of dePlanta( v, i ).estancias.filter( esCubierta ) ) {
+
+			const losa = new THREE.ExtrudeGeometry( forma( e.poligono ), { depth: F, bevelEnabled: false } );
+			losa.rotateX( - Math.PI / 2 );
+			losa.translate( 0, p.cota + H, 0 );
+			const m = new THREE.Mesh( losa, M.sate( '#f1efea', false ) );
+			m.castShadow = true;
+			m.receiveShadow = true;
+			g.add( m );
+
+		}
+
+	} );
 	return g;
 
 }

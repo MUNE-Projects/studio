@@ -6,6 +6,7 @@ import { float, uniform } from 'three/tsl';
 import { color } from './materiales';
 import type { Rect, Vivienda } from '../modelo/tipos';
 import { simbolosHueco } from '../modelo/simbolos';
+import { barandillasDe, bordesLibres, esCubierta } from '../modelo/exteriores';
 
 export const uLineas = uniform( 1 );
 const Y = 0.02; // por encima del poché aplastado (1 cm) con margen para la precisión de profundidad
@@ -44,9 +45,8 @@ export function construirLineas( v: Vivienda, extras: { piscina?: Rect } = {} ) 
 
 	}
 
-	// borde de terraza
-	const rec = v.exterior.barandilla.recorrido;
-	for ( let i = 0; i < rec.length - 1; i ++ ) add( seg, rec[ i ][ 0 ], rec[ i ][ 1 ], rec[ i + 1 ][ 0 ], rec[ i + 1 ][ 1 ] );
+	// borde de terrazas y balcones
+	for ( const { recorrido: rec } of barandillasDe( v ) ) for ( let i = 0; i < rec.length - 1; i ++ ) add( seg, rec[ i ][ 0 ], rec[ i ][ 1 ], rec[ i + 1 ][ 0 ], rec[ i + 1 ][ 1 ] );
 
 	const grupo = new THREE.Group();
 	grupo.name = 'lineas';
@@ -65,14 +65,10 @@ export function construirLineas( v: Vivienda, extras: { piscina?: Rect } = {} ) 
 
 	grupo.add( linea( seg, '#2a2a2a', 0.85 ), linea( suaves, '#6b6b6b', 0.7 ) );
 
-	// proyección del porche (discontinua)
-	const porche = v.estancias.find( ( e ) => e.id === 'porche' );
-	if ( porche ) {
+	// proyección de porches y exteriores cubiertos (discontinua, en sus bordes libres)
+	for ( const tramo of v.estancias.filter( esCubierta ).flatMap( ( e ) => bordesLibres( e, v ) ) ) {
 
-		const xs = porche.poligono.map( ( p ) => p[ 0 ] ), ys = porche.poligono.map( ( p ) => p[ 1 ] );
-		const x0 = Math.min( ...xs ), x1 = Math.max( ...xs ), y0 = Math.min( ...ys );
-		const pts = [ new THREE.Vector3( x0, Y, 0 ), new THREE.Vector3( x0, Y, - y0 ), new THREE.Vector3( x1, Y, - y0 ) ];
-		const g = new THREE.BufferGeometry().setFromPoints( pts );
+		const g = new THREE.BufferGeometry().setFromPoints( tramo.map( ( [ x, y ] ) => new THREE.Vector3( x, Y, - y ) ) );
 		const m = new THREE.LineDashedNodeMaterial( { dashSize: 0.12, gapSize: 0.1, transparent: true, depthWrite: false } );
 		m.colorNode = color( '#555555' );
 		m.opacityNode = uLineas.mul( 0.8 );

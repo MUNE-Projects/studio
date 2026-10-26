@@ -4,12 +4,13 @@
 // sin crear ni mantener un segundo modelo.
 
 import type { Ambientacion } from '../biblioteca/biblioteca';
-import type { Equipamiento, Hueco, Punto, Rect, Tipologia, Alternativa, Vista, Vivienda } from '../modelo/tipos';
+import { barandillasDe } from '../modelo/exteriores';
+import type { Barandilla, Equipamiento, Hueco, Punto, Rect, Tipologia, Alternativa, Vista, Vivienda } from '../modelo/tipos';
 
 /** Eje de simetría: x' = S - x, con S = xmin + xmax de la envolvente. */
 export function ejeSimetria( v: Vivienda ) {
 
-	const xs = [ ...v.muros.flatMap( ( m ) => [ m.rect[ 0 ], m.rect[ 2 ] ] ), ...v.exterior.barandilla.recorrido.map( ( p ) => p[ 0 ] ) ];
+	const xs = [ ...v.muros.flatMap( ( m ) => [ m.rect[ 0 ], m.rect[ 2 ] ] ), ...barandillasDe( v ).flatMap( ( b ) => b.recorrido.map( ( p ) => p[ 0 ] ) ) ];
 	return Math.min( ...xs ) + Math.max( ...xs );
 
 }
@@ -34,6 +35,10 @@ function hueco( h: Hueco, S: number ): Hueco {
 
 }
 
+const barandilla = ( b: Barandilla, S: number ): Barandilla => ( {
+	...b, recorrido: b.recorrido.map( ( p ) => punto( p, S ) ), postes_x: b.postes_x?.map( ( x ) => r3( S - x ) ),
+} );
+
 const equipamiento = ( e: Equipamiento, S: number ): Equipamiento => ( { ...e, rect: rect( e.rect, S ), frente: frente( e.frente ) } );
 
 const vista = ( v: Vista, S: number ): Vista => ( { ...v, pos: [ r3( S - v.pos[ 0 ] ), v.pos[ 1 ], v.pos[ 2 ] ], obj: [ r3( S - v.obj[ 0 ] ), v.obj[ 1 ], v.obj[ 2 ] ] } );
@@ -44,15 +49,17 @@ export function espejarVivienda( v: Vivienda, S: number ): Vivienda {
 		...v,
 		muros: v.muros.map( ( m ) => ( { ...m, rect: rect( m.rect, S ) } ) ),
 		huecos: v.huecos.map( ( h ) => hueco( h, S ) ),
-		estancias: v.estancias.map( ( e ) => ( { ...e, poligono: e.poligono.map( ( p ) => punto( p, S ) ) } ) ),
+		estancias: v.estancias.map( ( e ) => ( {
+			...e, poligono: e.poligono.map( ( p ) => punto( p, S ) ),
+			// lo que sube hacia el este pasa a subir hacia el oeste
+			...( e.techo?.inclinado ? { techo: { ...e.techo, inclinado: { ...e.techo.inclinado, sube: frente( e.techo.inclinado.sube ) } } } : {} ),
+			...( e.rampa ? { rampa: { ...e.rampa, sube: frente( e.rampa.sube ) } } : {} ),
+		} ) ),
 		equipamiento: v.equipamiento.map( ( e ) => equipamiento( e, S ) ),
 		exterior: {
 			...v.exterior,
-			barandilla: {
-				...v.exterior.barandilla,
-				recorrido: v.exterior.barandilla.recorrido.map( ( p ) => punto( p, S ) ),
-				postes_x: v.exterior.barandilla.postes_x.map( ( x ) => r3( S - x ) ),
-			},
+			barandilla: v.exterior.barandilla && barandilla( v.exterior.barandilla, S ),
+			barandillas: v.exterior.barandillas?.map( ( b ) => barandilla( b, S ) ),
 		},
 	};
 

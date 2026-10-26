@@ -4,6 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { bumpMap, float, mx_noise_float, positionWorld, time, vec3 } from 'three/tsl';
 import type { Piscina, Vivienda } from '../modelo/tipos';
+import { esCubierta } from '../modelo/exteriores';
 import { puntoEnPoligono } from '../util/geo';
 import { caja, unir } from '../util/geo';
 import * as M from './materiales';
@@ -13,12 +14,14 @@ export function validarPiscina( c: Piscina, v: Vivienda ): string[] {
 
 	const [ x0, y0, x1, y1 ] = c.rect;
 	const esquinas: [ number, number ][] = [ [ x0, y0 ], [ x1, y0 ], [ x1, y1 ], [ x0, y1 ] ];
-	const terraza = v.estancias.find( ( e ) => e.id === 'terraza' );
-	const porche = v.estancias.find( ( e ) => e.id === 'porche' );
+	const descubiertas = v.estancias.filter( ( e ) => e.uso === 'exterior' && ! esCubierta( e ) );
+	const cubiertas = v.estancias.filter( esCubierta );
 	const fallos: string[] = [];
-	if ( ! terraza || ! esquinas.every( ( [ x, y ] ) => puntoEnPoligono( x, y, terraza.poligono ) ) ) fallos.push( 'no queda dentro de la terraza descubierta' );
-	if ( porche && esquinas.some( ( [ x, y ] ) => puntoEnPoligono( x, y, porche.poligono ) ) ) fallos.push( 'invade el porche cubierto' );
-	if ( - y1 < c.pasoMinimoFachada ) fallos.push( `deja menos de ${ c.pasoMinimoFachada } m de paso frente a la fachada` );
+	if ( ! descubiertas.some( ( t ) => esquinas.every( ( [ x, y ] ) => puntoEnPoligono( x, y, t.poligono ) ) ) ) fallos.push( 'no queda dentro de un exterior descubierto' );
+	if ( cubiertas.some( ( p ) => esquinas.some( ( [ x, y ] ) => puntoEnPoligono( x, y, p.poligono ) ) ) ) fallos.push( 'invade un exterior cubierto' );
+	// paso libre hasta la fachada más cercana
+	const paso = Math.min( ...v.muros.map( ( m ) => Math.hypot( Math.max( 0, m.rect[ 0 ] - x1, x0 - m.rect[ 2 ] ), Math.max( 0, m.rect[ 1 ] - y1, y0 - m.rect[ 3 ] ) ) ) );
+	if ( paso < c.pasoMinimoFachada ) fallos.push( `deja menos de ${ c.pasoMinimoFachada } m de paso frente a la fachada` );
 	return fallos;
 
 }

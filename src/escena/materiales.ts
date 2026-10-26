@@ -10,7 +10,7 @@
 import * as THREE from 'three/webgpu';
 import {
 	Fn, If, abs, attribute, bumpMap, clamp, float, floor, fract, hash, max, mix, normalWorld, normalWorldGeometry, positionLocal,
-	positionWorld, sin, smoothstep, step, struct, texture, uniform, vec2, vec3,
+	positionWorld, sin, cos, smoothstep, step, struct, texture, uniform, vec2, vec3,
 } from 'three/tsl';
 
 type N = any; // nodos TSL: el tipado de @types/three para TSL es demasiado estricto para componer libremente
@@ -428,9 +428,13 @@ const PATRONES: Record<number, ( o: Salida ) => void> = {
 
 	[ A.EXTERIOR ]: ( { col, rug, rel } ) => {
 
-		// urbanización: pavimento que se funde con el fondo; v0/v1 centro, v2 inicio del césped
+		// urbanización: pavimento que se funde con el fondo; v0/v1 centro, v2 distancia
+		// del centro al inicio del césped hacia el lado exterior, v3 ángulo de ese lado
+		// (0 = sur; 10 = solo césped, sin fundido: jardines de la vivienda)
 		const p = vec2( pw.x, pw.z );
-		const lejos = smoothstep( 14, 42, p.sub( vec2( V.v0, V.v1 ) ).length() );
+		const dc = p.sub( vec2( V.v0, V.v1 ) );
+		const lejos = smoothstep( 14, 42, dc.length() ).mul( step( V.v3, 9 ) );
+		const qy = dc.x.mul( sin( V.v3 ) ).add( dc.y.mul( cos( V.v3 ) ) );
 		const [ enJunta ] = baldosas( p, vec2( 0.6, 0.6 ), float( 0.004 ) );
 		const pav = mix( vec3( 0.769, 0.749, 0.714 ), vec3( 0.667, 0.647, 0.612 ), enJunta.mul( 0.8 ) ).mul( float( 0.97 ).add( ruidoSuave( vec3( p.x, p.y, 0 ), 0.6 ).mul( 0.05 ) ) );
 		// zonas comunes: césped con un paseo de losas
@@ -438,8 +442,8 @@ const PATRONES: Record<number, ( o: Salida ) => void> = {
 		const brizna = mx_noise_float( vec3( p.x.mul( 60 ), p.y.mul( 60 ), 0 ) ).mul( 0.5 ).add( 0.5 );
 		const cesped = mix( vec3( 0.435, 0.541, 0.290 ), vec3( 0.576, 0.635, 0.384 ), manchas.mul( 0.7 ).add( brizna.mul( 0.3 ) ) );
 		const zc = V.v2;
-		const esCesped = smoothstep( zc, zc.add( 0.08 ), p.y );
-		const paseo = smoothstep( zc.add( 2.5 ), zc.add( 2.55 ), p.y ).mul( smoothstep( zc.add( 3.75 ), zc.add( 3.7 ), p.y ) );
+		const esCesped = smoothstep( zc, zc.add( 0.08 ), qy );
+		const paseo = smoothstep( zc.add( 2.5 ), zc.add( 2.55 ), qy ).mul( smoothstep( zc.add( 3.75 ), zc.add( 3.7 ), qy ) );
 		const [ juntaPaseo ] = baldosas( p, vec2( 0.9, 0.45 ), float( 0.012 ), 0.5 );
 		const losas = mix( vec3( 0.847, 0.816, 0.761 ), vec3( 0.663, 0.631, 0.576 ), juntaPaseo.mul( 0.9 ) );
 		const verde = mix( cesped, losas, paseo );
@@ -666,8 +670,11 @@ export function vidrio( tono = '#dfe8e8', opacidad = 0.14 ) {
 export const espejo = () => liso( '#d9dedf', 0.02, 1 );
 
 /** Exterior: suelo de urbanización que se funde con el fondo a distancia. */
-export const suelo_exterior = ( centro: THREE.Vector3, zCesped = Infinity ) =>
-	universal( { acabado: A.EXTERIOR, valores: [ centro.x, centro.z, Number.isFinite( zCesped ) ? zCesped : 1e6 ], relieve: 0.2 } );
+/** Urbanización: pavimento alrededor y césped con paseo hacia el lado exterior (ángulo 0 = sur). */
+export const suelo_exterior = ( cx: number, cz: number, cesped: number, angulo: number ) =>
+	universal( { acabado: A.EXTERIOR, valores: [ cx, cz, cesped, angulo ], relieve: 0.2 } );
+/** Césped de los jardines de la vivienda. */
+export const cesped = () => universal( { acabado: A.EXTERIOR, valores: [ 0, 0, - 1e6, 10 ], relieve: 0.2 } );
 
 // ------------------------------------------------------------ volúmenes (massing)
 
