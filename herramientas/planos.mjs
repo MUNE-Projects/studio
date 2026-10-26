@@ -89,7 +89,10 @@ export async function generarPlanos( id, version, salida = join( RAIZ, 'salida',
 		const carpetaExp = join( salida, 'experiencia' );
 		rmSync( carpetaExp, { recursive: true, force: true } );
 		mkdirSync( carpetaExp, { recursive: true } );
-		writeFileSync( join( carpetaExp, 'experiencia.json' ), JSON.stringify( { promocion: id, version, generados, unidades }, null, '\t' ) + '\n' );
+		// acabados que la memoria no indica: la promotora los ve al validar, con lo que se pondrá por defecto
+		const supuestos = await pagina.evaluate( () => window.supuestosAcabados() );
+		writeFileSync( join( carpetaExp, 'experiencia.json' ), JSON.stringify( { promocion: id, version, generados, unidades, supuestos }, null, '\t' ) + '\n' );
+		planos.supuestos = supuestos;
 		planos.experiencia = unidades;
 		return planos;
 
@@ -111,6 +114,12 @@ if ( process.argv[ 1 ] === fileURLToPath( import.meta.url ) ) {
 		const planos = await generarPlanos( args[ 0 ], opcion( 'version' ), opcion( 'salida' ) && resolve( opcion( 'salida' ) ) );
 		console.log( `\n✓ ${ planos.length } plano(s) en ${ opcion( 'salida' ) ?? `salida/${ args[ 0 ] }` }/planos/` );
 		console.log( `✓ ${ planos.experiencia.length } unidad(es) de la Experiencia 3D en ${ opcion( 'salida' ) ?? `salida/${ args[ 0 ] }` }/experiencia/` );
+		if ( planos.supuestos.length ) {
+
+			console.log( `\n⚠ La memoria de calidades no indica ${ planos.supuestos.length } dato(s); se pondrá lo de por defecto y la promotora lo verá al validar:` );
+			for ( const x of planos.supuestos ) console.log( `  · ${ x.apartado } (${ x.dato }): ${ x.porDefecto }` );
+
+		}
 
 	} catch ( e ) {
 

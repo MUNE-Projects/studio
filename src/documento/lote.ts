@@ -22,6 +22,7 @@ import { aplicarAlternativa } from '../configurador/alternativas';
 import { planoPDF, planoPNG, type DatosPlano } from './plano';
 import type { Alternativa, ViviendaPromocion } from '../modelo/tipos';
 import { esUtil } from '../modelo/estancias';
+import { acabadosSupuestos, type Supuesto } from '../promocion/acabados';
 
 export interface PlanoLote {
 	clave: string;
@@ -219,4 +220,21 @@ export async function generarUnidadesExperiencia(): Promise<UnidadExperiencia[]>
 
 }
 
-Object.assign( window as unknown as Record<string, unknown>, { generarLote, generarUnidadesExperiencia } );
+/** Acabados que la memoria no indica (y la promoción usa), con lo que se pondrá por defecto. */
+export function supuestosAcabados(): Supuesto[] {
+
+	const suelos = new Set<string>();
+	let ventanas = false, puertas = false;
+	for ( const id of new Set( PROMOCION.viviendas.map( ( v ) => v.tipologia ) ) ) {
+
+		const { vivienda } = cargarModelo( id, false );
+		for ( const e of vivienda.estancias ) suelos.add( e.suelo );
+		ventanas ||= vivienda.huecos.some( ( h ) => h.tipo === 'ventana' || h.tipo === 'balconera' );
+		puertas ||= vivienda.huecos.some( ( h ) => h.tipo === 'puerta' );
+
+	}
+	return acabadosSupuestos( { suelos, ventanas, puertas } );
+
+}
+
+Object.assign( window as unknown as Record<string, unknown>, { generarLote, generarUnidadesExperiencia, supuestosAcabados } );

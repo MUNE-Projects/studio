@@ -55,3 +55,51 @@ export const ACABADOS = resolverAcabados( ( datosPromocion as { acabados?: Parci
 
 /** Color liso para cantos de forjado, losas y petos (con fachada de ladrillo, mortero claro). */
 export const colorLiso = () => ACABADOS.fachada.textura === 'ladrillo' ? ACABADOS_DEFECTO.fachada.color : ACABADOS.fachada.color;
+
+/** Qué es cada apartado y cómo se describe en palabras lo que se pone por defecto. */
+const APARTADOS: { [ K in keyof Acabados ]: { nombre: string; campos: { [ C in keyof Acabados[ K ] ]?: [ string, string ] } } } = {
+	fachada: { nombre: 'Fachada', campos: { textura: [ 'acabado', 'lisa (SATE, monocapa o pintura)' ], color: [ 'color', 'blanco roto' ] } },
+	paredes: { nombre: 'Paredes interiores', campos: { color: [ 'color', 'pintura blanca' ] } },
+	techos: { nombre: 'Techos', campos: { color: [ 'color', 'pintura blanca' ] } },
+	carpinteria_exterior: { nombre: 'Carpintería exterior (ventanas y balconeras)', campos: { color: [ 'color', 'gris antracita' ] } },
+	puertas: { nombre: 'Puertas interiores', campos: { color: [ 'acabado', 'lacadas en blanco' ], ranuras: [ 'diseño', 'con 4 ranuras horizontales' ] } },
+	suelo_general: { nombre: 'Suelo de porcelánico', campos: { color: [ 'color', 'beige claro' ], pieza: [ 'tamaño de pieza', '90 × 90 cm' ] } },
+	suelo_cocina: { nombre: 'Suelo de la cocina', campos: { color: [ 'color', 'beige claro' ], pieza: [ 'tamaño de pieza', '90 × 90 cm' ] } },
+	suelo_ceramico: { nombre: 'Suelo cerámico', campos: { color: [ 'color', 'beige' ], pieza: [ 'tamaño de pieza', '33 × 33 cm' ] } },
+	suelo_exterior: { nombre: 'Suelo de terrazas y exteriores', campos: { color: [ 'color', 'gris piedra' ], pieza: [ 'tamaño de pieza', '60 × 60 cm' ] } },
+	rodapie: { nombre: 'Rodapié', campos: { color: [ 'acabado', 'lacado en blanco' ] } },
+	griferia: { nombre: 'Grifería', campos: { color: [ 'acabado', 'cromada' ] } },
+};
+
+/** Lo que la memoria no dice y se pondrá por defecto. */
+export interface Supuesto { apartado: string; dato: string; porDefecto: string }
+
+/**
+ * Acabados que la promoción no indica (y usa), con lo que se pondrá por
+ * defecto. `usados`: tipos de suelo que aparecen en sus viviendas y si tiene
+ * ventanas, puertas o exteriores, para no pedir lo que no lleva.
+ */
+export function acabadosSupuestos( usados: { suelos: Set<string>; ventanas: boolean; puertas: boolean } ): Supuesto[] {
+
+	const propios = ( datosPromocion as { acabados?: Parcial } ).acabados ?? {};
+	const aplica: Record<keyof Acabados, boolean> = {
+		fachada: true, paredes: true, techos: true, rodapie: true, griferia: true,
+		carpinteria_exterior: usados.ventanas, puertas: usados.puertas,
+		suelo_general: usados.suelos.has( 'porcelanico' ), suelo_cocina: usados.suelos.has( 'porcelanico-cocina' ),
+		suelo_ceramico: usados.suelos.has( 'ceramico' ), suelo_exterior: usados.suelos.has( 'exterior' ),
+	};
+	const salida: Supuesto[] = [];
+	for ( const k of Object.keys( APARTADOS ) as ( keyof Acabados )[] ) {
+
+		if ( ! aplica[ k ] ) continue;
+		const dado = ( propios[ k ] ?? {} ) as Record<string, unknown>;
+		for ( const [ campo, [ dato, porDefecto ] ] of Object.entries( APARTADOS[ k ].campos ) as [ string, [ string, string ] ][] ) {
+
+			if ( dado[ campo ] === undefined ) salida.push( { apartado: APARTADOS[ k ].nombre, dato, porDefecto } );
+
+		}
+
+	}
+	return salida;
+
+}
