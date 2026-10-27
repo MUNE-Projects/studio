@@ -35,9 +35,6 @@ const PROCESO = 'https://api.github.com/repos/MUNE-Projects/studio/actions/workf
 const ORIGENES = [
 	'https://studio.mune-projects.workers.dev',
 	'https://revision-studio.mune-projects.workers.dev',
-	// las direcciones antiguas de MUNE Studio, mientras dura el cambio de nombre (se retiran en una semana)
-	'https://panel.mune-projects.workers.dev',
-	'https://revision-panel.mune-projects.workers.dev',
 	...(Deno.env.get('ORIGENES_EXTRA')?.split(',') ?? []),
 ];
 
