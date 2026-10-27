@@ -9,6 +9,7 @@
 // son las mismas en todos los casos porque las comprueba este script.
 //
 //   node herramientas/publicacion.mjs construir <promoción>
+//   node herramientas/publicacion.mjs comprobar <promoción>
 //   node herramientas/publicacion.mjs preparar  <promoción> --cambios "Texto" [--preparado-por "Nombre"] [--confirmar]
 //   node herramientas/publicacion.mjs aprobar   <promoción> --version vN --aprobado-por "Nombre" [--confirmar]
 //   node herramientas/publicacion.mjs volver    <promoción> <vN> --motivo "Texto" [--aprobado-por "Nombre"] [--confirmar]
@@ -527,6 +528,24 @@ function volver( id, version ) {
 
 }
 
+// ---------------------------------------------------------------- comprobar
+
+// Las mismas comprobaciones de «preparar» (superficies, acabados, choques y lo
+// que la visita aún no sabe representar), sin versión ni escaparate: para la
+// receta 1, mientras se pasan a datos los planos y la memoria. Los planos de
+// prueba quedan en salida/comprobar/<promoción>/ para mirarlos.
+async function comprobar( id ) {
+
+	comprobarPromocion( id );
+	comprobarSuperficies( id );
+	const destino = join( RAIZ, 'salida', 'comprobar', id );
+	rmSync( destino, { recursive: true, force: true } );
+	const planos = await generarPlanos( id, 'v0', destino );
+	ok( `Planos de prueba: ${ planos.length } (${ planos.map( ( p ) => p.titulo ).join( ', ' ) }), en ${ relative( RAIZ, join( destino, 'planos' ) ) }/` );
+	console.log( '\nTodo cuadra: ya se puede preparar una versión con estos datos.\n' );
+
+}
+
 // ---------------------------------------------------------------- estado
 
 function estado( id ) {
@@ -545,10 +564,11 @@ const [ orden, id, extra ] = posicionales;
 switch ( orden ) {
 
 	case 'construir': construir( id ); break;
+	case 'comprobar': await comprobar( id ); break;
 	case 'preparar': await preparar( id ); break;
 	case 'aprobar': aprobar( id ); break;
 	case 'volver': volver( id, extra ); break;
 	case 'estado': estado( id ); break;
-	default: fallo( 'Orden desconocida. Usa: construir | preparar | aprobar | volver | estado' );
+	default: fallo( 'Orden desconocida. Usa: construir | comprobar | preparar | aprobar | volver | estado' );
 
 }
