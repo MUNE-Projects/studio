@@ -9,9 +9,11 @@
 
 import * as THREE from 'three/webgpu';
 import {
-	Fn, If, abs, attribute, bumpMap, clamp, float, floor, fract, hash, max, mix, normalWorld, normalWorldGeometry, positionLocal,
+	Fn, If, abs, attribute, bumpMap, clamp, float, floor, fract, hash, max, min, mix, normalWorld, normalWorldGeometry, positionLocal,
 	positionWorld, sin, cos, smoothstep, step, struct, texture, uniform, vec2, vec3,
 } from 'three/tsl';
+
+import { APAREJOS, ASPECTOS, BRILLOS, type Revestimiento } from '../modelo/revestimientos';
 
 type N = any; // nodos TSL: el tipado de @types/three para TSL es demasiado estricto para componer libremente
 
@@ -161,6 +163,113 @@ const baldosas = ( p: N, tam: N, junta: N, desfase = 0 ): [ N, N ] => {
 
 const ruidoSuave = ( p: N, escala: number | N ): N => mx_fractal_noise_float( p.mul( escala ) );
 
+
+/**
+ * Despiece de un revestimiento en piezas de ancho × largo (m) con su junta (m).
+ * Aparejo: 0 recto, 1 trabado (desfase en fracción de pieza por fila), 2 trabado
+ * al azar, 3 espiga (el largo se redondea a un número entero de anchos). Giro en
+ * radianes. Devuelve la junta, un valor al azar por pieza y las coordenadas a lo
+ * largo y a lo ancho de la pieza (m; en filas, continuas en todo el suelo).
+ */
+const piezas = ( p0: N, ancho: N, largo: N, junta: N, aparejo: N, desfase: N, giro: N ): { enJunta: N; id: N; a: N; c: N } => {
+
+	const cg = cos( giro ), sg = sin( giro );
+	const p = vec2( p0.x.mul( cg ).add( p0.y.mul( sg ) ), p0.y.mul( cg ).sub( p0.x.mul( sg ) ) );
+	// en filas: piezas a lo largo de x, cada fila desplazada
+	const fila = floor( p.y.div( ancho ) );
+	const u = p.x.div( largo ).add( mix( fila.mul( desfase ), hash( fila.mul( 7.13 ).add( 3.0 ) ), step( 1.5, aparejo ) ) );
+	const tabla = floor( u );
+	// en espiga: celdas del ancho de la pieza; cada banda diagonal alterna n celdas
+	// de pieza horizontal y n de vertical
+	const n = max( floor( largo.div( ancho ).add( 0.5 ) ), 1 );
+	const q = p.div( ancho );
+	const x = floor( q.x ), y = floor( q.y );
+	const t = y.sub( x ).add( n ).sub( 1 );
+	const m = t.sub( floor( t.div( n.mul( 2 ) ) ).mul( n.mul( 2 ) ) ).sub( n ).add( 1 );
+	const h = step( m, 0.5 );
+	const x0 = x.add( m ), y0 = y.sub( m ).add( 1 );
+	const esp = step( 2.5, aparejo );
+	const fu = mix( fract( u ), mix( q.y.sub( y0 ).div( n ), q.x.sub( x0 ).div( n ), h ), esp );
+	const fv = mix( fract( p.y.div( ancho ) ), mix( fract( q.x ), fract( q.y ), h ), esp );
+	const L = mix( largo, n.mul( ancho ), esp );
+	const id = mix(
+		hash( tabla.mul( 37.0 ).add( fila.mul( 113.0 ) ).add( 17.0 ) ),
+		hash( mix( x, x0, h ).mul( 37.0 ).add( mix( y0, y, h ).mul( 113.0 ) ).add( h.mul( 5.0 ) ).add( 17.0 ) ),
+		esp,
+	);
+	const jx = junta.div( L ), jy = junta.div( ancho );
+	const enJunta = max(
+		float( 1 ).sub( smoothstep( 0, jx, fu ).mul( smoothstep( 0, jx, float( 1 ).sub( fu ) ) ) ),
+		float( 1 ).sub( smoothstep( 0, jy, fv ).mul( smoothstep( 0, jy, float( 1 ).sub( fv ) ) ) ),
+	);
+	return { enJunta, id, a: mix( p.x, fu.mul( L ), esp ), c: mix( p.y, fv.mul( ancho ), esp ) };
+
+};
+
+/** Veta de madera sobre una pieza (a lo largo a, a lo ancho c): 0 oscuro … 1 claro, y fibra. */
+const vetaMadera = ( a: N, c: N, id: N ): { t: N; fibra: N } => {
+
+	const veta = mx_noise_float( vec3( a.mul( 1.2 ).add( id.mul( 40 ) ), c.mul( 55 ), id.mul( 7 ) ) ).mul( 0.5 ).add( 0.5 );
+	const fibra = mx_noise_float( vec3( a.mul( 6 ), c.mul( 420 ), id.mul( 3 ) ) ).mul( 0.5 ).add( 0.5 );
+	return { t: clamp( id.mul( 0.45 ).add( veta.mul( 0.4 ) ).add( fibra.mul( 0.25 ) ).sub( 0.1 ), 0, 1 ), fibra };
+
+};
+
+/**
+ * Baldosas, lamas o continuo (suelos y alicatados): v0 ancho y v3 largo de la pieza
+ * (m), v1 junta (m), v2 rugosidad, v4 aparejo, v5 desfase, v6 aspecto (ASPECTOS),
+ * v7 giro (rad); junta del color c1, o del tono de la pieza por v8 si v8 > 0.
+ */
+const revestir = ( { col, rug, rel, c0 }: Salida, p: N ) => {
+
+	const { enJunta, id, a, c } = piezas( p, V.v0, V.v3, max( V.v1, 0.00001 ), V.v4, V.v5, V.v7 );
+	// cada aspecto pesa 1 si es el elegido (sin ramas: se combinan con su peso)
+	const es = ( k: number ) => step( k - 0.5, V.v6 ).mul( step( V.v6, k + 0.5 ) );
+
+	// gres liso: leve variación entre piezas y nubes suaves
+	const vetas = ruidoSuave( vec3( p.x, p.y, id.mul( 9 ) ), 1.6 ).mul( 0.5 ).add( 0.5 );
+	const grano = mx_noise_float( vec3( p.mul( 90 ), 0 ) ).mul( 0.5 ).add( 0.5 );
+	const liso = c0.mul( float( 0.975 ).add( id.mul( 0.05 ) ) ).mul( float( 0.97 ).add( vetas.mul( 0.05 ) ).add( grano.mul( 0.012 ) ) );
+
+	// piedra: manchas marcadas, distintas en cada pieza, y poro
+	const mancha = mx_fractal_noise_float( vec3( a.mul( 1.8 ), c.mul( 1.8 ), id.mul( 13 ) ) ).mul( 0.5 ).add( 0.5 );
+	const poro = step( 0.94, mx_cell_noise_float( vec3( a.mul( 140 ), c.mul( 140 ), id.mul( 5 ) ) ) );
+	const piedra = c0.mul( float( 0.9 ).add( id.mul( 0.14 ) ) ).mul( float( 0.84 ).add( mancha.mul( 0.32 ) ) ).mul( float( 1 ).sub( poro.mul( 0.18 ) ) );
+
+	// mármol: vetas que cambian de una pieza a otra
+	// (en diagonal, distinta en cada pieza, ondulada por el ruido)
+	const dir = id.mul( 2.4 ).add( 0.5 );
+	const eje = a.mul( cos( dir ) ).add( c.mul( sin( dir ) ) );
+	const turb = mx_fractal_noise_float( vec3( a.mul( 0.9 ), c.mul( 0.9 ), id.mul( 5 ) ) );
+	const linea = float( 1 ).sub( smoothstep( 0.0, 0.06, abs( sin( eje.add( turb.mul( 0.45 ) ).mul( 2.6 ).add( id.mul( 20 ) ) ) ) ) );
+	const fina = float( 1 ).sub( smoothstep( 0.0, 0.03, abs( sin( eje.mul( 1.7 ).add( turb.mul( 0.9 ) ).mul( 4.3 ).add( id.mul( 11 ) ) ) ) ) );
+	const marmol = mix( c0.mul( float( 0.95 ).add( vetas.mul( 0.05 ) ) ), c0.mul( 0.58 ), max( linea.mul( 0.6 ), fina.mul( 0.3 ) ) );
+
+	// cemento o microcemento: nubes amplias y continuas, grano fino
+	const nube = ruidoSuave( vec3( p.x, p.y, 0 ), 0.7 ).mul( 0.5 ).add( 0.5 );
+	const llana = mx_noise_float( vec3( p.mul( 3.1 ), 1 ) ).mul( 0.5 ).add( 0.5 );
+	const cemento = c0.mul( float( 0.9 ).add( nube.mul( 0.13 ) ).add( llana.mul( 0.05 ) ).add( grano.mul( 0.02 ) ) );
+
+	// imitación madera: veta a lo largo de cada pieza
+	const { t, fibra } = vetaMadera( a, c, id );
+	const madera = mix( c0.mul( 0.74 ), c0.mul( 1.06 ), t );
+
+	// terrazo: fondo con lascas claras y oscuras
+	const w: N = vec2( p.x, p.y ).add( mx_noise_float( vec3( p.mul( 40 ), 4 ) ).mul( 0.006 ) );
+	const lasca = step( 0.8, mx_cell_noise_float( vec3( w.mul( 70 ), 0 ) ) );
+	const tono = mx_cell_noise_float( vec3( w.mul( 70 ).add( 11 ), 3 ) );
+	const terrazo = mix( c0.mul( float( 0.96 ).add( llana.mul( 0.04 ) ) ), mix( c0.mul( 0.5 ), min( c0.mul( 1.18 ), vec3( 1 ) ), tono ), lasca );
+
+	const base = liso.mul( es( 0 ) ).add( piedra.mul( es( 1 ) ) ).add( marmol.mul( es( 2 ) ) ).add( cemento.mul( es( 3 ) ) ).add( madera.mul( es( 4 ) ) ).add( terrazo.mul( es( 5 ) ) );
+	const r = V.v2.add( vetas.mul( 0.08 ).mul( es( 0 ) ) ).add( mancha.mul( 0.12 ).mul( es( 1 ) ) ).add( nube.mul( 0.1 ).mul( es( 3 ) ) ).add( fibra.mul( 0.1 ).mul( es( 4 ) ) );
+	const relieve = float( 0.6 ).sub( float( 0.3 ).mul( es( 3 ) ) ).add( mancha.mul( 0.3 ).sub( poro.mul( 0.3 ) ).sub( 0.1 ).mul( es( 1 ) ) ).add( fibra.mul( 0.3 ).mul( es( 4 ) ) );
+	const junta = mix( V.c1, c0.mul( V.v8 ), step( 0.001, V.v8 ) );
+	col.assign( mix( base, junta, enJunta ) );
+	rug.assign( mix( r, float( 0.9 ), enJunta ) );
+	rel.assign( enJunta.oneMinus().mul( relieve ) );
+
+};
+
 /** Oscurece un color hexadecimal (f < 1) o lo aclara (f > 1). */
 export function oscurecer( hex: string, f: number ) {
 
@@ -189,7 +298,7 @@ const A = {
 interface Valores {
 	acabado: number;
 	c0: THREE.Color; c1: THREE.Color; c2: THREE.Color;
-	v0: number; v1: number; v2: number; v3: number;
+	v0: number; v1: number; v2: number; v3: number; v4: number; v5: number; v6: number; v7: number; v8: number;
 	/** color base desde una opción comercial: 0 propio (c0), 1 suelo de baño, 2 pared de baño */
 	fuente: number;
 	arcilla: THREE.Color; plano: THREE.Color;
@@ -198,7 +307,7 @@ interface Valores {
 
 const DEFECTO: Valores = {
 	acabado: A.LISO, c0: new THREE.Color( '#cccccc' ), c1: new THREE.Color( '#888888' ), c2: new THREE.Color( '#444444' ),
-	v0: 0.7, v1: 0, v2: 0, v3: 0, fuente: 0,
+	v0: 0.7, v1: 0, v2: 0, v3: 0, v4: 0, v5: 0, v6: 0, v7: 0, v8: 0, fuente: 0,
 	arcilla: new THREE.Color( PALETA.arcilla ), plano: new THREE.Color( PALETA.papel ),
 	corte: 0, local: 0, poche: 0, emision: 0, relieve: 1,
 };
@@ -214,6 +323,7 @@ const porMaterial = <K extends keyof Valores>( clave: K ): N => {
 const V = {
 	acabado: porMaterial( 'acabado' ), c0: porMaterial( 'c0' ), c1: porMaterial( 'c1' ), c2: porMaterial( 'c2' ),
 	v0: porMaterial( 'v0' ), v1: porMaterial( 'v1' ), v2: porMaterial( 'v2' ), v3: porMaterial( 'v3' ),
+	v4: porMaterial( 'v4' ), v5: porMaterial( 'v5' ), v6: porMaterial( 'v6' ), v7: porMaterial( 'v7' ), v8: porMaterial( 'v8' ),
 	fuente: porMaterial( 'fuente' ), arcilla: porMaterial( 'arcilla' ), plano: porMaterial( 'plano' ),
 	corte: porMaterial( 'corte' ), local: porMaterial( 'local' ), poche: porMaterial( 'poche' ),
 	emision: porMaterial( 'emision' ), relieve: porMaterial( 'relieve' ),
@@ -236,30 +346,10 @@ const PATRONES: Record<number, ( o: Salida ) => void> = {
 
 	},
 
-	[ A.PORCELANICO ]: ( { col, rug, rel, c0 } ) => {
+	// baldosas, lamas o continuo en el suelo (despiece en planta) y en paredes
+	[ A.PORCELANICO ]: ( o ) => revestir( o, vec2( pw.x, pw.z ) ),
 
-		// gres en baldosa: v0 tamaño, v1 junta, v2 rugosidad
-		const p = vec2( pw.x, pw.z );
-		const [ enJunta, pieza ] = baldosas( p, vec2( V.v0, V.v0 ), V.v1 );
-		const vetas = ruidoSuave( vec3( p.x, p.y, pieza.mul( 9 ) ), 1.6 ).mul( 0.5 ).add( 0.5 );
-		const grano = mx_noise_float( vec3( p.mul( 90 ), 0 ) ).mul( 0.5 ).add( 0.5 );
-		const base = c0.mul( float( 0.975 ).add( pieza.mul( 0.05 ) ) ).mul( float( 0.97 ).add( vetas.mul( 0.05 ) ).add( grano.mul( 0.012 ) ) );
-		col.assign( mix( base, c0.mul( 0.72 ), enJunta ) );
-		rug.assign( mix( V.v2.add( vetas.mul( 0.08 ) ), float( 0.9 ), enJunta ) );
-		rel.assign( enJunta.oneMinus().mul( 0.6 ) );
-
-
-	},
-
-	[ A.ALICATADO ]: ( { col, rug, rel, c0 } ) => {
-
-		const [ enJunta, pieza ] = baldosas( uvPared(), vec2( 0.6, 0.3 ), float( 0.002 ) );
-		col.assign( mix( c0.mul( float( 0.985 ).add( pieza.mul( 0.03 ) ) ), c0.mul( 0.78 ), enJunta ) );
-		rug.assign( mix( float( 0.16 ), float( 0.85 ), enJunta ) );
-		rel.assign( enJunta.oneMinus() );
-
-
-	},
+	[ A.ALICATADO ]: ( o ) => revestir( o, uvPared() ),
 
 	[ A.PINTURA ]: ( { col, rug, rel, c0 } ) => {
 
@@ -331,23 +421,11 @@ const PATRONES: Record<number, ( o: Salida ) => void> = {
 
 	[ A.TARIMA ]: ( { col, rug, rel } ) => {
 
-		// lamas de 19 x 145 cm a junta trabada, según P.suelo
+		// tarima: colores de la opción del catálogo (P.suelo); despiece de la memoria
+		// de calidades, como en `revestir` (v0 ancho, v3 largo, v1 junta, v4 aparejo…)
 		const s = P.suelo;
-		const p = vec2( pw.x, pw.z );
-		const ancho = 0.19, largo = 1.45;
-		const fila = floor( p.y.div( ancho ) );
-		const u = p.x.div( largo ).add( hash( fila.mul( 7.13 ).add( 3.0 ) ) );
-		const tabla = floor( u );
-		const fu = fract( u ), fv = fract( p.y.div( ancho ) );
-		const jx = 0.0015 / largo, jy = 0.0015 / ancho;
-		const enJunta = max(
-			float( 1 ).sub( smoothstep( 0, jx, fu ).mul( smoothstep( 0, jx, float( 1 ).sub( fu ) ) ) ),
-			float( 1 ).sub( smoothstep( 0, jy, fv ).mul( smoothstep( 0, jy, float( 1 ).sub( fv ) ) ) ),
-		);
-		const lama = hash( tabla.mul( 31.7 ).add( fila.mul( 17.3 ) ).add( 5.0 ) );
-		const veta = mx_noise_float( vec3( p.x.mul( 1.2 ).add( lama.mul( 40 ) ), p.y.mul( 55 ), lama.mul( 7 ) ) ).mul( 0.5 ).add( 0.5 );
-		const fibra = mx_noise_float( vec3( p.x.mul( 6 ), p.y.mul( 420 ), lama.mul( 3 ) ) ).mul( 0.5 ).add( 0.5 );
-		const t = clamp( lama.mul( 0.45 ).add( veta.mul( 0.4 ) ).add( fibra.mul( 0.25 ) ).sub( 0.1 ), 0, 1 );
+		const { enJunta, id, a, c } = piezas( vec2( pw.x, pw.z ), V.v0, V.v3, max( V.v1, 0.00001 ), V.v4, V.v5, V.v7 );
+		const { t, fibra } = vetaMadera( a, c, id );
 		col.assign( mix( mix( s.oscuro, s.claro, t ), s.oscuro.mul( 0.6 ), enJunta ) );
 		rug.assign( s.rugosidad.add( fibra.mul( 0.1 ) ) );
 		rel.assign( enJunta.oneMinus().mul( 0.7 ).add( fibra.mul( 0.3 ) ) );
@@ -573,6 +651,7 @@ function universal( p: Parametros ): THREE.MeshStandardNodeMaterial {
 		acabado: p.acabado,
 		c0: new THREE.Color( c[ 0 ] ?? '#cccccc' ), c1: new THREE.Color( c[ 1 ] ?? '#888888' ), c2: new THREE.Color( c[ 2 ] ?? '#444444' ),
 		v0: v[ 0 ] ?? 0, v1: v[ 1 ] ?? 0, v2: v[ 2 ] ?? 0, v3: v[ 3 ] ?? 0,
+		v4: v[ 4 ] ?? 0, v5: v[ 5 ] ?? 0, v6: v[ 6 ] ?? 0, v7: v[ 7 ] ?? 0, v8: v[ 8 ] ?? 0,
 		fuente: p.fuente ?? 0,
 		arcilla: new THREE.Color( p.arcilla ?? PALETA.arcilla ), plano: new THREE.Color( p.plano ?? PALETA.papel ),
 		corte: p.corte ? 1 : 0, local: p.local ? 1 : 0, poche: 0, emision: p.emision ?? 0, relieve: p.relieve ?? 1,
@@ -592,13 +671,48 @@ const hexDe = ( tono: string | N ) => ( typeof tono === 'string' ? tono : '#cccc
 export const liso = ( tono: string, rugosidad = 0.7, metal = 0 ) =>
 	universal( { acabado: A.LISO, colores: [ tono ], valores: [ rugosidad, metal ] } );
 
-/** Gres porcelánico en baldosa grande, junta fina, leve variación entre piezas. */
-export const porcelanico = ( tono: string | N, tam = 0.9, junta = 0.0025, rug = 0.32 ) =>
-	universal( { acabado: A.PORCELANICO, colores: [ hexDe( tono ) ], fuente: fuenteDe( tono ), valores: [ tam, junta, rug ], relieve: 0.35 } );
+interface OpcionesRevestimiento {
+	/** rugosidad si la memoria no dice el brillo */
+	rugosidad?: number;
+	/** tono de la junta respecto al de la pieza, si no tiene color propio */
+	tonoJunta?: number;
+	pared?: boolean;
+	crece?: boolean;
+}
 
-/** Alicatado de paredes (baños): pieza rectangular apaisada con brillo. */
-export const alicatado = ( tono: string | N, creceConMuros = false ) =>
-	universal( { acabado: A.ALICATADO, colores: [ hexDe( tono ) ], fuente: fuenteDe( tono ), relieve: 0.25, crece: creceConMuros } );
+/** Valores del shader de un revestimiento (ver `revestir`). */
+export function valoresRevestimiento( r: Revestimiento, rugosidad = 0.32, tonoJunta = 0.72 ) {
+
+	const continuo = r.formato === 'continuo';
+	const [ a, b ] = [ ...( r.medidas ?? ( r.formato === 'lama' ? [ 20, 120 ] : [ 60, 60 ] ) ) ].sort( ( x, y ) => x - y );
+	const aparejo = r.aparejo ?? ( r.formato === 'lama' ? 'aleatorio' : 'recto' );
+	const aspecto = r.aspecto ?? ( continuo ? 'cemento' : r.formato === 'lama' ? 'madera' : 'liso' );
+	return [
+		continuo ? 100 : a / 100, continuo ? 0 : ( r.junta ?? 2 ) / 1000,
+		r.brillo ? BRILLOS[ r.brillo ] ?? rugosidad : rugosidad,
+		continuo ? 100 : b / 100,
+		APAREJOS[ aparejo ] ?? 0, aparejo === 'trabado' ? r.desfase ?? 0.5 : 0,
+		ASPECTOS[ aspecto ] ?? 0,
+		( r.giro ?? ( aparejo === 'espiga' ? 45 : 0 ) ) * Math.PI / 180,
+		r.color_junta ? 0 : tonoJunta,
+	];
+
+}
+
+/** Suelo o alicatado según su especificación (el tono puede venir de una opción de baño). */
+export const revestimiento = ( tono: string | N, r: Revestimiento, o: OpcionesRevestimiento = {} ) =>
+	universal( {
+		acabado: o.pared ? A.ALICATADO : A.PORCELANICO, colores: [ hexDe( tono ), r.color_junta ?? '#888888' ], fuente: fuenteDe( tono ),
+		valores: valoresRevestimiento( r, o.rugosidad, o.tonoJunta ), relieve: o.pared ? 0.25 : 0.35, crece: o.crece,
+	} );
+
+/** Gres porcelánico en baldosa cuadrada (lado y junta en m), liso. */
+export const porcelanico = ( tono: string | N, tam = 0.9, junta = 0.0025, rug = 0.32 ) =>
+	revestimiento( tono, { medidas: [ tam * 100, tam * 100 ], junta: junta * 1000 }, { rugosidad: rug } );
+
+/** Alicatado de paredes (baños): por defecto pieza de 30 × 60 cm apaisada con brillo. */
+export const alicatado = ( tono: string | N, creceConMuros = false, r: Revestimiento = {} ) =>
+	revestimiento( tono, { medidas: [ 30, 60 ], ...r }, { rugosidad: 0.16, tonoJunta: 0.78, pared: true, crece: creceConMuros } );
 
 /** Pintura plástica lisa con variación casi imperceptible. */
 export const pintura = ( tono: string, conCorte = false, creceConMuros = false ) =>
@@ -618,8 +732,9 @@ export const cuarzo = () => universal( { acabado: A.CUARZO } );
 /** Frentes de cocina: liso o con veta de madera según P.cocina (veta 0..1). */
 export const laminadoCocina = () => universal( { acabado: A.LAMINADO, relieve: 0.1 } );
 
-/** Tarima de madera en lamas de 19 x 145 cm a junta trabada, según P.suelo. */
-export const tarima = () => universal( { acabado: A.TARIMA, relieve: 0.25 } );
+/** Tarima de madera: color de la opción del catálogo (P.suelo) y despiece de la memoria (por defecto, lamas de 19 × 145 cm trabadas al azar). */
+export const tarima = ( r: Revestimiento = { formato: 'lama', medidas: [ 19, 145 ], junta: 1.5 } ) =>
+	universal( { acabado: A.TARIMA, valores: valoresRevestimiento( { formato: 'lama', ...r } ), relieve: 0.25 } );
 
 /** Lacado / laminado liso. */
 export const lacado = ( tono = '#f1efea', rug = 0.38 ) => liso( tono, rug );

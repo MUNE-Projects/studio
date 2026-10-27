@@ -175,7 +175,7 @@ async function iniciar() {
 	M.U.altura.value = H;
 	const matMuros = {
 		pintura: M.conPoche( M.pintura( ACABADOS.paredes.color, true, true ) ),
-		alicatado: M.conPoche( M.alicatado( M.P.banos.pared, true ) ),
+		alicatado: M.conPoche( M.alicatado( M.P.banos.pared, true, ACABADOS.alicatado ) ),
 		fachada: M.conPoche( M.sate( ACABADOS.fachada.color, true, ACABADOS.fachada.textura === 'ladrillo', ACABADOS.fachada.junta ) ),
 	};
 	const grupo = ( nombre: string ) => Object.assign( new THREE.Group(), { name: nombre } );

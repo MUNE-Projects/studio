@@ -113,9 +113,9 @@ async function leerSupuestos(base: string, id: string): Promise<Supuesto[]> {
 function htmlSupuestos(id: string, supuestos: Supuesto[]): string {
 	if (!supuestos.length) return '';
 	return `<div class="aviso separado" role="note">
-		<p><strong>Faltan datos en la memoria de calidades.</strong> No indica ${supuestos.length === 1 ? 'este acabado' : 'estos acabados'}, así que, mientras no nos ${supuestos.length === 1 ? 'lo envíes' : 'los envíes'}, la Experiencia 3D ${supuestos.length === 1 ? 'lo muestra' : 'los muestra'} así:</p>
+		<p><strong>Falta información en la memoria de calidades.</strong> Para que la Experiencia 3D y los renders salgan como serán de verdad, necesitamos ${supuestos.length === 1 ? 'este dato' : 'estos datos'}. Por favor, súbelos en <a class="enlace" href="#/promocion/${esc(id)}/documentacion">Documentación</a> (la memoria completa o una ficha del fabricante).</p>
+		<p>Si no dispones de esa información, se usará lo siguiente por defecto:</p>
 		<ul>${supuestos.map((x) => `<li><strong>${esc(x.apartado)}</strong> (${esc(x.dato)}): ${esc(x.porDefecto)}</li>`).join('')}</ul>
-		<p>Si tienes esa información, súbela en <a class="enlace" href="#/promocion/${esc(id)}/documentacion">Documentación</a> y el equipo de MUNE la incluirá en la próxima versión. Si te parece bien como está, puedes validar igualmente.</p>
 	</div>`;
 }
 

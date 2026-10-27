@@ -10,12 +10,12 @@ import { alturaSueloEn, esCubierta, marcoEntorno } from '../modelo/exteriores';
 import { dePlanta, plantaCalle, plantasDe } from '../modelo/plantas';
 
 const MAT_SUELO: Record<string, () => THREE.Material> = {
-	'madera': () => M.tarima(),
-	'porcelanico': () => M.porcelanico( ACABADOS.suelo_general.color, ACABADOS.suelo_general.pieza ),
-	'porcelanico-cocina': () => M.porcelanico( ACABADOS.suelo_cocina.color, ACABADOS.suelo_cocina.pieza ),
-	'porcelanico-bano': () => M.porcelanico( M.P.banos.suelo, 0.6, 0.002, 0.28 ),
-	'ceramico': () => M.porcelanico( ACABADOS.suelo_ceramico.color, ACABADOS.suelo_ceramico.pieza, 0.003, 0.5 ),
-	'exterior': () => M.porcelanico( ACABADOS.suelo_exterior.color, ACABADOS.suelo_exterior.pieza, 0.004, 0.72 ),
+	'madera': () => M.tarima( ACABADOS.suelo_madera ),
+	'porcelanico': () => M.revestimiento( ACABADOS.suelo_general.color, ACABADOS.suelo_general ),
+	'porcelanico-cocina': () => M.revestimiento( ACABADOS.suelo_cocina.color, ACABADOS.suelo_cocina ),
+	'porcelanico-bano': () => M.revestimiento( M.P.banos.suelo, ACABADOS.suelo_bano, { rugosidad: 0.28 } ),
+	'ceramico': () => M.revestimiento( ACABADOS.suelo_ceramico.color, ACABADOS.suelo_ceramico, { rugosidad: 0.5 } ),
+	'exterior': () => M.revestimiento( ACABADOS.suelo_exterior.color, ACABADOS.suelo_exterior, { rugosidad: 0.72 } ),
 	'cesped': () => M.cesped(),
 	// garaje: solera de hormigón pulido (juntas de retracción cada 3 m)
 	'hormigon': () => M.porcelanico( '#a8a49d', 3, 0.004, 0.62 ),

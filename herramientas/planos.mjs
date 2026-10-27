@@ -62,6 +62,9 @@ export async function generarPlanos( id, version, salida = join( RAIZ, 'salida',
 		pagina.on( 'console', ( m ) => m.text().startsWith( 'Plano ' ) && console.log( `  · ${ m.text() }` ) );
 		await pagina.goto( `${ servidor.resolvedUrls.local[ 0 ] }planos.html` );
 		await pagina.waitForFunction( () => typeof window.generarLote === 'function', null, { timeout: 120000 } );
+		// acabados de la memoria escritos de forma que no se entiende: se corrigen antes de seguir
+		const malos = await pagina.evaluate( () => window.erroresAcabados() );
+		if ( malos.length ) throw new Error( `Los acabados de promocion.json tienen datos que no se entienden:\n${ malos.map( ( x ) => `  · ${ x }` ).join( '\n' ) }` );
 		const lote = await pagina.evaluate( () => window.generarLote( ( t ) => console.log( t ) ) );
 
 		const carpeta = join( salida, 'planos' );
