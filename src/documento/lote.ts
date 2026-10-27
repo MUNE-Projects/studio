@@ -19,6 +19,7 @@
 import { CATALOGO, PROMOCION, cargarModelo, claveUnidad } from '../promocion/promocion';
 import { activoPara, BIBLIOTECA } from '../biblioteca/biblioteca';
 import { aplicarAlternativa } from '../configurador/alternativas';
+import { revisarChoques } from '../modelo/choques';
 import { planoPDF, planoPNG, type DatosPlano } from './plano';
 import type { Alternativa, ViviendaPromocion } from '../modelo/tipos';
 import { esUtil } from '../modelo/estancias';
@@ -238,4 +239,24 @@ export function supuestosAcabados(): Supuesto[] {
 
 }
 
-Object.assign( window as unknown as Record<string, unknown>, { generarLote, generarUnidadesExperiencia, supuestosAcabados, erroresAcabados } );
+/** Choques de la distribución (muebles que se pisan, atraviesan muros o chocan con una puerta), en cada tipología y alternativa. */
+export function erroresDistribucion(): string[] {
+
+	const salida: string[] = [];
+	for ( const id of new Set( PROMOCION.viviendas.map( ( v ) => v.tipologia ) ) ) {
+
+		const modelo = cargarModelo( id, false );
+		for ( const alt of [ null, ...modelo.alternativas ] ) {
+
+			const { vivienda } = aplicarAlternativa( modelo.vivienda, alt );
+			const donde = `tipología «${ id }»${ alt ? `, alternativa «${ alt.id }»` : '' }`;
+			for ( const x of revisarChoques( vivienda ) ) salida.push( `${ donde }: ${ x }` );
+
+		}
+
+	}
+	return salida;
+
+}
+
+Object.assign( window as unknown as Record<string, unknown>, { generarLote, generarUnidadesExperiencia, supuestosAcabados, erroresAcabados, erroresDistribucion } );

@@ -65,6 +65,9 @@ export async function generarPlanos( id, version, salida = join( RAIZ, 'salida',
 		// acabados de la memoria escritos de forma que no se entiende: se corrigen antes de seguir
 		const malos = await pagina.evaluate( () => window.erroresAcabados() );
 		if ( malos.length ) throw new Error( `Los acabados de promocion.json tienen datos que no se entienden:\n${ malos.map( ( x ) => `  · ${ x }` ).join( '\n' ) }` );
+		// muebles que se pisan, atraviesan un muro o chocan con una puerta: saldrían así en el 3D y en los planos
+		const choques = await pagina.evaluate( () => window.erroresDistribucion() );
+		if ( choques.length ) throw new Error( `La distribución tiene choques, y saldrían así en la Experiencia 3D, los renders y los planos:\n${ choques.map( ( x ) => `  · ${ x }` ).join( '\n' ) }\n  Revisa el plano acotado y corrige los datos antes de preparar la versión.` );
 		const lote = await pagina.evaluate( () => window.generarLote( ( t ) => console.log( t ) ) );
 
 		const carpeta = join( salida, 'planos' );

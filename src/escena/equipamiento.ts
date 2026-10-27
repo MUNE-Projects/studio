@@ -255,12 +255,21 @@ function columna( p: Pieza, W: number, D: number, H: number, hornos: boolean ) {
 }
 
 /** Encimera con muebles bajos; contra la pared lleva frontal y muebles altos (exenta: isla o península, sin ellos). */
-function encimera( p: Pieza, W: number, D: number, H: number, e: Equipamiento, cy: number, exenta = false ) {
+function encimera( p: Pieza, W: number, D: number, H: number, e: Equipamiento, cx: number, cy: number, exenta = false ) {
 
-	// rangos de planta (y norte) -> x local: con el frente al oeste x local = cy - y;
-	// con el frente al este (vivienda simétrica) x local = y - cy
-	const rango = ( r?: [ number, number ] ): [ number, number ] | null => ! r ? null
-		: e.frente === 'e' ? [ r[ 0 ] - cy, r[ 1 ] - cy ] : [ cy - r[ 1 ], cy - r[ 0 ] ];
+	// rangos de planta -> x local. Con el frente al oeste o al este van en y
+	// (x local = cy - y o y - cy); al sur o al norte, en x (x local = x - cx o
+	// cx - x). Nunca salen del mueble.
+	const local = ( a: number, b: number ): [ number, number ] => [ Math.max( - W / 2, Math.min( a, b ) ), Math.min( W / 2, Math.max( a, b ) ) ];
+	const rango = ( r?: [ number, number ] ): [ number, number ] | null => {
+
+		if ( ! r ) return null;
+		const [ a, b ] = e.frente === 'e' ? [ r[ 0 ] - cy, r[ 1 ] - cy ] : e.frente === 'o' ? [ cy - r[ 1 ], cy - r[ 0 ] ]
+			: e.frente === 'n' ? [ cx - r[ 1 ], cx - r[ 0 ] ] : [ r[ 0 ] - cx, r[ 1 ] - cx ];
+		const l = local( a, b );
+		return l[ 1 ] - l[ 0 ] > 0.05 ? l : null;
+
+	};
 	const placa = rango( e.placa ), freg = rango( e.fregadero ), lava = rango( e.lavavajillas );
 	const z1 = D / 2, z0 = - D / 2;
 	const yE = 0.87, yT = 0.9;
@@ -642,7 +651,7 @@ export function construirEquipamiento( v: Vivienda, amb?: Ambientacion | null ) 
 				case 'armario': armario( p, W, D, H ); break;
 				case 'columna-frigorifico': columna( p, W, D, H, false ); break;
 				case 'columna-hornos': columna( p, W, D, H, true ); break;
-				case 'encimera': encimera( p, W, D, H, e, cy ); break;
+				case 'encimera': encimera( p, W, D, H, e, cx, cy ); break;
 				case 'banera': banera( p, W, D ); break;
 				case 'ducha': ducha( p, W, D ); break;
 				case 'inodoro': inodoro( p, W, D ); break;
@@ -650,8 +659,8 @@ export function construirEquipamiento( v: Vivienda, amb?: Ambientacion | null ) 
 				case 'lavabo-doble': lavabo( p, W, D, true ); break;
 				case 'lavadora': lavadora( p, W, D ); break;
 				case 'secadora': lavadora( p, W, D ); break;
-				case 'isla': encimera( p, W, D, H, e, cy, true ); break;
-				case 'peninsula': encimera( p, W, D, H, e, cy, true ); break;
+				case 'isla': encimera( p, W, D, H, e, cx, cy, true ); break;
+				case 'peninsula': encimera( p, W, D, H, e, cx, cy, true ); break;
 				case 'banera-exenta': baneraExenta( p, W, D ); break;
 				case 'bide': bide( p, D ); break;
 				case 'mesa-comedor': mesaComedor( p, W, D ); break;
