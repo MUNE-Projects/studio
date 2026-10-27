@@ -77,6 +77,23 @@ const catalogoSinPrecios = (): Plugin => ( {
 	},
 } );
 
+/**
+ * Promoción completa en la web pública: la maqueta se ve, pero sin las
+ * referencias de las viviendas (la lista de viviendas es privada, paso 5a).
+ */
+const conjuntoSinReferencias = (): Plugin => ( {
+	name: 'conjunto-sin-referencias',
+	enforce: 'pre',
+	transform( codigo, id ) {
+
+		if ( ! /promociones[\\/][^\\/]+[\\/]entorno[\\/]conjunto\.json$/.test( id ) ) return null;
+		const datos = JSON.parse( codigo );
+		for ( const e of datos.edificios ?? [] ) for ( const p of e.plantas ?? [] ) for ( const v of p.viviendas ?? [] ) delete v.ref;
+		return { code: JSON.stringify( datos ), map: null };
+
+	},
+} );
+
 /** marca.legal de promocion.json ← textos de MUNE Portal (los vacíos no cambian nada). */
 const LEGAL: Record<string, string> = { planos: 'plano', renders: 'imagenes', experiencia: 'experiencia', personalizacion: 'precios' };
 function textosLegales(): Record<string, string> {
@@ -132,7 +149,7 @@ export default defineConfig( ( { mode } ) => {
 		resolve: { alias: { '@promocion': carpeta } },
 		// versión de la web (la pone «publicacion.mjs preparar»): con ella pide el comprador sus datos
 		define: { __STUDIO__: JSON.stringify( studio ), __VERSION__: JSON.stringify( process.env.VERSION_PUBLICA ?? null ) },
-		plugins: [ conTextosLegales( textosLegales() ), ...( completo ? [] : [ sinDatosDeStudio(), catalogoSinPrecios() ] ) ],
+		plugins: [ conTextosLegales( textosLegales() ), ...( completo ? [] : [ sinDatosDeStudio(), catalogoSinPrecios(), conjuntoSinReferencias() ] ) ],
 		build: { target: 'es2022', chunkSizeWarningLimit: 2000, outDir: process.env.SALIDA || 'dist' },
 	};
 
