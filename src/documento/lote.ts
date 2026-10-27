@@ -265,7 +265,7 @@ export function erroresDistribucion(): string[] {
 /** Lo que no cuadra entre las plantas generales (entorno/conjunto.json) y la tabla de viviendas. */
 export function erroresConjunto(): string[] {
 
-	return CONJUNTO ? revisarConjunto( CONJUNTO, PROMOCION.viviendas, TIPOLOGIAS, ( t, e ) => cargarModelo( t, e ).vivienda ) : [];
+	return CONJUNTO ? revisarConjunto( CONJUNTO, PROMOCION.viviendas, TIPOLOGIAS, ( t, e ) => cargarModelo( t, e ).vivienda, PROMOCION.promocion.tipo === 'unifamiliar' ) : [];
 
 }
 

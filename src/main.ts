@@ -30,7 +30,7 @@ import { aplicarAlternativa, fmtM2 } from './configurador/alternativas';
 import { Configurador, fmtEuros, fmtPrecio, type Seleccion } from './configurador/configurador';
 import { Panel } from './configurador/panel';
 import { fmtFecha, packsDeVivienda } from './configurador/packs';
-import { CATALOGO, PROMOCION, accesoProfesional, cargarModelo, catalogoPara, estadoPublico, extraerCodigo, guardarSeleccion as guardarEnSupabase, paseInicial, resolverAcceso, resolverProfesional, salirProfesional, viviendaDeUnidad, viviendaPublica, type Modelo } from './promocion/promocion';
+import { CATALOGO, CONJUNTO, PROMOCION, accesoProfesional, cargarModelo, catalogoPara, estadoPublico, extraerCodigo, guardarSeleccion as guardarEnSupabase, paseInicial, resolverAcceso, resolverProfesional, salirProfesional, viviendaDeUnidad, viviendaPublica, type Modelo } from './promocion/promocion';
 import { aplicarMarca } from './promocion/marca';
 import { dePlanta, esMultiplanta, plantaCalle, plantasDe } from './modelo/plantas';
 import { esCerrada, esGaraje, esUtil } from './modelo/estancias';
@@ -39,6 +39,7 @@ import { ACABADOS } from './promocion/acabados';
 import { generarPDF } from './documento/pdf';
 import { planoPDF, planoPNG, type DatosPlano } from './documento/plano';
 import { RenderHD } from './escena/renderHD';
+import { construirMaqueta, type Maqueta } from './escena/conjunto';
 import './estilos.css';
 
 const $ = <T extends HTMLElement>( s: string ) => document.querySelector( s ) as T;
@@ -208,15 +209,56 @@ async function iniciar() {
 	// el sol apunta al centro de la vivienda (sus sombras la cubren entera)
 	const mc = marcoEntorno( dePlanta( modelo.vivienda, plantaCalle( modelo.vivienda ) ) );
 	const luzSol = crearSol( new THREE.Vector3( mc.cx, 0, mc.cz ) );
-	escena.add( ...Object.values( c ), suelo!, luzSol, luzSol.target );
+	// todo lo de la vivienda cuelga de un grupo: en el modo Promoción se oculta entero
+	const raizVivienda = Object.assign( new THREE.Group(), { name: 'vivienda' } );
+	raizVivienda.add( ...Object.values( c ), suelo! );
+	escena.add( raizVivienda, luzSol, luzSol.target );
 	const lucesVentana = new THREE.Group();
-	escena.add( lucesVentana );
+	raizVivienda.add( lucesVentana );
 
 	// ---------------------------------------------------------------- plantas
 	// Viviendas en varias plantas: en el plano se ve solo la planta elegida; en
 	// 3D, esa y las de debajo (las de encima se levantan, como en una maqueta),
 	// y se recorre la elegida.
 	let plantaActiva = plantaCalle( modelo.vivienda );
+	// ---------------------------------------------------------------- promoción completa
+	// Maqueta del conjunto (entorno/conjunto.json): se construye la primera vez
+	// que se abre el modo Promoción. Planta elegida: -1 = el edificio entero.
+	let maqueta: Maqueta | null = null;
+	let plantaMaqueta = - 1;
+	const verPlantaMaqueta = ( k: number ) => {
+
+		if ( ! maqueta ) return;
+		plantaMaqueta = k;
+		maqueta.plantas.forEach( ( p, i ) => {
+
+			const visible = k < 0 || i <= k;
+			p.grupo.visible = visible;
+			// la planta elegida se ve sin su techo, como en las plantas generales
+			p.techo.visible = visible && i !== k;
+
+		} );
+		for ( const r of maqueta.rotulos ) r.visible = maqueta.grupo.visible && ( k < 0 ? r.userData.ultima : r.userData.planta === maqueta.plantas[ k ].nombre );
+		botonesPlanta.querySelectorAll( 'button' ).forEach( ( b, i ) => b.setAttribute( 'aria-current', String( i - 1 === k ) ) );
+		despertar();
+
+	};
+	const pintarPlantasMaqueta = () => {
+
+		if ( ! maqueta ) return;
+		botonesPlanta.hidden = maqueta.plantas.length < 2;
+		botonesPlanta.replaceChildren( ...[ 'Todo', ...maqueta.plantas.map( ( p ) => p.nombre ) ].map( ( nombre, i ) => {
+
+			const b = document.createElement( 'button' );
+			b.type = 'button';
+			b.textContent = nombre;
+			b.setAttribute( 'aria-current', String( i - 1 === plantaMaqueta ) );
+			b.addEventListener( 'click', () => verPlantaMaqueta( i - 1 ) );
+			return b;
+
+		} ) );
+
+	};
 	// a pie (dentro, en el jardín, en la rampa…) se ven también las plantas de encima
 	let aPie = false;
 	const cotaActiva = () => plantasDe( vivienda )[ plantaActiva ]?.cota ?? 0;
@@ -245,6 +287,7 @@ async function iniciar() {
 	/** Elige la planta activa (y, si se pide, encuadra: el plano o la vista general). */
 	const cambiarPlanta = ( i: number, encuadrar = true ) => {
 
+		if ( maqueta && document.body.dataset.modo === 'promocion' ) return verPlantaMaqueta( i );
 		plantaActiva = i;
 		interioresPlanta = dePlanta( vivienda, i ).estancias.filter( esCerrada );
 		botonesPlanta.querySelectorAll( 'button' ).forEach( ( b, k ) => b.setAttribute( 'aria-current', String( k === i ) ) );
@@ -264,6 +307,7 @@ async function iniciar() {
 	};
 	const pintarBotonesPlanta = () => {
 
+		if ( maqueta && document.body.dataset.modo === 'promocion' ) return pintarPlantasMaqueta();
 		const ps = plantasDe( vivienda );
 		botonesPlanta.hidden = ps.length < 2;
 		botonesPlanta.replaceChildren( ...ps.map( ( p, k ) => {
@@ -593,7 +637,7 @@ async function iniciar() {
 	cam.reducido = est.reducido;
 	// al terminar cada transición se ajusta la navegación a la vista
 	cam.alLlegar = ( v ) => nav.configurar( modo === 'plano' ? 'planta' : v.interior ? 'interior' : 'exterior' );
-	type Modo = 'plano' | 'vivienda' | 'personalizar';
+	type Modo = 'plano' | 'vivienda' | 'personalizar' | 'promocion';
 	let modo: Modo = 'vivienda';
 	// La visita se abre en el plano (rápido de preparar); la vivienda 3D se
 	// prepara mientras tanto. Si se pide antes de estar lista, se recuerda y se
@@ -612,7 +656,7 @@ async function iniciar() {
 	const botonesModo = [ ...document.querySelectorAll<HTMLButtonElement>( '.modos [data-modo]' ) ];
 	const barraVistas = $( '.vistas' );
 	let botonesVista: HTMLButtonElement[] = [];
-	const actualizarEtiquetas = () => document.body.classList.toggle( 'con-etiquetas', modo === 'plano' );
+	const actualizarEtiquetas = () => document.body.classList.toggle( 'con-etiquetas', modo === 'plano' || modo === 'promocion' );
 	const marcarVista = ( k: string ) => {
 
 		for ( const b of botonesVista ) {
@@ -790,6 +834,7 @@ async function iniciar() {
 		const anterior = modo;
 		modo = m;
 		document.body.dataset.modo = m;
+		if ( m === 'promocion' || anterior === 'promocion' ) entrarPromocion( m === 'promocion' );
 		botonesModo.forEach( ( b ) => b.setAttribute( 'aria-current', String( b.dataset.modo === m ) ) );
 		const n = m === 'plano' ? 1 : 4;
 		if ( est.actual !== n ) est.ir( n );
@@ -805,14 +850,89 @@ async function iniciar() {
 			return;
 
 		}
+		if ( m === 'promocion' ) return;
 
-		// al salir del plano se vuelve a la vista general; entre Vivienda y
-		// Personalizar la cámara no se mueve
-		if ( anterior === 'plano' ) irVista( 'aerea' );
+		// al salir del plano (o de la promoción) se vuelve a la vista general;
+		// entre Vivienda y Personalizar la cámara no se mueve
+		if ( anterior === 'plano' || anterior === 'promocion' ) irVista( 'aerea' );
 
 	};
 
+	/** Abre (o cierra) la maqueta de la promoción completa: la vivienda se oculta y la cámara se aleja. */
+	const entrarPromocion = ( si: boolean ) => {
+
+		if ( si && ! maqueta && CONJUNTO ) {
+
+			const cache = new Map<string, Vivienda>();
+			const cargar = ( t: string, e: boolean ) => {
+
+				const k = `${ t }${ e ? '-espejo' : '' }`;
+				if ( ! cache.has( k ) ) cache.set( k, cargarModelo( t, e ).vivienda );
+				return cache.get( k )!;
+
+			};
+			maqueta = construirMaqueta( CONJUNTO, cargar, matMuros, ( t ) => `Tipología ${ t.toUpperCase() }` );
+			// rótulos: en el edificio entero, solo los de la planta más alta de cada sitio
+			const altas = new Map<string, number>();
+			for ( const r of maqueta.rotulos ) {
+
+				const k = `${ Math.round( r.position.x ) }:${ Math.round( r.position.z ) }`;
+				altas.set( k, Math.max( altas.get( k ) ?? - Infinity, r.position.y ) );
+
+			}
+			for ( const r of maqueta.rotulos ) r.userData.ultima = altas.get( `${ Math.round( r.position.x ) }:${ Math.round( r.position.z ) }` ) === r.position.y;
+			escena.add( maqueta.grupo );
+
+		}
+		if ( ! maqueta ) return;
+		raizVivienda.visible = ! si;
+		maqueta.grupo.visible = si;
+		// sol, sombras y distancias de la cámara a la medida del conjunto (o de la vivienda)
+		const centro = maqueta.caja.getCenter( new THREE.Vector3() );
+		const radio = maqueta.caja.getBoundingSphere( new THREE.Sphere() ).radius;
+		const sc = luzSol.shadow.camera;
+		if ( si ) {
+
+			luzSol.position.copy( centro ).addScaledVector( luzSol.position.clone().sub( luzSol.target.position ).normalize(), radio * 2.5 );
+			luzSol.target.position.copy( centro );
+			sc.left = sc.bottom = - radio; sc.right = sc.top = radio; sc.far = radio * 5;
+
+		} else {
+
+			const dir = luzSol.position.clone().sub( luzSol.target.position ).normalize();
+			luzSol.target.position.set( mc.cx, 0, mc.cz );
+			luzSol.position.copy( luzSol.target.position ).addScaledVector( dir, 25 );
+			sc.left = sc.bottom = - 11; sc.right = sc.top = 11; sc.far = 50;
+
+		}
+		sc.updateProjectionMatrix();
+		camara.far = si ? Math.max( 200, radio * 8 ) : 200;
+		camara.updateProjectionMatrix();
+		nav.alcance = si ? Math.max( 40, radio * 3.2 ) : 40;
+		if ( si ) {
+
+			plantaMaqueta = - 1;
+			verPlantaMaqueta( - 1 );
+			pintarPlantasMaqueta();
+			const fov = 30;
+			const d = radio / Math.sin( ( fov / 2 ) * Math.PI / 180 ) * 1.05;
+			const dir = new THREE.Vector3( 0.62, 0.55, 0.56 ).normalize();
+			cam.ir( { nombre: 'Promoción', pos: centro.clone().addScaledVector( dir, d ).toArray() as [ number, number, number ], obj: centro.toArray() as [ number, number, number ], fov } );
+			marcarVista( '' );
+
+		} else {
+
+			for ( const r of maqueta.rotulos ) r.visible = false;
+			pintarBotonesPlanta();
+			mostrarPlantas();
+
+		}
+		despertar();
+
+	};
 	botonesModo.forEach( ( b ) => b.addEventListener( 'click', () => irModo( b.dataset.modo as Modo ) ) );
+	// el modo Promoción solo existe si la promoción tiene sus plantas generales
+	document.querySelector<HTMLButtonElement>( '.modos [data-modo="promocion"]' )!.hidden = ! CONJUNTO;
 	addEventListener( 'keydown', ( ev ) => {
 
 		const t = ev.target as HTMLElement | null;

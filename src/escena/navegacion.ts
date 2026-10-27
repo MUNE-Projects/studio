@@ -58,6 +58,9 @@ function cruza( ax: number, ay: number, bx: number, by: number, r: Rect ) {
 
 export class Navegacion {
 
+	/** Distancia máxima de la órbita exterior (más en la maqueta de la promoción completa). */
+	alcance = 40;
+
 	modo: ModoNavegacion = 'exterior';
 	private muros: Rect[] = [];
 	private muebles: Rect[] = [];
@@ -251,7 +254,7 @@ export class Navegacion {
 
 		} else if ( modo === 'exterior' ) {
 
-			c.minDistance = 5; c.maxDistance = 40;
+			c.minDistance = 5; c.maxDistance = this.alcance;
 			c.minPolarAngle = Math.PI * 0.12; c.maxPolarAngle = Math.PI * 0.46;
 
 		} else {

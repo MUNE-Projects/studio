@@ -54,11 +54,14 @@ Los `supuesto` no son un error, pero se enumeran en el informe final y, en los a
 - [ ] Variantes (espejo, bajo, ático…): cada una es la misma tipología con su modificación fija, no una tipología nueva.
 - [ ] Acabados de serie (`acabados`) desde la memoria, apartado G.
 
-### B. Promoción completa: urbanización y plantas generales (`entorno/`)
-- [ ] Parcela y su forma, con el norte y las calles de alrededor (plano de urbanización y de situación).
-- [ ] Edificios o viviendas en la parcela: dónde está cada uno y su número de plantas. En las unifamiliares, cada parcela con su vivienda y su número.
-- [ ] Plantas generales: en cada planta, qué vivienda va en cada sitio (referencia de la tabla, tipología y si es espejo); portales, escaleras y ascensores.
-- [ ] Que lo que dicen las plantas generales cuadre con la tabla de viviendas: mismas referencias, misma tipología, mismo número de viviendas por planta.
+### B. Promoción completa: urbanización y plantas generales (`entorno/conjunto.json`)
+Se describe en `entorno/conjunto.json` (formato en `src/modelo/conjunto.ts`). Las plantas generales se pasan tal como están dibujadas, con el edificio recto; el plano de urbanización dice dónde va cada edificio y cuánto gira.
+- [ ] `parcela`: el polígono de la parcela, en metros (x este, y norte), con el origen que se diga en `meta.sistema`.
+- [ ] `edificios`: cada edificio (o cada casa, en las unifamiliares) con su nombre, su portal, su posición en la parcela (`pos`) y su giro en grados (`giro`, cualquier ángulo).
+- [ ] `plantas`: de abajo arriba, con su nombre como en la tabla de viviendas («Baja», «Primera»…) y su cota.
+- [ ] En cada planta, cada vivienda: su referencia de la tabla, tipología, si es espejo, dónde cae el origen de su tipología (`pos`, en coordenadas de las plantas generales) y su giro. Una vivienda al otro lado del pasillo suele ser la misma tipología espejo y girada 180°.
+- [ ] `nucleos`: escaleras, ascensores, portales y pasillos comunes, como rectángulos (y en qué plantas están, si no están en todas).
+- [ ] Que lo que dicen las plantas generales cuadre con la tabla de viviendas: mismas referencias, misma tipología, mismo número de viviendas por planta. «comprobar» lo revisa solo: se detiene si una vivienda de la tabla no está en ninguna planta, está dos veces, tiene otra tipología, otra planta u otro portal, o si dos viviendas de la misma planta se pisan.
 - [ ] Zonas comunes: jardines, piscina, juegos, viales y aceras interiores, aparcamiento exterior, accesos y cerramiento de la parcela.
 - [ ] Garaje y trasteros comunes, si los hay (planta de sótano).
 - [ ] Lo que la Experiencia 3D aún no sepa representar de la promoción completa se apunta y se avisa (no se aproxima en silencio).

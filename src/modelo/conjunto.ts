@@ -39,6 +39,8 @@ export interface Nucleo {
 	id: string;
 	nombre: string;
 	rect: Rect;
+	/** plantas en las que está (por defecto, en todas) */
+	plantas?: string[];
 	origen: string;
 }
 
@@ -50,6 +52,13 @@ export interface Edificio {
 	portal?: string;
 	plantas: PlantaEdificio[];
 	nucleos?: Nucleo[];
+	/**
+	 * Dónde va el edificio en la parcela (plano de urbanización): el origen de sus
+	 * plantas generales cae en `pos` y el edificio gira `giro` grados (antihorario).
+	 * Las viviendas y los núcleos se describen en coordenadas de sus plantas generales.
+	 */
+	pos?: Punto;
+	giro?: number;
 	/** grueso del forjado entre plantas (m); por defecto, 0,30 */
 	forjado?: number;
 	origen: string;
@@ -61,14 +70,17 @@ export interface Conjunto {
 	edificios: Edificio[];
 }
 
-/** Gira (antihorario) y desplaza un punto de la tipología al conjunto. */
-export function aConjunto( c: Pick<Colocacion, 'pos' | 'giro'>, [ x, y ]: Punto ): Punto {
+/** Gira (antihorario) y desplaza un punto. */
+export function girar( t: { pos?: Punto; giro?: number }, [ x, y ]: Punto ): Punto {
 
-	const g = ( ( c.giro ?? 0 ) * Math.PI ) / 180;
-	const cs = Math.cos( g ), sn = Math.sin( g );
-	return [ c.pos[ 0 ] + x * cs - y * sn, c.pos[ 1 ] + x * sn + y * cs ];
+	const g = ( ( t.giro ?? 0 ) * Math.PI ) / 180;
+	const cs = Math.cos( g ), sn = Math.sin( g ), [ px, py ] = t.pos ?? [ 0, 0 ];
+	return [ px + x * cs - y * sn, py + x * sn + y * cs ];
 
 }
+
+/** Un punto de la tipología, en el conjunto: primero a su sitio en el edificio y después el edificio a la parcela. */
+export const aConjunto = ( e: Pick<Edificio, 'pos' | 'giro'>, c: Pick<Colocacion, 'pos' | 'giro'>, p: Punto ): Punto => girar( e, girar( c, p ) );
 
 /** Altura de una planta del edificio: la de la planta más alta de sus viviendas, con su forjado. */
 export function alturaPlanta( p: PlantaEdificio, cargar: ( t: string, espejo: boolean ) => Vivienda, forjado = 0.3 ) {
@@ -91,19 +103,19 @@ export const colocaciones = ( c: Conjunto ) => c.edificios.flatMap( ( e ) => e.p
 const normal = ( s: string | undefined ) => ( s ?? '' ).normalize( 'NFD' ).replace( /[̀-ͯ]/g, '' ).replace( /[º°ª.]/g, '' ).replace( /\s+/g, ' ' ).trim().toLowerCase();
 
 /** Puntos de muestra (cada 25 cm) dentro de las estancias útiles de una vivienda colocada, en el conjunto. */
-function muestras( v: Vivienda, c: Colocacion ): Punto[] {
+function muestras( v: Vivienda, e: Edificio, c: Colocacion ): Punto[] {
 
 	const pts: Punto[] = [];
 	for ( let i = 0; i < plantasDe( v ).length; i ++ ) {
 
-		for ( const e of dePlanta( v, i ).estancias.filter( esUtil ) ) {
+		for ( const es of dePlanta( v, i ).estancias.filter( esUtil ) ) {
 
-			const xs = e.poligono.map( ( p ) => p[ 0 ] ), ys = e.poligono.map( ( p ) => p[ 1 ] );
+			const xs = es.poligono.map( ( p ) => p[ 0 ] ), ys = es.poligono.map( ( p ) => p[ 1 ] );
 			for ( let x = Math.min( ...xs ) + 0.125; x < Math.max( ...xs ); x += 0.25 ) {
 
 				for ( let y = Math.min( ...ys ) + 0.125; y < Math.max( ...ys ); y += 0.25 ) {
 
-					if ( puntoEnPoligono( x, y, e.poligono ) ) pts.push( aConjunto( c, [ x, y ] ) );
+					if ( puntoEnPoligono( x, y, es.poligono ) ) pts.push( aConjunto( e, c, [ x, y ] ) );
 
 				}
 
@@ -120,7 +132,7 @@ function muestras( v: Vivienda, c: Colocacion ): Punto[] {
  * Lo que no cuadra entre las plantas generales y la tabla de viviendas, o entre
  * las viviendas colocadas: «comprobar» y «preparar» se detienen si hay algo.
  */
-export function erroresConjunto( conjunto: Conjunto, viviendas: ViviendaPromocion[], tipologias: string[], cargar: ( t: string, espejo: boolean ) => Vivienda ): string[] {
+export function erroresConjunto( conjunto: Conjunto, viviendas: ViviendaPromocion[], tipologias: string[], cargar: ( t: string, espejo: boolean ) => Vivienda, unifamiliar = false ): string[] {
 
 	const errores: string[] = [];
 	if ( ! Array.isArray( conjunto?.edificios ) || ! conjunto.edificios.length ) return [ 'conjunto.json no tiene edificios (cada edificio o casa, con sus plantas)' ];
@@ -141,7 +153,7 @@ export function erroresConjunto( conjunto: Conjunto, viviendas: ViviendaPromocio
 					continue;
 
 				}
-				if ( ! Number.isFinite( c.giro ?? 0 ) ) errores.push( `${ donde }: el giro tiene que ser un número de grados` );
+				if ( ! Number.isFinite( c.giro ?? 0 ) || ! Array.isArray( c.pos ) || c.pos.length !== 2 ) errores.push( `${ donde }: falta su posición (pos: [x, y]) o el giro no es un número de grados` );
 				const clave = normal( c.ref );
 				if ( vistas.has( clave ) ) errores.push( `${ donde }: está dos veces (también en ${ vistas.get( clave ) })` );
 				vistas.set( clave, `${ e.nombre } · planta ${ p.nombre }` );
@@ -154,7 +166,8 @@ export function erroresConjunto( conjunto: Conjunto, viviendas: ViviendaPromocio
 				}
 				if ( t.tipologia !== c.tipologia ) errores.push( `${ donde }: en las plantas generales es de la tipología «${ c.tipologia }» y en la tabla de viviendas, de la «${ t.tipologia }»` );
 				if ( !! t.espejo !== !! c.espejo ) errores.push( `${ donde }: en las plantas generales ${ c.espejo ? 'es' : 'no es' } simétrica y en la tabla de viviendas ${ t.espejo ? 'sí' : 'no' }` );
-				if ( normal( t.planta ) !== normal( p.nombre ) ) errores.push( `${ donde }: en la tabla de viviendas está en la planta «${ t.planta }»` );
+				// en las unifamiliares cada casa es su propio «edificio»: la planta de la tabla no se compara
+				if ( ! unifamiliar && normal( t.planta ) !== normal( p.nombre ) ) errores.push( `${ donde }: en la tabla de viviendas está en la planta «${ t.planta }»` );
 				if ( e.portal && t.portal && normal( e.portal ) !== normal( t.portal ) ) errores.push( `${ donde }: en la tabla de viviendas es del portal «${ t.portal }» y aquí, del ${ e.portal }` );
 
 			}
@@ -163,12 +176,12 @@ export function erroresConjunto( conjunto: Conjunto, viviendas: ViviendaPromocio
 			const geos = p.viviendas.filter( ( c ) => tipologias.includes( c.tipologia ) ).map( ( c ) => ( { c, v: cargar( c.tipologia, !! c.espejo ) } ) );
 			for ( let i = 0; i < geos.length; i ++ ) {
 
-				const pts = muestras( geos[ i ].v, geos[ i ].c );
+				const pts = muestras( geos[ i ].v, e, geos[ i ].c );
 				for ( let j = i + 1; j < geos.length; j ++ ) {
 
 					const otra = geos[ j ];
 					const pols: Punto[][] = [];
-					for ( let k = 0; k < plantasDe( otra.v ).length; k ++ ) for ( const es of dePlanta( otra.v, k ).estancias.filter( esUtil ) ) pols.push( es.poligono.map( ( q ) => aConjunto( otra.c, q ) ) );
+					for ( let k = 0; k < plantasDe( otra.v ).length; k ++ ) for ( const es of dePlanta( otra.v, k ).estancias.filter( esUtil ) ) pols.push( es.poligono.map( ( q ) => aConjunto( e, otra.c, q ) ) );
 					const solapes = pts.filter( ( q ) => pols.some( ( pol ) => puntoEnPoligono( q[ 0 ], q[ 1 ], pol ) ) ).length;
 					// cada muestra son 0,0625 m²; se tolera menos de medio metro cuadrado
 					if ( solapes * 0.0625 >= 0.5 ) errores.push( `${ e.nombre } · planta ${ p.nombre }: «${ geos[ i ].c.ref }» y «${ otra.c.ref }» se pisan (unos ${ ( solapes * 0.0625 ).toFixed( 1 ) } m²); revisa su posición y su giro` );

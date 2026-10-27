@@ -8,7 +8,7 @@ import * as THREE from 'three/webgpu';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import type { Material } from 'three/webgpu';
 import type { Punto, Vivienda } from '../modelo/tipos';
-import { alturaPlanta, aConjunto, type Conjunto, type Colocacion } from '../modelo/conjunto';
+import { alturaPlanta, girar, type Conjunto, type Colocacion, type Edificio } from '../modelo/conjunto';
 import { dePlanta, plantasDe } from '../modelo/plantas';
 import { esCerrada } from '../modelo/estancias';
 import { construirMuros } from './muros';
@@ -86,12 +86,22 @@ function viviendaColocada( v: Vivienda, c: Colocacion, cota: number, matMuros: R
 
 }
 
-/** Centro en planta de las estancias cerradas de una vivienda colocada. */
+/** Centro en planta de las estancias cerradas de una vivienda colocada (en coordenadas de su edificio). */
 function centro( v: Vivienda, c: Colocacion ): Punto {
 
-	const pts = v.estancias.filter( esCerrada ).flatMap( ( e ) => e.poligono ).map( ( p ) => aConjunto( c, p ) );
+	const pts = v.estancias.filter( esCerrada ).flatMap( ( e ) => e.poligono ).map( ( p ) => girar( c, p ) );
 	const xs = pts.map( ( p ) => p[ 0 ] ), ys = pts.map( ( p ) => p[ 1 ] );
 	return [ ( Math.min( ...xs ) + Math.max( ...xs ) ) / 2, ( Math.min( ...ys ) + Math.max( ...ys ) ) / 2 ];
+
+}
+
+/** Grupo con la posición y el giro del edificio en la parcela. */
+function enParcela( e: Edificio ) {
+
+	const g = new THREE.Group();
+	g.position.set( e.pos?.[ 0 ] ?? 0, 0, - ( e.pos?.[ 1 ] ?? 0 ) );
+	g.rotation.y = ( ( e.giro ?? 0 ) * Math.PI ) / 180;
+	return g;
 
 }
 
@@ -119,12 +129,16 @@ export function construirMaqueta( conjunto: Conjunto, cargar: ( t: string, espej
 
 			}
 			const altura = alturaPlanta( p, cargar, forjado );
+			// lo de este edificio en esta planta, colocado y girado en la parcela
+			const [ eg, et ] = [ enParcela( e ), enParcela( e ) ];
+			pm.grupo.add( eg );
+			pm.techo.add( et );
 			for ( const c of p.viviendas ) {
 
 				const v = cargar( c.tipologia, !! c.espejo );
 				const { g, techo } = viviendaColocada( v, c, p.cota, matMuros, matLosa, forjado );
-				pm.grupo.add( g );
-				pm.techo.add( techo );
+				eg.add( g );
+				et.add( techo );
 				const div = document.createElement( 'div' );
 				div.className = 'rotulo-vivienda';
 				div.textContent = c.ref || nombreTipologia( c.tipologia );
@@ -133,18 +147,20 @@ export function construirMaqueta( conjunto: Conjunto, cargar: ( t: string, espej
 				r.position.set( x, p.cota + altura + 0.4, - y );
 				r.userData.planta = p.nombre;
 				rotulos.push( r );
-				pm.grupo.add( r );
+				eg.add( r );
 
 			}
 			// núcleos (escalera, ascensor, portal): un volumen con su techo por planta
-			for ( const n of e.nucleos ?? [] ) {
+			for ( const n of ( e.nucleos ?? [] ).filter( ( n ) => ! n.plantas || n.plantas.includes( p.nombre ) ) ) {
 
 				const [ x0, y0, x1, y1 ] = n.rect;
 				const caja = new THREE.Mesh( new THREE.BoxGeometry( x1 - x0, altura - forjado, y1 - y0 ), matNucleo );
 				caja.position.set( ( x0 + x1 ) / 2, p.cota + ( altura - forjado ) / 2, - ( y0 + y1 ) / 2 );
 				caja.castShadow = caja.receiveShadow = true;
-				pm.grupo.add( caja );
-				pm.techo.add( losa( [ [ x0, y0 ], [ x1, y0 ], [ x1, y1 ], [ x0, y1 ] ], p.cota + altura - forjado, forjado, matLosa ) );
+				// el volumen va con el techo: al mirar esa planta se ve su suelo, como el resto
+				const pol: Punto[] = [ [ x0, y0 ], [ x1, y0 ], [ x1, y1 ], [ x0, y1 ] ];
+				et.add( caja, losa( pol, p.cota + altura - forjado, forjado, matLosa ) );
+				eg.add( losa( pol, p.cota, 0.02, matLosa ) );
 
 			}
 
@@ -156,6 +172,24 @@ export function construirMaqueta( conjunto: Conjunto, cargar: ( t: string, espej
 	grupo.updateMatrixWorld( true );
 	const caja = new THREE.Box3();
 	for ( const p of plantas ) caja.expandByObject( p.grupo ).expandByObject( p.techo );
+	if ( conjunto.parcela ) for ( const [ x, y ] of conjunto.parcela.poligono ) caja.expandByPoint( new THREE.Vector3( x, 0, - y ) );
+
+	// terreno: la parcela con césped sobre un pavimento neutro alrededor (la
+	// urbanización con sus zonas comunes llega en el siguiente paso)
+	const radio = caja.getBoundingSphere( new THREE.Sphere() ).radius;
+	const medio = caja.getCenter( new THREE.Vector3() );
+	const terreno = new THREE.Mesh( new THREE.CircleGeometry( radio * 4, 96 ), M.liso( '#d8d3c9', 0.95 ) );
+	terreno.rotation.x = - Math.PI / 2;
+	terreno.position.set( medio.x, - 0.04, medio.z );
+	terreno.receiveShadow = true;
+	grupo.add( terreno );
+	if ( conjunto.parcela ) {
+
+		const p = losa( conjunto.parcela.poligono, - 0.03, 0.02, M.cesped() );
+		p.castShadow = false;
+		grupo.add( p );
+
+	}
 	return { grupo, plantas, rotulos, caja };
 
 }
