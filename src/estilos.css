@@ -415,17 +415,6 @@ body.con-etiquetas .etiqueta { opacity: 1; }
 /* ------------------------------------------------ maqueta de la promoción */
 .modos [hidden] { display: none; }
 body[data-modo="promocion"] .vistas { display: none; }
-body[data-modo="promocion"] .etiqueta { display: none; }
-.rotulo-vivienda {
-	padding: 3px 8px 4px;
-	border-radius: 999px;
-	background: rgb(252 251 249 / 0.92);
-	box-shadow: 0 0 0 1px rgb(28 28 26 / 0.08), 0 2px 8px rgb(0 0 0 / 0.08);
-	color: var(--tinta);
-	font-size: 11px;
-	font-weight: 600;
-	white-space: nowrap;
-}
 
 /* ------------------------------------------------ resumen guardado */
 #resumen-configuracion {

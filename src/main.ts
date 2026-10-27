@@ -21,7 +21,7 @@ import { construirDownlights, construirMecanismos, construirRodapies } from './e
 import { construirLucesVentana } from './escena/luzVentana';
 import { construirPaisaje } from './escena/paisaje';
 import { construirLineas } from './escena/lineas';
-import { entorno, fondo, sol as crearSol } from './escena/luz';
+import { DIR_SOL, entorno, fondo, sol as crearSol, uFondo } from './escena/luz';
 import { Camarografo, fovPara, type Vista } from './escena/camaras';
 import { Estados } from './escena/estados';
 import { Navegacion } from './escena/navegacion';
@@ -222,43 +222,9 @@ async function iniciar() {
 	// y se recorre la elegida.
 	let plantaActiva = plantaCalle( modelo.vivienda );
 	// ---------------------------------------------------------------- promoción completa
-	// Maqueta del conjunto (entorno/conjunto.json): se construye la primera vez
-	// que se abre el modo Promoción. Planta elegida: -1 = el edificio entero.
+	// Maqueta exterior del conjunto (entorno/conjunto.json): se construye la
+	// primera vez que se abre el modo Promoción y se vuelve a la misma vivienda.
 	let maqueta: Maqueta | null = null;
-	let plantaMaqueta = - 1;
-	const verPlantaMaqueta = ( k: number ) => {
-
-		if ( ! maqueta ) return;
-		plantaMaqueta = k;
-		maqueta.plantas.forEach( ( p, i ) => {
-
-			const visible = k < 0 || i <= k;
-			p.grupo.visible = visible;
-			// la planta elegida se ve sin su techo, como en las plantas generales
-			p.techo.visible = visible && i !== k;
-
-		} );
-		for ( const r of maqueta.rotulos ) r.visible = maqueta.grupo.visible && ( k < 0 ? r.userData.ultima : r.userData.planta === maqueta.plantas[ k ].nombre );
-		botonesPlanta.querySelectorAll( 'button' ).forEach( ( b, i ) => b.setAttribute( 'aria-current', String( i - 1 === k ) ) );
-		despertar();
-
-	};
-	const pintarPlantasMaqueta = () => {
-
-		if ( ! maqueta ) return;
-		botonesPlanta.hidden = maqueta.plantas.length < 2;
-		botonesPlanta.replaceChildren( ...[ 'Todo', ...maqueta.plantas.map( ( p ) => p.nombre ) ].map( ( nombre, i ) => {
-
-			const b = document.createElement( 'button' );
-			b.type = 'button';
-			b.textContent = nombre;
-			b.setAttribute( 'aria-current', String( i - 1 === plantaMaqueta ) );
-			b.addEventListener( 'click', () => verPlantaMaqueta( i - 1 ) );
-			return b;
-
-		} ) );
-
-	};
 	// a pie (dentro, en el jardín, en la rampa…) se ven también las plantas de encima
 	let aPie = false;
 	const cotaActiva = () => plantasDe( vivienda )[ plantaActiva ]?.cota ?? 0;
@@ -287,7 +253,6 @@ async function iniciar() {
 	/** Elige la planta activa (y, si se pide, encuadra: el plano o la vista general). */
 	const cambiarPlanta = ( i: number, encuadrar = true ) => {
 
-		if ( maqueta && document.body.dataset.modo === 'promocion' ) return verPlantaMaqueta( i );
 		plantaActiva = i;
 		interioresPlanta = dePlanta( vivienda, i ).estancias.filter( esCerrada );
 		botonesPlanta.querySelectorAll( 'button' ).forEach( ( b, k ) => b.setAttribute( 'aria-current', String( k === i ) ) );
@@ -307,7 +272,6 @@ async function iniciar() {
 	};
 	const pintarBotonesPlanta = () => {
 
-		if ( maqueta && document.body.dataset.modo === 'promocion' ) return pintarPlantasMaqueta();
 		const ps = plantasDe( vivienda );
 		botonesPlanta.hidden = ps.length < 2;
 		botonesPlanta.replaceChildren( ...ps.map( ( p, k ) => {
@@ -656,7 +620,7 @@ async function iniciar() {
 	const botonesModo = [ ...document.querySelectorAll<HTMLButtonElement>( '.modos [data-modo]' ) ];
 	const barraVistas = $( '.vistas' );
 	let botonesVista: HTMLButtonElement[] = [];
-	const actualizarEtiquetas = () => document.body.classList.toggle( 'con-etiquetas', modo === 'plano' || modo === 'promocion' );
+	const actualizarEtiquetas = () => document.body.classList.toggle( 'con-etiquetas', modo === 'plano' );
 	const marcarVista = ( k: string ) => {
 
 		for ( const b of botonesVista ) {
@@ -871,62 +835,50 @@ async function iniciar() {
 				return cache.get( k )!;
 
 			};
-			maqueta = construirMaqueta( CONJUNTO, cargar, matMuros, ( t ) => `Tipología ${ t.toUpperCase() }` );
-			// rótulos: en el edificio entero, solo los de la planta más alta de cada sitio
-			const altas = new Map<string, number>();
-			for ( const r of maqueta.rotulos ) {
-
-				const k = `${ Math.round( r.position.x ) }:${ Math.round( r.position.z ) }`;
-				altas.set( k, Math.max( altas.get( k ) ?? - Infinity, r.position.y ) );
-
-			}
-			for ( const r of maqueta.rotulos ) r.userData.ultima = altas.get( `${ Math.round( r.position.x ) }:${ Math.round( r.position.z ) }` ) === r.position.y;
+			maqueta = construirMaqueta( CONJUNTO, cargar, matMuros );
 			escena.add( maqueta.grupo );
 
 		}
 		if ( ! maqueta ) return;
 		raizVivienda.visible = ! si;
 		maqueta.grupo.visible = si;
+		// bruma en la lejanía: el campo se funde con el horizonte
+		escena.fog = si ? new THREE.Fog( '#e3e6e3', maqueta.caja.getBoundingSphere( new THREE.Sphere() ).radius * 2.5, maqueta.caja.getBoundingSphere( new THREE.Sphere() ).radius * 9 ) : null;
 		// sol, sombras y distancias de la cámara a la medida del conjunto (o de la vivienda)
 		const centro = maqueta.caja.getCenter( new THREE.Vector3() );
 		const radio = maqueta.caja.getBoundingSphere( new THREE.Sphere() ).radius;
 		const sc = luzSol.shadow.camera;
 		if ( si ) {
 
-			luzSol.position.copy( centro ).addScaledVector( luzSol.position.clone().sub( luzSol.target.position ).normalize(), radio * 2.5 );
+			// sol alto de media mañana: sombras cortas, como en una infografía
 			luzSol.target.position.copy( centro );
+			luzSol.position.copy( centro ).addScaledVector( new THREE.Vector3( - 0.42, 0.82, 0.39 ).normalize(), radio * 2.5 );
 			sc.left = sc.bottom = - radio; sc.right = sc.top = radio; sc.far = radio * 5;
 
 		} else {
 
-			const dir = luzSol.position.clone().sub( luzSol.target.position ).normalize();
 			luzSol.target.position.set( mc.cx, 0, mc.cz );
-			luzSol.position.copy( luzSol.target.position ).addScaledVector( dir, 25 );
+			luzSol.position.copy( luzSol.target.position ).addScaledVector( DIR_SOL, 25 );
 			sc.left = sc.bottom = - 11; sc.right = sc.top = 11; sc.far = 50;
 
 		}
 		sc.updateProjectionMatrix();
 		camara.far = si ? Math.max( 200, radio * 8 ) : 200;
 		camara.updateProjectionMatrix();
-		nav.alcance = si ? Math.max( 40, radio * 3.2 ) : 40;
+		nav.alcance = si ? Math.max( 40, radio * 2.5 ) : 40;
+		botonesPlanta.hidden = si || plantasDe( vivienda ).length < 2;
 		if ( si ) {
 
-			plantaMaqueta = - 1;
-			verPlantaMaqueta( - 1 );
-			pintarPlantasMaqueta();
-			const fov = 30;
-			const d = radio / Math.sin( ( fov / 2 ) * Math.PI / 180 ) * 1.05;
-			const dir = new THREE.Vector3( 0.62, 0.55, 0.56 ).normalize();
-			cam.ir( { nombre: 'Promoción', pos: centro.clone().addScaledVector( dir, d ).toArray() as [ number, number, number ], obj: centro.toArray() as [ number, number, number ], fov } );
+			// vista aérea de tres cuartos, encuadrando los edificios
+			const ce = maqueta.edificios.getCenter( new THREE.Vector3() );
+			const re = maqueta.edificios.getBoundingSphere( new THREE.Sphere() ).radius;
+			const fov = 32;
+			const d = re / Math.sin( ( fov / 2 ) * Math.PI / 180 ) * 1.15;
+			const dir = new THREE.Vector3( 0.5, 0.2, 0.84 ).normalize();
+			cam.ir( { nombre: 'Promoción', pos: ce.clone().addScaledVector( dir, d ).toArray() as [ number, number, number ], obj: ce.clone().setY( ce.y * 0.6 ).toArray() as [ number, number, number ], fov } );
 			marcarVista( '' );
 
-		} else {
-
-			for ( const r of maqueta.rotulos ) r.visible = false;
-			pintarBotonesPlanta();
-			mostrarPlantas();
-
-		}
+		} else mostrarPlantas();
 		despertar();
 
 	};
@@ -1598,6 +1550,16 @@ async function iniciar() {
 
 		if ( ! preparado || pausado || capturando ) return;
 		est.actualizar( t );
+		// la maqueta de la promoción se ve con su cielo (no sobre el papel del plano ni el fondo de estudio)
+		if ( modo === 'promocion' ) {
+
+			uFondo.papel.value = 0;
+			uFondo.estudio.value = 0;
+			// más sol y menos luz de cielo: los vuelos y las terrazas dibujan sus sombras en la fachada
+			luzSol.intensity = 3.4;
+			escena.environmentIntensity = 0.55;
+
+		}
 		cam.actualizar( performance.now() );
 		const orbitando = ctrl.update();
 		nav.restringir( cam.animando || capturando );
