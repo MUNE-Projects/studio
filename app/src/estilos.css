@@ -1,3 +1,14 @@
+/* Inter (SIL Open Font License 1.1, fuentes/OFL-Inter.txt): la tipografía de
+   MUNE, servida desde la propia web (sin Google Fonts). Solo el juego latino,
+   que cubre el español; de 100 a 900 de grosor en un solo archivo. */
+@font-face {
+	font-family: "Inter";
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: swap;
+	src: url("./fuentes/inter.woff2") format("woff2");
+}
+
 :root {
 	--papel: #f5f3ef;
 	--superficie: #fcfbf9;

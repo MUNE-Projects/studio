@@ -1312,3 +1312,8 @@ Pendiente: «Pedir cambios» (cola de tareas en Supabase) y «Aprobar y publicar
     - **Se mantiene:** la Experiencia 3D profesional se abre en una pestaña nueva desde el Portal (no dentro de la página).
     - **Investigar:** si Claude puede leer bien BIM, IFC y DWG.
     - **Descartado:** dron e imágenes reales del solar, realidad virtual con gafas, firma electrónica y pago con tarjeta dentro de MUNE.
+50. **Tipografía y colores de MUNE (27/10/2026, aprobado por la administradora):**
+    - **Inter** para toda la plataforma: MUNE Studio, MUNE Portal y la letra de respaldo de la visita. **Fraunces** (peso 400), solo en los titulares de la marca: presentaciones, la web de MUNE y documentos. El nombre «MUNE» se escribe en Fraunces 400 (no hay logotipo aparte).
+    - Inter se sirve desde la propia web (`app/src/fuentes/`, `portal/src/fuentes/` y `src/fuentes/`, licencia SIL Open Font License 1.1 junto a cada archivo, uso comercial y redistribución permitidos), no desde Google Fonts: así funciona con las reglas de seguridad de Studio y Portal (solo cargan lo suyo) y la visita de quien entra no se comunica a terceros. Solo el juego latino (el español completo), 48 KB.
+    - La visita es de marca blanca: si la promoción tiene su tipografía (`marca.tipografia`), se usa esa e Inter ni se descarga.
+    - **Colores corporativos, siempre los mismos:** arena `#F5F3EF` (fondo), verde `#2F5D50` (acento), negro `#1C1C1A` (texto), blanco cálido `#FCFBF9` (tarjetas) y gris cálido `#5E5A53` (texto secundario). Coral `#B8643F` como color que rompe, por ahora solo en presentaciones; se valorará llevarlo a la plataforma. Sobre fondo oscuro (presentaciones): verde claro `#8FB3A2` y coral claro `#E0A27F`.
