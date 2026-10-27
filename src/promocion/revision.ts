@@ -16,6 +16,8 @@ import { alturasHueco } from '../modelo/huecos';
 import { alturaEn, alturasEstancia } from '../modelo/alturas';
 import { dePlanta, plantasDe } from '../modelo/plantas';
 import { barandillasDe, conBarandilla, pendiente } from '../modelo/exteriores';
+import { TIPOS_EQUIPAMIENTO } from '../modelo/equipamiento';
+import { revisarChoques } from '../modelo/choques';
 import { esUtil } from '../modelo/estancias';
 
 const TIPOS_HUECO = [ 'entrada', 'puerta', 'paso', 'balconera', 'ventana', 'garaje' ];
@@ -138,6 +140,16 @@ export function revisarPromocion( v: Vivienda, t: Tipologia, alternativas: Alter
 			if ( encima ) add( 'aviso', 'Plantas', `La escalera «${ e.id }» queda debajo de «${ encima.nombre }»: en «${ ps[ i ].nombre }» el hueco de la escalera debe quedar libre (sin suelo).` );
 
 		}
+
+	}
+
+	// choques: muebles que se pisan, atraviesan un muro o chocan con una puerta
+	for ( const x of revisarChoques( v ) ) add( 'error', 'Distribución', x );
+
+	// equipamiento: solo tipos que la visita sabe representar
+	for ( const q of v.equipamiento ) {
+
+		if ( ! ( TIPOS_EQUIPAMIENTO as readonly string[] ).includes( q.tipo ) ) add( 'error', 'Equipamiento', `«${ q.id }» es de tipo «${ q.tipo }», que la visita aún no sabe representar.` );
 
 	}
 

@@ -62,6 +62,12 @@ export async function generarPlanos( id, version, salida = join( RAIZ, 'salida',
 		pagina.on( 'console', ( m ) => m.text().startsWith( 'Plano ' ) && console.log( `  · ${ m.text() }` ) );
 		await pagina.goto( `${ servidor.resolvedUrls.local[ 0 ] }planos.html` );
 		await pagina.waitForFunction( () => typeof window.generarLote === 'function', null, { timeout: 120000 } );
+		// acabados de la memoria escritos de forma que no se entiende: se corrigen antes de seguir
+		const malos = await pagina.evaluate( () => window.erroresAcabados() );
+		if ( malos.length ) throw new Error( `Los acabados de promocion.json tienen datos que no se entienden:\n${ malos.map( ( x ) => `  · ${ x }` ).join( '\n' ) }` );
+		// muebles que se pisan, atraviesan un muro o chocan con una puerta: saldrían así en el 3D y en los planos
+		const choques = await pagina.evaluate( () => window.erroresDistribucion() );
+		if ( choques.length ) throw new Error( `La distribución tiene choques, y saldrían así en la Experiencia 3D, los renders y los planos:\n${ choques.map( ( x ) => `  · ${ x }` ).join( '\n' ) }\n  Revisa el plano acotado y corrige los datos antes de preparar la versión.` );
 		const lote = await pagina.evaluate( () => window.generarLote( ( t ) => console.log( t ) ) );
 
 		const carpeta = join( salida, 'planos' );
@@ -89,7 +95,10 @@ export async function generarPlanos( id, version, salida = join( RAIZ, 'salida',
 		const carpetaExp = join( salida, 'experiencia' );
 		rmSync( carpetaExp, { recursive: true, force: true } );
 		mkdirSync( carpetaExp, { recursive: true } );
-		writeFileSync( join( carpetaExp, 'experiencia.json' ), JSON.stringify( { promocion: id, version, generados, unidades }, null, '\t' ) + '\n' );
+		// acabados que la memoria no indica: la promotora los ve al validar, con lo que se pondrá por defecto
+		const supuestos = await pagina.evaluate( () => window.supuestosAcabados() );
+		writeFileSync( join( carpetaExp, 'experiencia.json' ), JSON.stringify( { promocion: id, version, generados, unidades, supuestos }, null, '\t' ) + '\n' );
+		planos.supuestos = supuestos;
 		planos.experiencia = unidades;
 		return planos;
 
@@ -111,6 +120,12 @@ if ( process.argv[ 1 ] === fileURLToPath( import.meta.url ) ) {
 		const planos = await generarPlanos( args[ 0 ], opcion( 'version' ), opcion( 'salida' ) && resolve( opcion( 'salida' ) ) );
 		console.log( `\n✓ ${ planos.length } plano(s) en ${ opcion( 'salida' ) ?? `salida/${ args[ 0 ] }` }/planos/` );
 		console.log( `✓ ${ planos.experiencia.length } unidad(es) de la Experiencia 3D en ${ opcion( 'salida' ) ?? `salida/${ args[ 0 ] }` }/experiencia/` );
+		if ( planos.supuestos.length ) {
+
+			console.log( `\n⚠ La memoria de calidades no indica ${ planos.supuestos.length } dato(s); se pondrá lo de por defecto y la promotora lo verá al validar:` );
+			for ( const x of planos.supuestos ) console.log( `  · ${ x.apartado } (${ x.dato }): ${ x.porDefecto }` );
+
+		}
 
 	} catch ( e ) {
 

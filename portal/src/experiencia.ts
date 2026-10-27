@@ -49,6 +49,7 @@ export async function pintarExperiencia(caja: HTMLElement, promo: Promocion3D, e
 	const version = versiones.includes(extra) ? extra : versiones[0];
 	const actual = version === versiones[0];
 	const [unidades, base] = await Promise.all([leerValidacion(id, version, 'experiencia'), baseVisita(id, version)]);
+	const supuestos = await leerSupuestos(base, id);
 	const aprobadas = unidades.filter((u) => u.estado === 'aprobado').length;
 	const todas = unidades.length > 0 && aprobadas === unidades.length;
 	const pendientes = unidades.filter((u) => u.estado !== 'aprobado').map(tituloUnidad);
@@ -59,6 +60,7 @@ export async function pintarExperiencia(caja: HTMLElement, promo: Promocion3D, e
 			: todas ? '<p class="ayuda">Todas validadas. Puedes recorrer cada tipología cuando quieras.</p>'
 			: '<p class="ayuda">Recorre cada tipología en 3D: distribución, espacios, materiales, acabados, mobiliario, vistas guiadas, exteriores y modo Plano. Cada una queda validada cuando la aprueban todas las personas elegidas para validarla. Si algo no está bien, pide cambios e indica, si quieres, en qué vista o zona.</p>'}
 		${actual && unidades.some((u) => u.estado === 'sin_aprobadores') ? htmlSinAprobadores(id, 'experiencia', ctx) : ''}
+		${actual ? htmlSupuestos(id, supuestos) : ''}
 		${todas ? '' : `<p class="promo-versiones">${aprobadas} de ${unidades.length} aprobadas${pendientes.length && aprobadas ? ` · Pendiente: ${esc(pendientes.join(', '))}` : ''}</p>
 		<progress class="progreso" value="${aprobadas}" max="${Math.max(1, unidades.length)}" aria-hidden="true"></progress>`}
 		${unidades.map((u) => htmlUnidad(id, u, version, actual, base, ctx)).join('')}
@@ -94,6 +96,27 @@ export async function pintarExperiencia(caja: HTMLElement, promo: Promocion3D, e
 			alValidar(`Hemos recibido tu petición de cambios en «${nombre}». El equipo de MUNE preparará la versión corregida.`, version);
 		});
 	}
+}
+
+/** Acabados que la memoria de calidades no indica y se ponen por defecto (experiencia.json de la versión). */
+interface Supuesto { apartado: string; dato: string; porDefecto: string }
+
+async function leerSupuestos(base: string, id: string): Promise<Supuesto[]> {
+	try {
+		const r = await fetch(`${base}/${encodeURIComponent(id)}/experiencia/experiencia.json`, { cache: 'no-store' });
+		return r.ok ? ((await r.json()) as { supuestos?: Supuesto[] }).supuestos ?? [] : [];
+	} catch {
+		return [];
+	}
+}
+
+function htmlSupuestos(id: string, supuestos: Supuesto[]): string {
+	if (!supuestos.length) return '';
+	return `<div class="aviso separado" role="note">
+		<p><strong>Falta información en la memoria de calidades.</strong> Para que la Experiencia 3D y los renders salgan como serán de verdad, necesitamos ${supuestos.length === 1 ? 'este dato' : 'estos datos'}. Por favor, súbelos en <a class="enlace" href="#/promocion/${esc(id)}/documentacion">Documentación</a> (la memoria completa o una ficha del fabricante).</p>
+		<p>Si no dispones de esa información, se usará lo siguiente por defecto:</p>
+		<ul>${supuestos.map((x) => `<li><strong>${esc(x.apartado)}</strong> (${esc(x.dato)}): ${esc(x.porDefecto)}</li>`).join('')}</ul>
+	</div>`;
 }
 
 function htmlUnidad(id: string, u: Elemento, version: string, actual: boolean, base: string, ctx: Contexto): string {

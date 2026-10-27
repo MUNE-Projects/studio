@@ -753,7 +753,9 @@ function dibujarEquipo( D: Dibujo, e: Equipamiento, T: ( x: number, y: number ) 
 
 		}
 
-		case 'encimera': {
+		case 'encimera':
+		case 'isla':
+		case 'peninsula': {
 
 			caja( x0, z0, x1, z1 );
 			// fregadero y placa en sus tramos (en coordenadas de planta)
@@ -795,6 +797,15 @@ function dibujarEquipo( D: Dibujo, e: Equipamiento, T: ( x: number, y: number ) 
 			caja( x0 + 0.07, z0 + 0.07, x1 - 0.07, z1 - 0.07, null, 0.12 );
 			break;
 
+		case 'banera-exenta':
+			elipse( 0, 0, W / 2, F / 2 );
+			elipse( 0, 0, W / 2 - 0.07, F / 2 - 0.07 );
+			break;
+
+		case 'bide':
+			elipse( 0, z0 + F / 2, 0.16, F / 2 - 0.04 );
+			break;
+
 		case 'ducha':
 			caja( x0, z0, x1, z1 );
 			D.lin( [ Q( x0, z0 ), Q( x1, z1 ) ], col, 0.1 );
@@ -816,7 +827,8 @@ function dibujarEquipo( D: Dibujo, e: Equipamiento, T: ( x: number, y: number ) 
 
 		}
 
-		case 'lavadora': {
+		case 'lavadora':
+		case 'secadora': {
 
 			caja( x0 + 0.01, z0, x1 - 0.01, z1 );
 			const [ cx, cy ] = Q( 0, 0.03 );

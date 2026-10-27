@@ -42,7 +42,8 @@ interface UnidadExperiencia {
 	clave: string; titulo: string; detalle?: string; viviendas?: string | string[]; orden?: number; huella: string;
 	vistas?: { id: string; nombre: string }[];
 }
-interface ManifiestoExperiencia { promocion: string; version: string; unidades: UnidadExperiencia[] }
+/** supuestos: acabados que la memoria de calidades no indica y se ponen por defecto (los ve la promotora al validar). */
+interface ManifiestoExperiencia { promocion: string; version: string; unidades: UnidadExperiencia[]; supuestos?: { apartado: string; dato: string; porDefecto: string }[] }
 
 export interface Parte {
 	tipo: Tipo;
@@ -358,6 +359,8 @@ export async function pintarValidacion(caja: HTMLElement, revision: string, p: {
 			}).join('')}
 		</tbody></table>
 		${listaParaPublicar(v) ? '<p class="ok"><strong>Lista para publicar.</strong></p>' : ''}
+		${v.manifiestoExperiencia?.supuestos?.length ? `<div class="aviso" role="note"><p><strong>La memoria de calidades no indica ${v.manifiestoExperiencia.supuestos.length === 1 ? 'este dato' : `estos ${v.manifiestoExperiencia.supuestos.length} datos`}</strong>. La promotora recibirá el aviso por email y en MUNE Portal: que los suba y que, si no dispone de esa información, se usará lo de por defecto en la Experiencia 3D y los renders:</p>
+			<ul>${v.manifiestoExperiencia.supuestos.map((x) => `<li>${esc(x.apartado)} (${esc(x.dato)}): ${esc(x.porDefecto)}</li>`).join('')}</ul></div>` : ''}
 		${hayQueEnviar ? `
 			<p class="ayuda">${enviar.planos ? `MUNE ha preparado ${v.manifiestoPlanos!.planos.length === 1 ? 'un plano comercial' : `${v.manifiestoPlanos!.planos.length} planos comerciales`}` : ''}${enviar.planos && enviar.experiencia ? ' y ' : ''}${enviar.experiencia ? `${enviar.planos ? '' : 'MUNE ha preparado '}la Experiencia 3D de ${v.manifiestoExperiencia!.unidades.length === 1 ? 'una tipología' : `${v.manifiestoExperiencia!.unidades.length} tipologías o variantes`}` : ''}.
 				Revisa la vista previa y, si todo está bien, envíalo a validar: la promotora lo verá en MUNE Portal y recibirán un email las personas que tienen que validar. Hasta entonces no lo verá.</p>

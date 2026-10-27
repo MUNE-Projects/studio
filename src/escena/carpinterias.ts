@@ -7,6 +7,7 @@ import { alturaHueco } from './muros';
 import { alturasHueco, esCarpinteriaExterior, hojasDe, ladoInterior } from '../modelo/huecos';
 import { barandillasDe } from '../modelo/exteriores';
 import * as M from './materiales';
+import { ACABADOS, ACABADOS_DEFECTO, colorLiso } from '../promocion/acabados';
 
 // puertas totalmente abiertas (contra el muro): no tapan la estancia en las vistas comerciales
 export const ANGULO_PUERTA = THREE.MathUtils.degToRad( 89.5 );
@@ -15,14 +16,17 @@ let MAT: ReturnType<typeof materiales> | null = null;
 function materiales() {
 
 	// hoja lacada con pantografiado horizontal (patrón supuesto: 4 ranuras)
-	const hoja = M.puertaRanurada( '#f2f0eb', '#d9d6cf' );
+	const P = ACABADOS.puertas;
+	const hoja = P.color === ACABADOS_DEFECTO.puertas.color && P.ranuras === 4
+		? M.puertaRanurada( '#f2f0eb', '#d9d6cf' )
+		: M.puertaRanurada( P.color, M.oscurecer( P.color, 0.88 ), P.ranuras > 0 ? 1.68 / P.ranuras : 100 );
 	return {
 		hoja,
-		lacado: M.lacado( '#f2f0eb', 0.42 ),
+		lacado: M.lacado( P.color, 0.42 ),
 		cromo: M.metalico( '#c4c6c7', 0.32 ),
-		aluminio: M.liso( '#3a3d3f', 0.34, 0.8 ),
+		aluminio: M.liso( ACABADOS.carpinteria_exterior.color, 0.34, 0.8 ),
 		vidrio: M.vidrio(),
-		sate: M.sate( '#f1efea', false ),
+		sate: M.sate( colorLiso(), false ),
 		seccional: M.lacado( '#d6d3cd', 0.5 ),
 	};
 

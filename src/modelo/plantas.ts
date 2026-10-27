@@ -39,6 +39,7 @@ export function dePlanta( v: Vivienda, i: number ): Vivienda {
 			barandillas: ( v.exterior.barandillas ?? [] ).filter( en( i ) ),
 		},
 		cotaPlanta: plantasDe( v )[ i ].cota,
+		huella: v.estancias.filter( ( e ) => e.uso !== 'exterior' ).map( ( e ) => e.poligono ),
 		plantas: undefined,
 		// los muros suben hasta el suelo de la planta de encima (sin hueco entre plantas)
 		alturaMuros: i < plantasDe( v ).length - 1 ? alturaEntrePlantas( v, i ) : undefined,

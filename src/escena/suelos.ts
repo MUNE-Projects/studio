@@ -4,17 +4,18 @@ import * as THREE from 'three/webgpu';
 import type { Estancia, Hueco, Rect, Vivienda } from '../modelo/tipos';
 import { forma, puntoEnPoligono } from '../util/geo';
 import * as M from './materiales';
+import { ACABADOS, colorLiso } from '../promocion/acabados';
 import { alturaEn, alturasEstancia } from '../modelo/alturas';
 import { alturaSueloEn, esCubierta, marcoEntorno } from '../modelo/exteriores';
 import { dePlanta, plantaCalle, plantasDe } from '../modelo/plantas';
 
 const MAT_SUELO: Record<string, () => THREE.Material> = {
-	'madera': () => M.tarima(),
-	'porcelanico': () => M.porcelanico( '#ddd5c8', 0.9 ),
-	'porcelanico-cocina': () => M.porcelanico( '#ddd5c8', 0.9 ),
-	'porcelanico-bano': () => M.porcelanico( M.P.banos.suelo, 0.6, 0.002, 0.28 ),
-	'ceramico': () => M.porcelanico( '#cfcac1', 0.33, 0.003, 0.5 ),
-	'exterior': () => M.porcelanico( '#b8b1a6', 0.6, 0.004, 0.72 ),
+	'madera': () => M.tarima( ACABADOS.suelo_madera ),
+	'porcelanico': () => M.revestimiento( ACABADOS.suelo_general.color, ACABADOS.suelo_general ),
+	'porcelanico-cocina': () => M.revestimiento( ACABADOS.suelo_cocina.color, ACABADOS.suelo_cocina ),
+	'porcelanico-bano': () => M.revestimiento( M.P.banos.suelo, ACABADOS.suelo_bano, { rugosidad: 0.28 } ),
+	'ceramico': () => M.revestimiento( ACABADOS.suelo_ceramico.color, ACABADOS.suelo_ceramico, { rugosidad: 0.5 } ),
+	'exterior': () => M.revestimiento( ACABADOS.suelo_exterior.color, ACABADOS.suelo_exterior, { rugosidad: 0.72 } ),
 	'cesped': () => M.cesped(),
 	// garaje: solera de hormigón pulido (juntas de retracción cada 3 m)
 	'hormigon': () => M.porcelanico( '#a8a49d', 3, 0.004, 0.62 ),
@@ -91,7 +92,7 @@ export function construirSuelos( v: Vivienda, conEntorno = true ) {
 			const losa = new THREE.ExtrudeGeometry( forma( e.poligono ), { depth: F, bevelEnabled: false } );
 			losa.rotateX( - Math.PI / 2 );
 			losa.translate( 0, - 0.02 - F, 0 );
-			matLosa ??= M.sate( '#f1efea', false );
+			matLosa ??= M.sate( colorLiso(), false );
 			const ml = new THREE.Mesh( losa, matLosa );
 			ml.castShadow = ml.receiveShadow = true;
 			suelos.add( ml );
@@ -123,7 +124,7 @@ export function construirSuelos( v: Vivienda, conEntorno = true ) {
 	techos.name = 'techos';
 	if ( ! matTecho ) {
 
-		matTecho = M.pintura( '#f4f3f0' );
+		matTecho = M.pintura( ACABADOS.techos.color );
 		matTecho.shadowSide = THREE.DoubleSide;
 
 	}
@@ -205,7 +206,7 @@ export function construirCantoPorche( v: Vivienda ) {
 			const losa = new THREE.ExtrudeGeometry( forma( e.poligono ), { depth: F, bevelEnabled: false } );
 			losa.rotateX( - Math.PI / 2 );
 			losa.translate( 0, p.cota + H, 0 );
-			const m = new THREE.Mesh( losa, M.sate( '#f1efea', false ) );
+			const m = new THREE.Mesh( losa, M.sate( colorLiso(), false ) );
 			m.castShadow = true;
 			m.receiveShadow = true;
 			g.add( m );

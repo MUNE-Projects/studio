@@ -30,13 +30,11 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? 'https://iowtdenlkxjqzlpwiz
 const CLAVE_PUBLICA = Deno.env.get('CLAVE_PUBLICA') ?? 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR';
 const PORTAL = Deno.env.get('PORTAL_URL') ?? 'https://portal.mune-projects.workers.dev/';
 const ESCAPARATE = Deno.env.get('ESCAPARATE_URL') ?? 'https://experience.mune-projects.workers.dev';
+const REVISION = Deno.env.get('REVISION_URL') ?? 'https://revision-experience.mune-projects.workers.dev';
 const PROCESO = 'https://api.github.com/repos/MUNE-Projects/studio/actions/workflows/aviso-promotora.yml/dispatches';
 const ORIGENES = [
 	'https://studio.mune-projects.workers.dev',
 	'https://revision-studio.mune-projects.workers.dev',
-	// las direcciones antiguas de MUNE Studio, mientras dura el cambio de nombre (se retiran en una semana)
-	'https://panel.mune-projects.workers.dev',
-	'https://revision-panel.mune-projects.workers.dev',
 	...(Deno.env.get('ORIGENES_EXTRA')?.split(',') ?? []),
 ];
 
@@ -152,11 +150,13 @@ Deno.serve(async (req) => {
 				+ `${cuantos} en MUNE Portal. ${esPlanos ? 'Aprueba cada plano' : 'Recorre cada tipología en la Experiencia 3D y apruébala'} o pide cambios explicando qué hay que corregir. `
 				+ (k === 1 ? 'Cada uno queda validado cuando lo apruebas.' : `Cada uno queda validado cuando aprueban todas las personas designadas (${k}).`)
 				+ ' La versión se publicará cuando esté todo validado.';
+			if (!esPlanos) texto += await textoSupuestos(promocion, version);
 		} else {
 			// Sin aprobadores no se valida: se avisa a quien administra la promoción para que los defina.
 			para = equipo.filter((m) => m.administra).map((m) => m.email);
 			texto = `El equipo de MUNE ha preparado ${que} de la ${version} de ${promo.nombre} para que los valide tu equipo.\n\n`
 				+ `Para poder publicar la versión, alguien tiene que validar ${que}, y todavía no hay nadie designado. Elige en MUNE Portal (Equipo) quién debe hacerlo.`;
+			if (!esPlanos) texto += await textoSupuestos(promocion, version);
 		}
 	}
 	if (tipo === 'publicada') {
@@ -206,3 +206,15 @@ Deno.serve(async (req) => {
 	await sb.from('registro').insert({ accion: 'avisa a la promotora por email', detalle: { promocion, tipo, version: version || null, destinatarios: para.length } });
 	return responder(200, { ok: true, enviado: true, destinatarios: para.length });
 });
+
+/** Acabados que la memoria de calidades no indica y se ponen por defecto (experiencia.json de la versión en revisión). */
+async function textoSupuestos(promocion: string, version: string): Promise<string> {
+	const r = await fetch(`${REVISION}/${promocion}/experiencia/experiencia.json`, { cache: 'no-store' }).catch(() => null);
+	const datos = r?.ok ? await r.json().catch(() => null) : null;
+	const supuestos = (datos?.version === version && Array.isArray(datos.supuestos) ? datos.supuestos : []) as { apartado: string; dato: string; porDefecto: string }[];
+	if (!supuestos.length) return '';
+	const una = supuestos.length === 1;
+	return `\n\nFalta información en la memoria de calidades. Para que la Experiencia 3D y los renders salgan como serán de verdad, necesitamos ${una ? 'este dato' : 'estos datos'}. Por favor, súbelos en MUNE Portal (Documentación).\n\n`
+		+ `Si no dispones de esa información, se usará lo siguiente por defecto:\n`
+		+ supuestos.slice(0, 25).map((x) => `· ${x.apartado} (${x.dato}): ${x.porDefecto}`).join('\n');
+}

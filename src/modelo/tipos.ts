@@ -153,6 +153,8 @@ export interface Vivienda {
 	alturaMuros?: number;
 	/** (interno) cota de la planta que se está construyendo */
 	cotaPlanta?: number;
+	/** (interno) estancias interiores de todas las plantas: lo que queda dentro de la casa */
+	huella?: Punto[][];
 }
 
 // ------------------------------------------------------------ configurador

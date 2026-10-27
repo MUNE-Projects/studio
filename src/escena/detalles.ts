@@ -6,6 +6,7 @@ import * as THREE from 'three/webgpu';
 import type { Estancia, Vivienda } from '../modelo/tipos';
 import { puntoEnPoligono, puntoEnRect, unir } from '../util/geo';
 import * as M from './materiales';
+import { ACABADOS } from '../promocion/acabados';
 import { esCarpinteriaExterior } from '../modelo/huecos';
 import { alturaEn } from '../modelo/alturas';
 
@@ -28,7 +29,7 @@ function muroMacizo( v: Vivienda, x: number, y: number ) {
 
 export function construirRodapies( v: Vivienda ) {
 
-	matRodapie ??= M.lacado( '#f3f1ec', 0.45 );
+	matRodapie ??= M.lacado( ACABADOS.rodapie.color, 0.45 );
 	const gs: THREE.BufferGeometry[] = [];
 	const paso = 0.04;
 	for ( const e of v.estancias ) {
