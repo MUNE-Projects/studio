@@ -29,9 +29,6 @@ const PORTAL = Deno.env.get('PORTAL_URL') ?? 'https://portal.mune-projects.worke
 const ORIGENES = [
 	'https://studio.mune-projects.workers.dev',
 	'https://revision-studio.mune-projects.workers.dev',
-	// las direcciones antiguas de MUNE Studio, mientras dura el cambio de nombre (se retiran en una semana)
-	'https://panel.mune-projects.workers.dev',
-	'https://revision-panel.mune-projects.workers.dev',
 	'https://portal.mune-projects.workers.dev',
 	'https://revision-portal.mune-projects.workers.dev',
 	// Solo en el Supabase local de las pruebas: MUNE Studio y MUNE Portal en el ordenador de desarrollo.
