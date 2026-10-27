@@ -72,7 +72,7 @@ export function resolverAcabados( propios: Parcial = {} ): Acabados {
 
 }
 
-export const ACABADOS = resolverAcabados( ( datosPromocion as { acabados?: Parcial } ).acabados );
+export const ACABADOS = resolverAcabados( ( datosPromocion as unknown as { acabados?: Parcial } ).acabados );
 
 /** Color liso para cantos de forjado, losas y petos (con fachada de ladrillo, mortero claro). */
 export const colorLiso = () => ACABADOS.fachada.textura === 'ladrillo' ? ACABADOS_DEFECTO.fachada.color : ACABADOS.fachada.color;
@@ -120,7 +120,7 @@ export interface Supuesto { apartado: string; dato: string; porDefecto: string }
  */
 export function acabadosSupuestos( usados: { suelos: Set<string>; ventanas: boolean; puertas: boolean; humedos: boolean } ): Supuesto[] {
 
-	const propios = ( datosPromocion as { acabados?: Parcial } ).acabados ?? {};
+	const propios = ( datosPromocion as unknown as { acabados?: Parcial } ).acabados ?? {};
 	const aplica: Record<keyof Acabados, boolean> = {
 		fachada: true, paredes: true, techos: true, rodapie: true, griferia: true,
 		carpinteria_exterior: usados.ventanas, puertas: usados.puertas,
@@ -147,7 +147,7 @@ export function acabadosSupuestos( usados: { suelos: Set<string>; ventanas: bool
 /** Datos de acabados de la promoción que no se entienden (apartado: problema). */
 export function erroresAcabados(): string[] {
 
-	const propios = ( datosPromocion as { acabados?: Record<string, unknown> } ).acabados ?? {};
+	const propios = ( datosPromocion as unknown as { acabados?: Record<string, unknown> } ).acabados ?? {};
 	const e: string[] = [];
 	for ( const [ k, valor ] of Object.entries( propios ) ) {
 

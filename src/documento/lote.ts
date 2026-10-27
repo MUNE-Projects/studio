@@ -23,7 +23,7 @@ import { revisarChoques } from '../modelo/choques';
 import { planoPDF, planoPNG, type DatosPlano } from './plano';
 import type { Alternativa, ViviendaPromocion } from '../modelo/tipos';
 import { esUtil } from '../modelo/estancias';
-import { acabadosSupuestos, erroresAcabados, type Supuesto } from '../promocion/acabados';
+import { ACABADOS, acabadosSupuestos, erroresAcabados, type Supuesto } from '../promocion/acabados';
 
 export interface PlanoLote {
 	clave: string;
@@ -204,6 +204,8 @@ export async function generarUnidadesExperiencia(): Promise<UnidadExperiencia[]>
 		const huella = await sha256( canonico( {
 			tipologia: t, vivienda: modelo.vivienda, alternativas, ambientacion: modelo.ambientacion,
 			catalogo, restricciones, activos, ficha: unifamiliar ? v0 : null,
+			// los acabados de la memoria cambian lo que se ve: si la promoción los indica, cuentan
+			...( ( PROMOCION as unknown as { acabados?: object } ).acabados ? { acabados: ACABADOS } : {} ),
 		} ) );
 		const dormitorios = `${ t.dormitorios } dormitorio${ t.dormitorios === 1 ? '' : 's' } · ${ t.banos } baño${ t.banos === 1 ? '' : 's' }`;
 		salida.push( {
