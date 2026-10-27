@@ -16,7 +16,8 @@
 // (o por vivienda en las unifamiliares). Las distribuciones alternativas son
 // elecciones del comprador y van dentro de la unidad de su tipología.
 
-import { CATALOGO, PROMOCION, cargarModelo, claveUnidad } from '../promocion/promocion';
+import { CATALOGO, CONJUNTO, PROMOCION, TIPOLOGIAS, cargarModelo, claveUnidad } from '../promocion/promocion';
+import { erroresConjunto as revisarConjunto } from '../modelo/conjunto';
 import { activoPara, BIBLIOTECA } from '../biblioteca/biblioteca';
 import { aplicarAlternativa } from '../configurador/alternativas';
 import { revisarChoques } from '../modelo/choques';
@@ -261,4 +262,11 @@ export function erroresDistribucion(): string[] {
 
 }
 
-Object.assign( window as unknown as Record<string, unknown>, { generarLote, generarUnidadesExperiencia, supuestosAcabados, erroresAcabados, erroresDistribucion } );
+/** Lo que no cuadra entre las plantas generales (entorno/conjunto.json) y la tabla de viviendas. */
+export function erroresConjunto(): string[] {
+
+	return CONJUNTO ? revisarConjunto( CONJUNTO, PROMOCION.viviendas, TIPOLOGIAS, ( t, e ) => cargarModelo( t, e ).vivienda ) : [];
+
+}
+
+Object.assign( window as unknown as Record<string, unknown>, { generarLote, generarUnidadesExperiencia, supuestosAcabados, erroresAcabados, erroresDistribucion, erroresConjunto } );

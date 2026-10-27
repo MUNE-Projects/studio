@@ -13,6 +13,7 @@ import type { Configuracion, Promocion, Tipologia, Alternativa, Vivienda, Vivien
 import { ejeSimetria, espejarAmbientacion, espejarTipologia, espejarAlternativa, espejarVivienda } from './espejo';
 import type { Ambientacion } from '../biblioteca/biblioteca';
 import { completarVistas } from '../escena/vistas';
+import type { Conjunto } from '../modelo/conjunto';
 
 export const PROMOCION = datosPromocion as unknown as Promocion;
 export const CATALOGO = datosCatalogo as unknown as Configuracion;
@@ -39,6 +40,14 @@ const dato = <T>( id: string, nombre: string ) => {
 	return f as T;
 
 };
+
+/** Tipologías de la promoción (una carpeta por geometría). */
+export const TIPOLOGIAS = [ ...new Set( Object.keys( ficheros ).map( ( k ) => k.split( '/' )[ 0 ] ) ) ].sort();
+
+// la promoción completa (entorno/conjunto.json): edificios, plantas generales y
+// viviendas en su sitio; opcional (sin él, la visita enseña solo las tipologías)
+const conjuntos = import.meta.glob( '@promocion/entorno/conjunto.json', { eager: true, import: 'default' } );
+export const CONJUNTO = ( Object.values( conjuntos )[ 0 ] as Conjunto | undefined ) ?? null;
 
 export interface Modelo {
 	tipologia: Tipologia;
