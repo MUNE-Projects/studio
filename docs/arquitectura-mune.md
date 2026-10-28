@@ -196,7 +196,7 @@ Solo tienen las capacidades que les asigna un administrador, en cada promoción.
 | `personalizacion` | Ver las selecciones, el histórico, lo formalizado y los importes formalizados. Gestionar el contacto de formalización y los datos de transferencia. Exportar personalizaciones. En la Fase 2, también catálogo, opciones, precios y fases o grupos |
 | `materiales` | Herramientas profesionales de la Experiencia 3D (Render HD, plano en PDF o PNG) y descarga de materiales |
 | `datos` | Ficha de la promoción y sus datos fiscales |
-| `marca` | Reservada para la Fase 2 |
+| `marca` | Cambiar la marca propia de la promoción (nombre, logo, colores, tipografía y contacto). La marca general de la promotora la cambia quien la administra (`031_marca.sql`) |
 
 **Reglas de la base de datos:**
 
@@ -433,7 +433,7 @@ Sustituye al orden de pasos 0–5 anterior (los pasos 0, 2 y 3 de equipos y vali
 
 **Actualizado el 26/10/2026 (decisión 49):** todo este apartado pasa a ser **antes del primer cliente**, salvo la analítica de uso (punto 12), que queda para después. Además, antes del primer cliente: un 3D mucho más realista y renders con calidad de fotografía bajo demanda y sin límite. Descartado: dron, realidad virtual, firma electrónica y pago con tarjeta.
 
-8. Personalización configurable y Fase 2 (fases o grupos, opciones, restricciones, aplicabilidad, apertura y cierre; la promotora gestiona catálogo, precios, fechas y marca). En tres propuestas: 8a catálogo, precios, packs y fechas (`029_catalogo_promotora.sql`, decisión 52); 8b restricciones por tipología (no por vivienda ni entre opciones; `030_tipologias_en_preparacion.sql`, decisión 53); 8c marca.
+8. Personalización configurable y Fase 2 (fases o grupos, opciones, restricciones, aplicabilidad, apertura y cierre; la promotora gestiona catálogo, precios, fechas y marca). En tres propuestas: 8a catálogo, precios, packs y fechas (`029_catalogo_promotora.sql`, decisión 52); 8b restricciones por tipología (no por vivienda ni entre opciones; `030_tipologias_en_preparacion.sql`, decisión 53); 8c marca (general de la promotora y propia de una promoción, en la versión siguiente; `031_marca.sql`, decisión 54).
 9. Comparación entre versiones, impacto de cambios y vigencia (Vigente / Requiere actualizar / Pendiente de validar).
 10. Comentarios visuales en planos y Experience, unidos a su versión (no dependen del 9).
 11. Generación de materiales por lotes (depende del 6).

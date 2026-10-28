@@ -46,7 +46,15 @@ export function aplicarMarca( p: Promocion ) {
 	document.title = `${ p.promocion.nombre } · ${ m.promotora }`;
 
 	// textos de la interfaz
-	for ( const logo of document.querySelectorAll( '#ficha-logo, #carga-logo' ) ) logo.innerHTML = m.logoSvg;
+	// como imagen: un SVG dentro de <img> no ejecuta nada
+	for ( const logo of document.querySelectorAll( '#ficha-logo, #carga-logo' ) ) {
+
+		const img = document.createElement( 'img' );
+		img.src = logoDataUrl( m );
+		img.alt = '';
+		logo.replaceChildren( img );
+
+	}
 	const nombre = document.querySelector( '#ficha-promocion' );
 	if ( nombre ) nombre.textContent = `${ p.promocion.nombre } · ${ p.promocion.ubicacion }`;
 
