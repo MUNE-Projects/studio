@@ -307,7 +307,8 @@ export interface Marca {
 	logoSvg: string;
 	colorPrincipal: string;
 	colorSecundario: string;
-	tipografia: { familia: string; googleFonts?: string };
+	/** css: la tipografía guardada dentro de la versión (fuentes/marca.css); googleFonts, solo al desarrollar */
+	tipografia: { familia: string; googleFonts?: string; css?: string };
 	favicon: string | null;
 	contacto: { telefono: string; email: string; web: string; direccion: string };
 	/**

@@ -42,6 +42,16 @@
 // ROBOT_CLAVE) y la construcción los pone en lugar de los de promocion.json
 // (vite.config.ts, variable TEXTOS_LEGALES). Sin esas variables, avisa y sigue
 // con los de promocion.json. La web pública no consulta Supabase.
+//
+// Marca: la promotora la pone en MUNE Portal (031: la general o la propia de la
+// promoción). «preparar» la lee igual, como el robot de Claude, y la construcción
+// la pone en lugar de la de promocion.json (vite.config.ts, variable MARCA). Sin
+// marca guardada, o sin esas variables, se usa la de promocion.json.
+//
+// Tipografía: va dentro de cada versión (fuentes/marca.css), para que la web no pida
+// nada a Google Fonts al visitarla. «preparar» la descarga de Google Fonts (por su
+// nombre) o, si la promotora ha subido la suya, de Supabase con el robot de Claude,
+// y deja en fuentes/LICENCIA.txt de dónde sale.
 
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -322,6 +332,112 @@ async function textosLegales( id ) {
 
 }
 
+/** La marca que se usa en la promoción (la propia o la de la promotora); null si no hay o no se puede leer. */
+async function marcaDePortal( id ) {
+
+	try {
+
+		const cabeceras = await entrarRobot();
+		if ( ! cabeceras ) {
+
+			console.warn( '⚠ Sin ROBOT_EMAIL y ROBOT_CLAVE: no se lee la marca de MUNE Portal. Se usa la de promocion.json.' );
+			return null;
+
+		}
+		const r = await fetch( `${ SUPABASE_URL }/rest/v1/rpc/marca_de_promocion`, { method: 'POST', headers: cabeceras, body: JSON.stringify( { p_promocion: id } ) } );
+		if ( ! r.ok ) throw new Error( `Supabase respondió ${ r.status } al leer la marca` );
+		const { efectiva, propia } = await r.json();
+		if ( ! efectiva ) return null;
+		const { actualizado_en: _a, por: _p, ...marca } = efectiva;
+		return { marca, origen: propia ? 'la propia de la promoción' : 'la de la promotora' };
+
+	} catch ( e ) {
+
+		console.warn( `⚠ No se ha podido leer la marca de MUNE Portal (${ e.message }). Se usa la de promocion.json.` );
+		return null;
+
+	}
+
+}
+
+/** Descarga la tipografía de la marca dentro de la versión: fuentes/marca.css, sus archivos y LICENCIA.txt. */
+async function guardarFuente( destino, tipografia ) {
+
+	const familia = String( tipografia?.familia ?? '' ).trim();
+	if ( ! /^[A-Za-z0-9][A-Za-z0-9 ]{0,59}$/.test( familia ) ) fallo( `El nombre de la tipografía no es válido: «${ familia }»` );
+	const carpeta = join( destino, 'fuentes' );
+	mkdirSync( carpeta, { recursive: true } );
+	let css = '';
+	let licencia;
+	if ( tipografia.archivos?.length ) {
+
+		// la de la promotora: sus archivos, guardados en Supabase
+		const cabeceras = await entrarRobot();
+		if ( ! cabeceras ) fallo( 'La tipografía de la marca es propia: hacen falta ROBOT_EMAIL y ROBOT_CLAVE para descargarla' );
+		const FORMATO = { woff2: 'woff2', woff: 'woff', ttf: 'truetype', otf: 'opentype' };
+		for ( const [ i, a ] of tipografia.archivos.entries() ) {
+
+			const ext = a.ruta.split( '.' ).pop().toLowerCase();
+			if ( ! FORMATO[ ext ] ) fallo( `Archivo de tipografía no válido: ${ a.nombre }` );
+			const r = await fetch( `${ SUPABASE_URL }/storage/v1/object/documentos/${ a.ruta.split( '/' ).map( encodeURIComponent ).join( '/' ) }`, { headers: { apikey: cabeceras.apikey, Authorization: cabeceras.Authorization } } );
+			if ( ! r.ok ) fallo( `No se ha podido descargar la tipografía «${ a.nombre }» (Supabase respondió ${ r.status })` );
+			const nombre = `marca-${ i + 1 }.${ ext }`;
+			writeFileSync( join( carpeta, nombre ), Buffer.from( await r.arrayBuffer() ) );
+			css += `@font-face {\n\tfont-family: "${ familia }";\n\tsrc: url("${ nombre }") format("${ FORMATO[ ext ] }");\n\tfont-weight: ${ Number( a.peso ) || 400 };\n\tfont-style: ${ a.estilo === 'italic' ? 'italic' : 'normal' };\n\tfont-display: swap;\n}\n`;
+
+		}
+		licencia = `Tipografía «${ familia }», de la promotora. Confirmó en MUNE Portal tener licencia para usarla en una web${ tipografia.licencia ? ` (${ String( tipografia.licencia ).slice( 0, 10 ) })` : '' }.\n`;
+
+	} else {
+
+		// una de Google Fonts: su hoja de estilos y sus archivos (alfabeto latino), copiados aquí
+		const nombre = encodeURIComponent( familia ).replace( /%20/g, '+' );
+		let hoja = null;
+		for ( const pesos of [ ':wght@400;500;600;700', ':wght@400;700', '' ] ) {
+
+			const r = await fetch( `https://fonts.googleapis.com/css2?family=${ nombre }${ pesos }&display=swap`, { headers: { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36' } } );
+			if ( r.ok ) {
+
+				hoja = await r.text();
+				break;
+
+			}
+
+		}
+		if ( ! hoja ) fallo( `La tipografía «${ familia }» no está en Google Fonts: revisa su nombre con la promotora (fonts.google.com)` );
+		const bloques = [ ...hoja.matchAll( /\/\*\s*([\w-]+)\s*\*\/\s*(@font-face\s*\{[^}]*\})/g ) ];
+		const latinos = bloques.filter( ( b ) => b[ 1 ] === 'latin' || b[ 1 ] === 'latin-ext' ).map( ( b ) => b[ 2 ] );
+		const caras = latinos.length ? latinos : [ ...hoja.matchAll( /@font-face\s*\{[^}]*\}/g ) ].map( ( b ) => b[ 0 ] );
+		const descargados = new Map();
+		for ( let cara of caras ) {
+
+			for ( const [ , url ] of cara.matchAll( /url\((https:\/\/fonts\.gstatic\.com\/[^)]+)\)/g ) ) {
+
+				if ( ! descargados.has( url ) ) {
+
+					const r = await fetch( url );
+					if ( ! r.ok ) fallo( `No se ha podido descargar la tipografía «${ familia }» de Google Fonts (${ r.status })` );
+					const archivo = `google-${ descargados.size + 1 }.${ url.split( '.' ).pop() }`;
+					writeFileSync( join( carpeta, archivo ), Buffer.from( await r.arrayBuffer() ) );
+					descargados.set( url, archivo );
+
+				}
+				cara = cara.replace( url, descargados.get( url ) );
+
+			}
+			css += `${ cara.replace( /font-family:\s*[^;]+;/, `font-family: "${ familia }";` ) }\n`;
+
+		}
+		if ( ! descargados.size ) fallo( `Google Fonts no ha dado archivos para «${ familia }»` );
+		licencia = `Tipografía «${ familia }», de Google Fonts (https://fonts.google.com). Licencia libre SIL Open Font License o Apache 2.0, que permite usarla y redistribuirla.\n`;
+
+	}
+	writeFileSync( join( carpeta, 'marca.css' ), css );
+	writeFileSync( join( carpeta, 'LICENCIA.txt' ), licencia );
+	return familia;
+
+}
+
 // ---------------------------------------------------------------- datos privados (paso 5a, 024)
 
 /**
@@ -386,9 +502,16 @@ async function preparar( id ) {
 	if ( textos ) ok( `Textos legales de MUNE Portal: ${ Object.keys( textos ).join( ', ' ) || 'ninguno escrito (se usan los de promocion.json)' }` );
 	// la construcción y los planos (mismo proceso) usan los textos de MUNE Portal
 	process.env.TEXTOS_LEGALES = textos ? JSON.stringify( textos ) : '';
+	const marca = await marcaDePortal( id );
+	ok( marca ? `Marca de MUNE Portal: ${ marca.origen } («${ marca.marca.promotora }»)` : 'Marca: la de promocion.json (no hay ninguna guardada en MUNE Portal)' );
+	process.env.MARCA = marca ? JSON.stringify( marca.marca ) : '';
+	// la tipografía va dentro de la versión (fuentes/), nunca desde Google al visitarla
+	process.env.FUENTE_LOCAL = '1';
 	// la web sabe su versión: con ella pide al entrar el comprador los datos privados de esa versión
 	process.env.VERSION_PUBLICA = version;
 	const { destino } = construir( id );
+	const tipografia = marca?.marca.tipografia ?? JSON.parse( readFileSync( join( RAIZ, 'promociones', id, 'promocion.json' ), 'utf8' ) ).marca?.tipografia;
+	ok( `Tipografía dentro de la versión: ${ await guardarFuente( destino, tipografia ) }${ tipografia?.archivos?.length ? ' (propia)' : ' (Google Fonts)' }` );
 	// planos comerciales de esta versión, para que la promotora los valide (Etapa 4)
 	console.log( 'Generando los planos comerciales…' );
 	const planos = await generarPlanos( id, version, destino );

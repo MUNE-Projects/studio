@@ -13,6 +13,7 @@ export const CAPACIDADES: [string, string][] = [
 	['personalizacion', 'Gestionar personalizaciones'],
 	['materiales', 'Crear y descargar renders e imágenes del 3D'],
 	['datos', 'Modificar datos de la promoción'],
+	['marca', 'Cambiar la marca de la promoción'],
 ];
 export const NOMBRE_CAPACIDAD: Record<string, string> = Object.fromEntries(CAPACIDADES);
 

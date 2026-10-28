@@ -9,6 +9,11 @@ import { defineConfig, type Plugin } from 'vite';
 //   TEXTOS_LEGALES=<json>  textos legales escritos por la promotora en MUNE Portal
 //                       ({ planos, renders, experiencia, personalizacion }); los pone
 //                       «publicacion.mjs preparar» y sustituyen a los de promocion.json
+//   MARCA=<json>        marca de la promotora (o la propia de la promoción) guardada en
+//                       MUNE Portal (031): nombre, logo, colores, tipografía y contacto;
+//                       la pone «preparar» y sustituye a la de promocion.json
+//   FUENTE_LOCAL=1      la tipografía va dentro de la versión (fuentes/marca.css, la escribe
+//                       «preparar»): la web no pide nada a Google Fonts al visitarla
 //
 // La web pública se construye SIN Studio: ni su código ni su acceso llegan al
 // navegador del visitante.
@@ -116,6 +121,68 @@ const conTextosLegales = ( textos: Record<string, string> ): Plugin => ( {
 	},
 } );
 
+// Lo mismo que comprueba Supabase (svg_seguro, 031): un logo SVG sin código.
+const svgSeguro = ( s: string ) => s.length <= 200000
+	&& /^\s*(<\?xml[^>]*\?>\s*)?<svg[\s>]/i.test( s ) && /<\/svg>\s*$/i.test( s )
+	&& ! /<\s*(script|foreignobject|iframe|embed|object|audio|video|a|animate|set|handler|listener)[\s>/]/i.test( s )
+	&& ! /<!(doctype|entity)/i.test( s ) && ! /\son[a-z]+\s*=/i.test( s ) && ! /(javascript|vbscript)\s*:/i.test( s ) && ! /@import/i.test( s )
+	&& ! /href\s*=\s*["'](?!#|data:image\/(png|jpeg|webp|gif);base64,)/i.test( s ) && ! /url\(\s*["']?(?!#)/i.test( s );
+
+const COLOR = /^#[0-9a-f]{6}$/i;
+/** Sin logo: el nombre, escrito con el color principal. */
+const logoDeTexto = ( nombre: string, color: string ) => {
+
+	const t = nombre.replace( /[<>&"']/g, '' ).slice( 0, 80 );
+	const ancho = Math.max( 40, Math.round( t.length * 9.5 ) );
+	return `<svg xmlns="http://www.w3.org/2000/svg" width="${ ancho }" height="32" viewBox="0 0 ${ ancho } 32"><text x="0" y="22" font-family="Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="${ color }">${ t }</text></svg>`;
+
+};
+
+function marcaDePortal(): Record<string, unknown> | null {
+
+	if ( ! process.env.MARCA ) return null;
+	try {
+
+		const m = JSON.parse( process.env.MARCA ) as Record<string, any>;
+		if ( typeof m?.promotora !== 'string' || ! m.promotora.trim() || ! COLOR.test( m.colorPrincipal ) || ! COLOR.test( m.colorSecundario )
+			|| typeof m.tipografia?.familia !== 'string' || ! /^[A-Za-z0-9 ]{1,40}$/.test( m.tipografia.familia ) ) throw new Error( 'incompleta' );
+		if ( m.logoSvg && ! svgSeguro( m.logoSvg ) ) throw new Error( 'el logo no es un SVG sin código' );
+		const contacto: Record<string, string> = {};
+		for ( const k of [ 'telefono', 'email', 'web', 'direccion' ] ) if ( typeof m.contacto?.[ k ] === 'string' && m.contacto[ k ].trim() ) contacto[ k ] = m.contacto[ k ].trim().slice( 0, 200 );
+		const familia = m.tipografia.familia.trim();
+		return {
+			promotora: m.promotora.trim().slice( 0, 80 ),
+			logoSvg: m.logoSvg || logoDeTexto( m.promotora.trim(), m.colorPrincipal ),
+			colorPrincipal: m.colorPrincipal, colorSecundario: m.colorSecundario,
+			// los archivos de una tipografía propia y su licencia no van a la web: «preparar» deja la tipografía en fuentes/
+			tipografia: { familia, googleFonts: `${ familia.replace( / /g, '+' ) }:wght@400;500;600;700` },
+			contacto,
+		};
+
+	} catch ( e ) {
+
+		console.warn( `MARCA no es válida (${ ( e as Error ).message }): se usa la marca de promocion.json` );
+		return null;
+
+	}
+
+}
+
+const conMarca = ( marca: Record<string, unknown> | null, fuenteLocal: boolean ): Plugin => ( {
+	name: 'marca',
+	enforce: 'pre',
+	transform( codigo, id ) {
+
+		if ( ( ! marca && ! fuenteLocal ) || ! /promociones[\\/][^\\/]+[\\/]promocion\.json$/.test( id ) ) return null;
+		const datos = JSON.parse( codigo );
+		if ( marca ) datos.marca = { ...datos.marca, ...marca, contacto: { ...datos.marca?.contacto, ...( marca.contacto as object ) } };
+		// la tipografía, desde la propia versión (fuentes/marca.css), nunca desde Google
+		if ( fuenteLocal && datos.marca?.tipografia ) datos.marca.tipografia = { familia: datos.marca.tipografia.familia, css: 'fuentes/marca.css' };
+		return { code: JSON.stringify( datos ), map: null };
+
+	},
+} );
+
 export default defineConfig( ( { mode } ) => {
 
 	const promocion = process.env.PROMOCION || PROMOCION_POR_DEFECTO;
@@ -132,7 +199,7 @@ export default defineConfig( ( { mode } ) => {
 		resolve: { alias: { '@promocion': carpeta } },
 		// versión de la web (la pone «publicacion.mjs preparar»): con ella pide el comprador sus datos
 		define: { __STUDIO__: JSON.stringify( studio ), __VERSION__: JSON.stringify( process.env.VERSION_PUBLICA ?? null ) },
-		plugins: [ conTextosLegales( textosLegales() ), ...( completo ? [] : [ sinDatosDeStudio(), catalogoSinPrecios() ] ) ],
+		plugins: [ conMarca( marcaDePortal(), process.env.FUENTE_LOCAL === '1' ), conTextosLegales( textosLegales() ), ...( completo ? [] : [ sinDatosDeStudio(), catalogoSinPrecios() ] ) ],
 		build: { target: 'es2022', chunkSizeWarningLimit: 2000, outDir: process.env.SALIDA || 'dist' },
 	};
 

@@ -23,9 +23,10 @@ export const CAPACIDADES: [string, string][] = [
 	['personalizacion', 'Gestionar personalizaciones'],
 	['materiales', 'Crear y descargar renders e imágenes del 3D'],
 	['datos', 'Modificar datos de la promoción'],
+	['marca', 'Cambiar la marca de la promoción'],
 ];
 export const TODAS_LAS_CAPACIDADES = CAPACIDADES.map(([k]) => k);
-const NOMBRE_CAPACIDAD = new Map<string, string>([...CAPACIDADES, ['marca', 'Marca']]);
+const NOMBRE_CAPACIDAD = new Map<string, string>(CAPACIDADES);
 export const nombreCapacidad = (k: string) => NOMBRE_CAPACIDAD.get(k) ?? k;
 
 export const ADMIN_PROMOTORA = 'Administrador de la promotora';
