@@ -1504,6 +1504,72 @@ await caso( DEBE_FALLAR, '42. Experience pública: otra promotora, el robot, alg
 
 } );
 
+// ─── Catálogo y precios de la promotora (029_catalogo_promotora.sql, paso 8a) ─
+// Una versión nueva con un pack que aún no se ha abierto (exterior) además del
+// de acabados (abierto desde 2026). Va al final: cambia los últimos datos privados.
+
+const datosCatalogo = {
+	...datosPrueba,
+	catalogo: { moneda: 'EUR', categorias: [ ...datosPrueba.catalogo.categorias,
+		{ id: 'exterior', nombre: 'Exterior', opciones: [ { id: 'sin-mejora', nombre: 'Sin mejora', precio: 0 }, { id: 'piscina', nombre: 'Piscina', precio: 18000 } ] } ] },
+	packs: [ ...datosPrueba.packs, { id: 'extras', titulo: 'Extras', desde: '2099-01-01', hasta: '2099-12-31', categorias: [ 'exterior' ] } ],
+	tipologias: [ { id: 'a', opciones: { suelo: [ 'base', 'nogal' ], exterior: [ 'sin-mejora', 'piscina' ] } } ],
+};
+await exigir( robot.rpc( 'guardar_datos_privados', { p_promocion: 'prueba-a', p_version: 'v95', p_contenido: datosCatalogo } ), 'datos v95' );
+const guardarCatalogo = ( sb, cambios ) => sb.rpc( 'guardar_catalogo', { p_promocion: 'prueba-a', p_cambios: cambios } );
+
+await caso( DEBE_FALLAR, '43. Catálogo: otra promotora, alguien sin «personalización» o sin sesión lo leen o lo cambian; se cambia el precio de un pack ya abierto; se quita la opción incluida de serie; la promotora atiende las opciones pedidas', async () => {
+
+	const r = {
+		otraLee: await aprobB.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ),
+		otraCambia: await guardarCatalogo( aprobB, [ { categoria: 'exterior', opcion: 'piscina', precio: 1 } ] ),
+		sinPermisoLee: await soloCompradores.sb.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ),
+		sinPermisoCambia: await guardarCatalogo( soloCompradores.sb, [ { categoria: 'exterior', opcion: 'piscina', precio: 1 } ] ),
+		anonimoLee: await anonimo.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ),
+		anonimoCambia: await guardarCatalogo( anonimo, [ { categoria: 'exterior', opcion: 'piscina', precio: 1 } ] ),
+		anonimoLeeTabla: await anonimo.from( 'catalogo_ajustes' ).select( 'precio' ),
+		promotoraLeeTabla: await gestorA.from( 'catalogo_ajustes' ).select( 'precio' ),
+		precioPackAbierto: await guardarCatalogo( gestorA, [ { categoria: 'suelo', opcion: 'nogal', precio: 1 } ] ),
+		quitarIncluida: await guardarCatalogo( gestorA, [ { categoria: 'suelo', opcion: 'base', ofrecida: false } ] ),
+		otraPide: await aprobB.rpc( 'pedir_opcion', { p_promocion: 'prueba-a', p_categoria: 'suelo', p_nombre: 'X', p_descripcion: '', p_precio: null } ),
+		promotoraAtiende: await gestorA.rpc( 'atender_opcion', { p_id: 1, p_estado: 'hecha', p_nota: '' } ),
+		promotoraVePendientesDeTodas: await gestorA.rpc( 'opciones_pedidas_pendientes' ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Catálogo: la promotora cambia un precio de un pack aún no abierto y deja de ofrecer una opción; el comprador lo ve al momento; quien ya la eligió la conserva; pide una opción nueva y MUNE la marca como añadida', async () => {
+
+	// un comprador elige nogal antes de que se deje de ofrecer
+	const codigo = String( await exigir( generar( admin, 'Bajo A', true ), 'código catálogo' ) );
+	await exigir( anonimo.rpc( 'guardar_seleccion', { p_promocion: 'prueba-a', p_codigo: codigo, p_version: 'v95', p_pack: 'acabados', p_opciones: { suelo: 'nogal' } } ), 'elige nogal' );
+	await exigir( guardarCatalogo( gestorA, [
+		{ categoria: 'exterior', opcion: 'piscina', precio: 19500, nombre: 'Piscina privada' },
+		{ categoria: 'suelo', opcion: 'nogal', ofrecida: false, nombre: 'Nogal americano' },
+	] ), 'guardar catálogo' );
+	const vista = await exigir( gestorA.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ), 'ver catálogo' );
+	const entra = await exigir( anonimo.rpc( 'entrar_comprador', { p_promocion: 'prueba-a', p_codigo: codigo, p_version: 'v95' } ), 'entrar' );
+	const piscina = entra.datos.catalogo.categorias.find( ( c ) => c.id === 'exterior' ).opciones.find( ( o ) => o.id === 'piscina' );
+	const conserva = await exigir( anonimo.rpc( 'guardar_seleccion', { p_promocion: 'prueba-a', p_codigo: codigo, p_version: 'v95', p_pack: 'acabados', p_opciones: { suelo: 'nogal' } } ), 'conserva nogal' );
+	const otro = String( await exigir( generar( admin, 'Bajo B', true ), 'código otro' ) );
+	const otroElige = await anonimo.rpc( 'guardar_seleccion', { p_promocion: 'prueba-a', p_codigo: otro, p_version: 'v95', p_pack: 'acabados', p_opciones: { suelo: 'nogal' } } );
+	const id = await exigir( gestorA.rpc( 'pedir_opcion', { p_promocion: 'prueba-a', p_categoria: 'suelo', p_nombre: 'Roble ahumado', p_descripcion: 'Ficha en Documentación', p_precio: 1200 } ), 'pedir' );
+	const pendientes = await exigir( admin.rpc( 'opciones_pedidas_pendientes' ), 'pendientes' );
+	await exigir( admin.rpc( 'atender_opcion', { p_id: id, p_estado: 'hecha', p_nota: 'Añadida en la v96' } ), 'atender' );
+	const despues = await exigir( gestorA.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ), 'ver catálogo después' );
+	return piscina.precio === 19500 && piscina.nombre === 'Piscina privada'
+		&& ! entra.datos.tipologia.opciones.suelo.includes( 'nogal' )
+		&& vista.lanzadas.includes( 'suelo' ) && ! vista.lanzadas.includes( 'exterior' )
+		&& conserva.opciones.suelo === 'nogal' && Number( conserva.importe ) === 1900
+		&& falla( otroElige )
+		&& pendientes.some( ( x ) => x.id === id )
+		&& despues.pedidas.find( ( x ) => x.id === id )?.estado === 'hecha';
+
+} );
+
 // ─── Resumen ────────────────────────────────────────────────────────────────
 
 const fallidos = resultados.filter( ( r ) => ! r.ok );
