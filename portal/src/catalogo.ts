@@ -26,7 +26,7 @@ interface Opcion { id: string; nombre: string; detalle?: string; precio: number;
 interface Categoria { id: string; nombre: string; opciones: Opcion[] }
 interface Pack { id: string; titulo: string; descripcion?: string; desde: string; hasta: string; categorias: string[]; estado?: string; individual?: boolean }
 interface Tipologia { id: string; opciones: Record<string, string[]> }
-interface Pedida { id: number; categoria: string | null; categoria_nueva: string | null; nombre: string; descripcion: string | null; precio: number | null; pedido_en: string; estado: 'pendiente' | 'hecha' | 'descartada'; nota: string | null; archivos: { ruta: string; nombre: string }[] }
+interface Pedida { id: number; categoria: string | null; categoria_nueva: string | null; nombre: string; descripcion: string | null; precio: number | null; pedido_en: string; estado: 'pendiente' | 'hecha' | 'descartada'; nota: string | null; archivos: { ruta: string; nombre: string }[]; tipologias?: string[] | null }
 interface Datos {
 	hoy: string;
 	catalogo: { categorias: Categoria[] } | null;
@@ -110,7 +110,7 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 			<td><input name="detalle" value="${esc(x.descripcion ?? '')}" maxlength="1000" aria-label="Descripción" placeholder="Opcional"></td>
 			<td class="precio"><input name="precio" type="number" min="0" max="10000000" step="0.01" value="${x.precio ?? 0}" aria-label="Precio en euros"></td>
 			<td><label class="interruptor"><input name="retirar" type="checkbox"> Retirar</label></td>
-			${tipologias.length > 1 ? '<td><span class="promo-lugar">Se decide al prepararla</span></td>' : ''}
+			${tipologias.length > 1 ? `<td>${tipologias.map((t) => `<label class="interruptor"><input type="checkbox" name="tipologia" value="${esc(t)}"${!x.tipologias || x.tipologias.includes(t) ? ' checked' : ''}> ${esc(nombreTipologia(t))}</label>`).join('<br>')}</td>` : ''}
 		</tr>`;
 	const fila = (c: Categoria, o: Opcion) => {
 		const k = `${c.id}|${o.id}`;
@@ -387,6 +387,8 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 			if (nombre && nombre !== x.nombre) { c.nombre = nombre; resumen.nombres++; }
 			if (detalle !== (x.descripcion ?? '')) { c.detalle = detalle; resumen.nombres++; }
 			if (precio !== Number(x.precio ?? 0)) { c.precio = precio; resumen.precios++; }
+			const tips = [...tr.querySelectorAll<HTMLInputElement>('[name="tipologia"]')].filter((y) => y.checked).map((y) => y.value);
+			if (tipologias.length > 1 && tips.sort().join() !== [...(x.tipologias ?? tipologias)].sort().join()) { c.tipologias = tips; resumen.tipologias++; }
 			if (Object.keys(c).length > 1) cambios.push(c);
 		});
 		return { cambios, resumen };

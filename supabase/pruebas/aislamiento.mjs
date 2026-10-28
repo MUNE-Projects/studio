@@ -1586,7 +1586,9 @@ await caso( DEBE_FUNCIONAR, 'Catálogo: la promotora cambia un precio de un pack
 		{ id: 'confort', titulo: 'Confort', desde: '2099-09-01', hasta: '2099-09-30', categorias: [ 'climatizacion' ] } ];
 	const faltaNueva = await gestorA.rpc( 'guardar_packs', { p_promocion: 'prueba-a', p_packs: enPrep.packs } );
 	await exigir( gestorA.rpc( 'guardar_packs', { p_promocion: 'prueba-a', p_packs: packsConNueva } ), 'pack con categoría en preparación' );
-	await exigir( guardarCatalogo( gestorA, [ { pedida: aerotermia.id, precio: 6900, nombre: 'Aerotermia y suelo radiante' },
+	// tipologías de lo que está en preparación (030): solo las de la promoción
+	const tipologiaInventada = await guardarCatalogo( gestorA, [ { pedida: aerotermia.id, tipologias: [ 'z' ] } ] );
+	await exigir( guardarCatalogo( gestorA, [ { pedida: aerotermia.id, precio: 6900, nombre: 'Aerotermia y suelo radiante', tipologias: [ 'a' ] },
 		{ categoria: 'climatizacion', nombre_categoria: 'Clima' } ] ), 'cambiar en preparación' );
 	// otra en una categoría nueva, por separado, que la promotora retira
 	const toldo = await exigir( gestorA.rpc( 'pedir_opcion', { p_promocion: 'prueba-a', p_categoria: '', p_categoria_nueva: 'Sombra', p_nombre: 'Toldo', p_descripcion: '', p_precio: 900 } ), 'pedir toldo' );
@@ -1612,7 +1614,7 @@ await caso( DEBE_FUNCIONAR, 'Catálogo: la promotora cambia un precio de un pack
 		// el pack que se quedó sin categorías no lo ven los compradores
 		packs: conPacks.datos.packs.length === 2 && conPacks.datos.packs[ 1 ].categorias[ 0 ] === 'exterior' && conPacks.datos.packs[ 1 ].individual === true
 			&& enPrep.packs.find( ( x ) => x.id === 'extras' )?.hasta === '2099-06-30',
-		enPreparacion: falla( faltaNueva ) && trasRetirar.packs.some( ( x ) => x.id === 'confort' && x.categorias[ 0 ] === 'climatizacion' )
+		enPreparacion: falla( faltaNueva ) && falla( tipologiaInventada ) && trasRetirar.packs.some( ( x ) => x.id === 'confort' && x.categorias[ 0 ] === 'climatizacion' )
 			&& trasRetirar.en_preparacion.climatizacion === 'Clima' && ! ( 'sombra' in trasRetirar.en_preparacion )
 			&& ! trasRetirar.packs.some( ( x ) => x.id === 'sola-sombra' )
 			&& trasRetirar.pedidas.find( ( x ) => x.id === toldo )?.estado === 'descartada'
@@ -1620,7 +1622,7 @@ await caso( DEBE_FUNCIONAR, 'Catálogo: la promotora cambia un precio de un pack
 			&& trasRetirar.pedidas.find( ( x ) => x.id === aerotermia.id )?.categoria_nueva === 'Clima'
 			&& ! compradorNoVe.datos.packs.some( ( x ) => x.id === 'confort' ),
 		foto: despues.pedidas.find( ( x ) => x.id === id )?.archivos?.[ 0 ]?.ruta === ruta && ! adminVeFoto.error,
-		robot: robotLee.some( ( x ) => x.categoria === 'climatizacion' && x.categoria_nombre === 'Clima' && x.categoria_nueva && x.pack?.id === 'confort' ) && ! robotDescarga.error,
+		robot: robotLee.some( ( x ) => x.categoria === 'climatizacion' && x.categoria_nombre === 'Clima' && x.categoria_nueva && x.pack?.id === 'confort' && x.tipologias?.join() === 'a' ) && ! robotDescarga.error,
 	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
 	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) } (${ JSON.stringify( { piscina, suelo: entra.datos.tipologia.opciones.suelo, lanzadas: vista.lanzadas, conserva, otro: otroElige.error?.message, packs: conPacks.datos.packs, trasRetirar: { packs: trasRetirar.packs, en_preparacion: trasRetirar.en_preparacion }, faltaNueva: faltaNueva.error?.message } ) })` );
 	return true;
