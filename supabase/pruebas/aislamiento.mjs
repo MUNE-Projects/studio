@@ -57,11 +57,44 @@ async function crearUsuario( email ) {
 
 }
 
-async function entrar( email ) {
+// Solo con la contraseña (nivel «aal1»).
+async function entrarSoloClave( email ) {
 
 	const sb = nuevo();
 	const { error } = await sb.auth.signInWithPassword( { email, password: CLAVE } );
 	if ( error ) throw new Error( `entrar ${ email }: ${ error.message }` );
+	return sb;
+
+}
+
+// Las personas de las promotoras entran con contraseña + código del móvil
+// (032_movil_promotoras.sql): la primera vez lo vinculan y después lo usan.
+// Las cuentas internas (administradora, robot y copias) entran solo con la
+// contraseña; la administradora vincula su móvil aparte, como en MUNE Studio.
+const INTERNAS = [ 'admin@prueba.local', 'robot@prueba.local', 'hello.muneprojects+copias@gmail.com' ];
+const secretoMovil = {};
+async function entrar( email ) {
+
+	const sb = await entrarSoloClave( email );
+	if ( INTERNAS.includes( email ) ) return sb;
+	const { data: { totp } } = await sb.auth.mfa.listFactors();
+	let factor = totp.find( ( f ) => f.status === 'verified' );
+	if ( ! factor || ! secretoMovil[ email ] ) {
+
+		const alta = await exigir( sb.auth.mfa.enroll( { factorType: 'totp', friendlyName: `Móvil ${ Date.now() }` } ), `vincular el móvil de ${ email }` );
+		secretoMovil[ email ] = alta.totp.secret;
+		factor = alta;
+
+	}
+	let { error } = await sb.auth.mfa.challengeAndVerify( { factorId: factor.id, code: codigoTotp( secretoMovil[ email ] ) } );
+	if ( error ) {
+
+		// un código ya usado en estos 30 segundos: se espera al siguiente
+		await new Promise( ( ok ) => setTimeout( ok, 30_000 - ( Date.now() % 30_000 ) + 500 ) );
+		( { error } = await sb.auth.mfa.challengeAndVerify( { factorId: factor.id, code: codigoTotp( secretoMovil[ email ] ) } ) );
+
+	}
+	if ( error ) throw new Error( `código del móvil de ${ email }: ${ error.message }` );
 	return sb;
 
 }
@@ -389,6 +422,22 @@ await caso( DEBE_FALLAR, '20. Una persona con el acceso retirado intenta seguir 
 	// Misma sesión abierta: el efecto es inmediato.
 	return antes.data?.length === 1 && vacio( await baja.from( 'promociones' ).select( 'id' ) )
 		&& falla( await baja.storage.from( 'entregables' ).download( planoA.ruta ) );
+
+} );
+
+await caso( DEBE_FALLAR, '44. Una persona de una promotora con solo la contraseña (sin el código del móvil) no ve ni cambia nada', async () => {
+
+	const sinMovil = await entrarSoloClave( 'aprobadora.a@prueba.local' );
+	const subida = await subirDocumento( sinMovil, pA.id, 'prueba-a', 'sin el código del móvil' );
+	return vacio( await sinMovil.from( 'promociones' ).select( 'id' ) )
+		&& vacio( await sinMovil.from( 'miembros' ).select( 'id' ) )
+		&& vacio( await sinMovil.from( 'requisitos' ).select( 'id' ) )
+		&& vacio( await sinMovil.from( 'documentos' ).select( 'id' ) )
+		&& vacio( await sinMovil.from( 'entregables' ).select( 'id' ) )
+		&& falla( await sinMovil.storage.from( 'entregables' ).download( planoA.ruta ) )
+		&& falla( await sinMovil.rpc( 'equipo_de_promotora', { p_promotora: pA.id } ) )
+		&& !! subida.error
+		&& falla( await sinMovil.from( 'validaciones' ).insert( { entregable_id: planoA.id, decision: 'aprobado', confirmado: true } ) );
 
 } );
 
@@ -906,6 +955,42 @@ await caso( DEBE_FUNCIONAR, 'La administradora invita a una persona: recibe el e
 	const accesos = await exigir( admin.rpc( 'accesos', { p_promotora: pA.id } ), 'accesos' );
 	nuevaInvitada = true;
 	return data.length === 1 && data[ 0 ].id === 'prueba-a2' && accesos.some( ( a ) => a.email === email && a.aceptada && a.cargo === 'Técnica' && a.promocion_id === 'prueba-a2' );
+
+} );
+
+// ─── Código del móvil de las promotoras (032_movil_promotoras.sql) ──────────
+
+const idMovilA = await crearUsuario( 'movil.a@prueba.local' );
+await exigir( admin.from( 'miembros' ).insert( { user_id: idMovilA, promotora_id: pA.id, promocion_id: 'prueba-a', nombre: 'Móvil A', email: 'movil.a@prueba.local' } ), 'acceso movil.a' );
+await entrar( 'movil.a@prueba.local' );
+const factoresDe = async ( userId ) => ( await servicio.auth.admin.mfa.listFactors( { userId } ) ).data?.factors ?? [];
+
+await caso( DEBE_FALLAR, '45. Quitar el código del móvil: otra promotora, quien no administra, a sí misma o sin el código del móvil', async () => {
+
+	const quitar = ( sb, userId ) => invitar( sb, { accion: 'quitar-movil', promotora_id: pA.id, user_id: userId } );
+	const r1 = estadoHttp( await quitar( aprobB, idMovilA ) );
+	const r2 = estadoHttp( await quitar( gestorA, idMovilA ) );
+	const r3 = estadoHttp( await quitar( aprobA, aprobAId ) );
+	const r4 = estadoHttp( await quitar( await entrarSoloClave( 'aprobadora.a@prueba.local' ), idMovilA ) );
+	const r5 = estadoHttp( await quitar( anonimo, idMovilA ) );
+	if ( r1 !== 403 || r2 !== 403 || r3 !== 409 || r4 !== 403 || ! [ 401, 403 ].includes( r5 ) ) throw new Error( `respuestas ${ r1 }, ${ r2 }, ${ r3 }, ${ r4 } y ${ r5 }` );
+	return ( await factoresDe( idMovilA ) ).length === 1 && ( await factoresDe( aprobAId ) ).length === 1;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Quitar el código del móvil: quien administra la promotora (o MUNE Studio) se lo quita a alguien de su equipo, que al entrar lo vincula de nuevo; queda en el registro', async () => {
+
+	const r1 = await invitar( aprobA, { accion: 'quitar-movil', promotora_id: pA.id, user_id: idMovilA } );
+	if ( r1.error ) throw new Error( `quitar desde el Portal: ${ estadoHttp( r1 ) }` );
+	const sinFactor = ( await factoresDe( idMovilA ) ).length === 0;
+	const otraVez = await entrar( 'movil.a@prueba.local' );
+	const { data } = await otraVez.from( 'promociones' ).select( 'id' );
+	const r2 = await invitar( admin, { accion: 'quitar-movil', promotora_id: pA.id, user_id: idMovilA } );
+	if ( r2.error ) throw new Error( `quitar desde MUNE Studio: ${ estadoHttp( r2 ) }` );
+	const apuntes = await exigir( admin.from( 'registro' ).select( 'user_id' ).eq( 'accion', 'quita el código del móvil' ), 'registro' );
+	return sinFactor && data?.length === 1 && data[ 0 ].id === 'prueba-a'
+		&& ( await factoresDe( idMovilA ) ).length === 0
+		&& apuntes.some( ( a ) => a.user_id === aprobAId ) && apuntes.length === 2;
 
 } );
 
