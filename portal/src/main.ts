@@ -9,6 +9,7 @@ import { ESCAPARATE, REVISION, INACTIVIDAD_MAX, MIN_CLAVE, CABECERA, alEnviar, a
 import { pintarCompradores } from './compradores';
 import { pintarPersonalizacion } from './personalizacion';
 import { pintarCatalogo } from './catalogo';
+import { pintarMarca } from './marca';
 import { COLUMNAS_DOCUMENTO, COLUMNAS_REQUISITO, type Documento, type Requisito, leerCubre, pintarDocumentacion, resumenDocumentos } from './documentos';
 import { pintarEquipo } from './equipo';
 import { pintarEstados } from './estado';
@@ -268,10 +269,12 @@ async function pantallaInicio(): Promise<void> {
 			<h2>Datos de ${esc(acceso?.promotora?.nombre ?? 'la promotora')}</h2>
 			<p class="ayuda">Los datos generales de la promotora. Cada promoción puede tener además los suyos, por si la lleva otra sociedad.</p>
 			${formFiscal(acceso?.promotora ?? { razon_social: null, cif: null, domicilio_fiscal: null }, true, false)}
-		</section>` : ''}
+		</section>
+		<section class="tarjeta" data-marca-general></section>` : ''}
 	</div>`);
 	pintarEstados(app, sb, ESCAPARATE);
 	app.querySelector('[data-salir]')!.addEventListener('click', () => void salir());
+	if (adminPromotora) void pintarMarca(app.querySelector<HTMLElement>('[data-marca-general]')!, { sb, esc, fecha, traducir }, { promotora: acceso!.promotora!.id }).catch(fallo);
 	if (adminPromotora) conectarFiscal((d) => sb.rpc('guardar_datos_promotora', {
 		p_promotora: acceso!.promotora!.id, p_razon_social: String(d.get('razon_social')), p_cif: String(d.get('cif')),
 		p_domicilio_fiscal: String(d.get('domicilio_fiscal')), p_contacto: String(d.get('contacto')),
@@ -301,6 +304,7 @@ const PESTANAS: [string, string, string | null][] = [
 	['compradores', 'Compradores', 'compradores'],
 	['personalizacion', 'Personalización', 'personalizacion'],
 	['datos', 'Ficha y datos', 'datos'],
+	['marca', 'Marca', 'marca'],
 	['equipo', 'Equipo', null],
 ];
 
@@ -461,6 +465,10 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 			p_promocion: p.id, p_planos: String(d.get('planos') ?? ''), p_renders: String(d.get('renders') ?? ''),
 			p_experiencia: String(d.get('experiencia') ?? ''), p_personalizacion: String(d.get('personalizacion') ?? ''),
 		}), 'Textos legales guardados. Se aplicarán en la próxima versión.');
+	}
+
+	if (actual === 'marca') {
+		await pintarMarca(caja, { sb, esc, fecha, traducir }, { promotora: p.promotora_id, promocion: { id: p.id, nombre: p.nombre }, enlaceGeneral: '#/' });
 	}
 
 	if (actual === 'equipo') {

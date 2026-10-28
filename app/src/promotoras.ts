@@ -6,7 +6,7 @@
 //   todas, sus datos y su actividad.
 // · Una promoción (#/promocion/<id>/<pestaña>): resumen, validación y
 //   versiones, equipo, documentación, ficha y datos (con los textos legales),
-//   compradores, peticiones de cambios y actividad.
+//   marca, compradores, peticiones de cambios y actividad.
 //
 // La promotora gestiona su propio equipo en MUNE Portal (Equipo); MUNE Studio
 // lo ve todo y lo cambia solo como soporte (equipo.ts, función «invitar»,
@@ -23,6 +23,7 @@ import { ESCAPARATE, REVISION, estadoVersiones, etiquetaVersiones, pintarVersion
 import { pintarCompradores } from './compradores';
 import { pintarPersonalizacion } from './personalizacion';
 import { pintarCatalogo } from './catalogo';
+import { pintarMarca } from './marca';
 import { pintarEstados } from './estado';
 import { ADMIN_PROMOCION, ADMIN_PROMOTORA, TODAS_LAS_CAPACIDADES, conectarPersonas, formAcceso, insignias, invitar, leerAccesos, tablaPersonas } from './equipo';
 
@@ -79,6 +80,7 @@ const PESTANAS: [string, string][] = [
 	['equipo', 'Equipo'],
 	['documentacion', 'Documentación'],
 	['ficha', 'Ficha y datos'],
+	['marca', 'Marca'],
 	['compradores', 'Compradores'],
 	['personalizacion', 'Personalización'],
 	['peticiones', 'Peticiones de cambios'],
@@ -397,6 +399,8 @@ export async function pantallaPromotora(destino: HTMLElement, id: string): Promi
 			</form>
 		</section>
 
+		<section class="tarjeta" data-marca-general></section>
+
 		<section class="tarjeta">
 			<h2>Actividad</h2>
 			<p class="ayuda">De la promotora y de todas sus promociones.</p>
@@ -410,6 +414,10 @@ export async function pantallaPromotora(destino: HTMLElement, id: string): Promi
 	const zonaBorrar = destino.querySelector<HTMLElement>('[data-borrar]');
 	if (zonaBorrar) void pintarBorradoPromotora(zonaBorrar, po, promociones, accesos.length);
 	void pintarActividad(destino.querySelector<HTMLElement>('[data-actividad]')!, { promotora: id, promociones: promociones.map((p) => p.id) }, 30);
+	const zonaMarca = destino.querySelector<HTMLElement>('[data-marca-general]')!;
+	void pintarMarca(zonaMarca, { sb, esc, fecha, traducir }, { promotora: id }).catch((e) => {
+		zonaMarca.innerHTML = `<h2>Marca</h2><p class="error">${esc(fallo('No se ha podido cargar la marca', e))}</p>`;
+	});
 	// Estado de las versiones de cada promoción, sin esperar a que cargue.
 	for (const p of promociones.filter((x) => x.activa)) {
 		void estadoVersiones(p.id).then((e) => {
@@ -776,6 +784,10 @@ export async function pantallaPromocion(destino: HTMLElement, id: string, pestan
 			pintarPersonalizacion(caja.querySelector<HTMLElement>('[data-selecciones]')!, { sb, esc, fecha, traducir, modo: 'administradora' }, p),
 			pintarCatalogo(caja.querySelector<HTMLElement>('[data-catalogo]')!, { sb, esc, fecha, traducir, modo: 'administradora' }, p),
 		]);
+	}
+
+	if (actual === 'marca') {
+		await pintarMarca(caja, { sb, esc, fecha, traducir }, { promotora: p.promotora_id, promocion: { id: p.id, nombre: p.nombre }, enlaceGeneral: `#/promotora/${p.promotora_id}` });
 	}
 
 	if (actual === 'peticiones') {
