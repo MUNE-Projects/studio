@@ -263,10 +263,9 @@ begin
 	if not (public.es_admin() or public.es_robot() or public.equipo_puede(p_promocion, 'personalizacion')) then
 		raise exception 'No tienes acceso al catálogo de esta promoción';
 	end if;
-	d := public._ultimos_datos(p_promocion);
-	if d is null then
-		return jsonb_build_object('catalogo', null);
-	end if;
+	-- sin versión preparada todavía: catálogo vacío (la promotora ya puede añadir sus primeras opciones)
+	d := coalesce(public._ultimos_datos(p_promocion), jsonb_build_object('catalogo', jsonb_build_object('categorias', '[]'::jsonb),
+		'packs', '[]'::jsonb, 'tipologias', '[]'::jsonb, 'viviendas', '[]'::jsonb));
 	e := public._aplicar_catalogo(p_promocion, d);
 	return jsonb_build_object(
 		'hoy', public._hoy_espana(),
