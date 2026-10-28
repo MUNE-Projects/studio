@@ -71,6 +71,18 @@ alter table public.opciones_pedidas add column if not exists archivos jsonb not 
 alter table public.opciones_pedidas enable row level security;
 revoke all on public.opciones_pedidas from anon, authenticated;
 
+-- Nombre de cada categoría puesto por la promotora («Suelo» → «Pavimentos»).
+create table if not exists public.catalogo_categorias (
+	promocion_id    text not null references public.promociones (id),
+	categoria       text not null check (categoria ~ '^[a-z0-9-]{1,60}$'),
+	nombre          text not null check (char_length(nombre) between 1 and 60),
+	actualizado_por uuid references auth.users (id),
+	actualizado_en  timestamptz not null default now(),
+	primary key (promocion_id, categoria)
+);
+alter table public.catalogo_categorias enable row level security;
+revoke all on public.catalogo_categorias from anon, authenticated;
+
 -- Packs de la promotora: si existen, sustituyen a los de la versión.
 create table if not exists public.packs_promocion (
 	promocion_id    text primary key references public.promociones (id),
@@ -187,7 +199,8 @@ begin
 	if lista is not null then
 		r := jsonb_set(r, '{packs}', lista);
 	end if;
-	if not exists (select 1 from public.catalogo_ajustes ca where ca.promocion_id = p_promocion) then
+	if not exists (select 1 from public.catalogo_ajustes ca where ca.promocion_id = p_promocion)
+		and not exists (select 1 from public.catalogo_categorias cc where cc.promocion_id = p_promocion) then
 		return r;
 	end if;
 	-- nombres, descripciones y precios
@@ -204,7 +217,10 @@ begin
 			end if;
 			ops := ops || jsonb_build_array(o);
 		end loop;
-		cats := cats || jsonb_build_array(c || jsonb_build_object('opciones', ops));
+		c := c || jsonb_build_object('opciones', ops);
+		c := c || coalesce((select jsonb_build_object('nombre', cc.nombre) from public.catalogo_categorias cc
+			where cc.promocion_id = p_promocion and cc.categoria = c->>'id'), '{}'::jsonb);
+		cats := cats || jsonb_build_array(c);
 	end loop;
 	if d->'catalogo' is not null then
 		r := jsonb_set(r, '{catalogo,categorias}', cats);
@@ -304,6 +320,7 @@ revoke all on function public.es_admin_usuario(uuid) from public, anon, authenti
 
 -- Guarda los cambios de la sección «Catálogo y precios», todos o ninguno.
 -- p_cambios: [{ categoria, opcion, nombre?, detalle?, precio?, ofrecida?, tipologias? }]
+-- o, para cambiar el nombre de una categoría: [{ categoria, nombre_categoria }]
 create or replace function public.guardar_catalogo(p_promocion text, p_cambios jsonb)
 returns int
 language plpgsql
@@ -337,6 +354,18 @@ begin
 	for x in select y from jsonb_array_elements(p_cambios) y loop
 		v_tipologias := null;
 		select c into k from jsonb_array_elements(e->'catalogo'->'categorias') c where c->>'id' = x->>'categoria' limit 1;
+		-- nombre de la categoría
+		if x ? 'nombre_categoria' and x->>'opcion' is null then
+			if k is null then raise exception 'Esa categoría no está en el catálogo'; end if;
+			if char_length(btrim(coalesce(x->>'nombre_categoria', ''))) not between 1 and 60 then
+				raise exception 'Escribe el nombre de la categoría (como mucho, 60 letras)';
+			end if;
+			insert into public.catalogo_categorias as cc (promocion_id, categoria, nombre, actualizado_por, actualizado_en)
+			values (p_promocion, k->>'id', btrim(x->>'nombre_categoria'), auth.uid(), now())
+			on conflict (promocion_id, categoria) do update set nombre = excluded.nombre, actualizado_por = excluded.actualizado_por, actualizado_en = now();
+			n := n + 1;
+			continue;
+		end if;
 		select op into o from jsonb_array_elements(coalesce(k->'opciones', '[]'::jsonb)) op where op->>'id' = x->>'opcion' limit 1;
 		if o is null then
 			raise exception 'Esa opción no está en el catálogo';
@@ -377,7 +406,7 @@ begin
 	end loop;
 	insert into public.registro (user_id, accion, detalle)
 	values (auth.uid(), 'cambia el catálogo', jsonb_build_object('promocion', p_promocion, 'cambios', n,
-		'opciones', (select jsonb_agg(y->>'categoria' || ':' || (y->>'opcion')) from jsonb_array_elements(p_cambios) y)));
+		'opciones', (select jsonb_agg(y->>'categoria' || ':' || coalesce(y->>'opcion', 'nombre')) from jsonb_array_elements(p_cambios) y)));
 	return n;
 end $$;
 revoke all on function public.guardar_catalogo(text, jsonb) from public, anon;

@@ -1559,6 +1559,7 @@ await caso( DEBE_FUNCIONAR, 'Catálogo: la promotora cambia un precio de un pack
 	await exigir( guardarCatalogo( gestorA, [
 		{ categoria: 'exterior', opcion: 'piscina', precio: 19500, nombre: 'Piscina privada' },
 		{ categoria: 'suelo', opcion: 'nogal', ofrecida: false, nombre: 'Nogal americano' },
+		{ categoria: 'suelo', nombre_categoria: 'Pavimentos' },
 	] ), 'guardar catálogo' );
 	const vista = await exigir( gestorA.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ), 'ver catálogo' );
 	const entra = await exigir( anonimo.rpc( 'entrar_comprador', { p_promocion: 'prueba-a', p_codigo: codigo, p_version: 'v95' } ), 'entrar' );
@@ -1586,6 +1587,7 @@ await caso( DEBE_FUNCIONAR, 'Catálogo: la promotora cambia un precio de un pack
 	const mal = Object.entries( {
 		precioNuevo: piscina.precio === 19500 && piscina.nombre === 'Piscina privada',
 		nogalRetirado: ! entra.datos.tipologia.opciones.suelo.includes( 'nogal' ),
+		nombreCategoria: entra.datos.catalogo.categorias.find( ( c ) => c.id === 'suelo' ).nombre === 'Pavimentos',
 		lanzadas: vista.lanzadas.includes( 'suelo' ) && ! vista.lanzadas.includes( 'exterior' ),
 		conserva: conserva.opciones.suelo === 'nogal' && Number( conserva.importe ) === 1900,
 		otroNoPuede: falla( otroElige ),
