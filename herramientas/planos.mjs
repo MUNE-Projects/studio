@@ -68,6 +68,9 @@ export async function generarPlanos( id, version, salida = join( RAIZ, 'salida',
 		// muebles que se pisan, atraviesan un muro o chocan con una puerta: saldrían así en el 3D y en los planos
 		const choques = await pagina.evaluate( () => window.erroresDistribucion() );
 		if ( choques.length ) throw new Error( `La distribución tiene choques, y saldrían así en la Experiencia 3D, los renders y los planos:\n${ choques.map( ( x ) => `  · ${ x }` ).join( '\n' ) }\n  Revisa el plano acotado y corrige los datos antes de preparar la versión.` );
+		// plantas generales que no cuadran con la tabla de viviendas, o viviendas que se pisan en la maqueta
+		const conjunto = await pagina.evaluate( () => window.erroresConjunto() );
+		if ( conjunto.length ) throw new Error( `Las plantas generales (entorno/conjunto.json) no cuadran, y la maqueta de la promoción saldría mal:\n${ conjunto.map( ( x ) => `  · ${ x }` ).join( '\n' ) }\n  Aclara con la promotora qué dato es el bueno (plantas generales o tabla de viviendas) y corrige los datos antes de preparar la versión.` );
 		const lote = await pagina.evaluate( () => window.generarLote( ( t ) => console.log( t ) ) );
 
 		const carpeta = join( salida, 'planos' );

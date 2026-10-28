@@ -10,7 +10,7 @@ import type { Vivienda } from '../modelo/tipos';
 import { marcoEntorno } from '../modelo/exteriores';
 
 /** Copa irregular: icosaedro deformado con ruido determinista. */
-function copa( k: Pieza, mat: string, x: number, y: number, z: number, r: number, rnd: () => number, achatado = 0.8 ) {
+export function copa( k: Pieza, mat: string, x: number, y: number, z: number, r: number, rnd: () => number, achatado = 0.8 ) {
 
 	const ico = new THREE.IcosahedronGeometry( r, 3 );
 	ico.deleteAttribute( 'normal' );
@@ -33,7 +33,7 @@ function copa( k: Pieza, mat: string, x: number, y: number, z: number, r: number
 
 }
 
-function arbol( k: Pieza, x: number, z: number, alto: number, rnd: () => number, tipo: 'olivo' | 'pino' | 'frondoso' ) {
+export function arbol( k: Pieza, x: number, z: number, alto: number, rnd: () => number, tipo: 'olivo' | 'pino' | 'frondoso' ) {
 
 	const tronco = tipo === 'pino' ? 'madera:#7a6552' : 'madera:#6e5a46';
 	const hoja = tipo === 'olivo' ? 'hoja:#7d8a62' : tipo === 'pino' ? 'hoja:#4f6a45' : 'hoja:#5d7a45';
