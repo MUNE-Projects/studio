@@ -121,6 +121,50 @@ as $$
 			and (p_capacidad is null or m.administra or p_capacidad = any (m.capacidades)));
 $$;
 
+-- El pase del 3D profesional (027) deja la sesión como su dueño: también con
+-- el código del móvil, porque solo se abre con él.
+-- Comprueba el pase y deja la sesión como su dueño (para las comprobaciones de
+-- siempre: es_miembro_de_promocion, equipo_puede, es_admin y el registro).
+create or replace function public._pase_valido(p_promocion text, p_pase text)
+returns uuid
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+	cabeceras json := coalesce(nullif(current_setting('request.headers', true), ''), '{}')::json;
+	v_cliente text := encode(sha256(convert_to(coalesce(
+		cabeceras->>'cf-connecting-ip', split_part(cabeceras->>'x-forwarded-for', ',', 1), 'desconocido'), 'UTF8')), 'hex');
+	p public.pases_profesionales%rowtype;
+begin
+	if (select count(*) from public.intentos_comprador i where i.promocion_id = '*pro' and i.cliente = v_cliente
+			and not i.acierto and i.momento > now() - interval '15 minutes') >= 10 then
+		raise exception 'Demasiados intentos. Espera unos minutos y vuelve a probar.';
+	end if;
+	select * into p from public.pases_profesionales x
+	where x.huella = encode(sha256(convert_to(coalesce(p_pase, ''), 'UTF8')), 'hex')
+		and x.promocion_id = p_promocion
+		and x.creado_en > now() - interval '12 hours';
+	if p.id is null then
+		insert into public.intentos_comprador (promocion_id, cliente, acierto) values ('*pro', v_cliente, false);
+		return null;
+	end if;
+	perform set_config('request.jwt.claim.sub', p.user_id::text, true);
+	-- El pase solo lo abre una sesión con el código del móvil (abrir_experiencia_profesional
+	-- comprueba es_miembro_de_promocion), así que la sesión del pase cuenta como tal.
+	-- Para MUNE Studio no cambia nada: su pase sigue sin dar acceso de administradora.
+	perform set_config('request.jwt.claims', json_build_object('sub', p.user_id, 'role', 'authenticated',
+		'aal', case when exists (select 1 from public.administradores a where a.user_id = p.user_id) then 'aal1' else 'aal2' end)::text, true);
+	if not (public.es_admin() or public.es_miembro_de_promocion(p_promocion)) then
+		delete from public.pases_profesionales where id = p.id;
+		return null;
+	end if;
+	update public.pases_profesionales set usado_en = now() where id = p.id;
+	return p.user_id;
+end $$;
+revoke all on function public._pase_valido(text, text) from public, anon, authenticated;
+
 -- Cada persona ve su propio acceso solo con el código del móvil.
 drop policy if exists "miembro lee su acceso" on public.miembros;
 create policy "miembro lee su acceso" on public.miembros
