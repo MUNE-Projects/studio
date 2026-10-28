@@ -8,7 +8,8 @@
 // tipologías. Los cambios se aplican al momento. Cuando un pack se abre a los
 // compradores, sus precios y sus categorías quedan fijos. Una opción con un
 // aspecto nuevo se pide a MUNE (con foto o ficha), que la añade al 3D en una
-// versión nueva.
+// versión nueva. Mientras está «En preparación» ya se mete en un pack, se le
+// ponen fechas, se cambia o se retira; los compradores la ven cuando está lista.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -33,12 +34,16 @@ interface Datos {
 	tipologias: Tipologia[];
 	tipologias_version: Tipologia[];
 	lanzadas: string[];
+	/** Categorías nuevas en preparación: { id: nombre }. */
+	en_preparacion: Record<string, string>;
 	cambios: { categoria: string; opcion: string; actualizado_en: string; por: string }[];
 	packs_actualizado: { en: string; por: string } | null;
 	pedidas: Pedida[];
 }
 /** Lo que se edita de cada opción. */
 interface Valores { nombre: string; detalle: string; precio: number; ofrecida: boolean; tipologias: string[] }
+/** Una categoría en las listas: del catálogo o nueva, en preparación. */
+interface Seccion { id: string; nombre: string; nueva: boolean; opciones: Opcion[]; pedidas: Pedida[] }
 
 const euros = (n: number) => {
 	const [entero, dec] = Number(n).toFixed(2).split('.');
@@ -63,7 +68,9 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 	}
 	const datos = data as Datos;
 	datos.catalogo ??= { categorias: [] };
-	const vacio = datos.catalogo.categorias.length === 0;
+	datos.en_preparacion ??= {};
+	const enPreparacion = datos.pedidas.filter((x) => x.estado === 'pendiente');
+	const vacio = datos.catalogo.categorias.length === 0 && enPreparacion.length === 0;
 	const tipologias = datos.tipologias_version.map((t) => t.id);
 	const packDe = (cat: string) => datos.packs.find((x) => x.categorias.includes(cat));
 	const lanzada = (cat: string) => datos.lanzadas.includes(cat);
@@ -77,17 +84,34 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 		nombre: o.nombre, detalle: o.detalle ?? '', precio: Number(o.precio ?? 0), ofrecida: o.ofrecida !== false, tipologias: enTipologias(c.id, o.id),
 	});
 	const ultimo = datos.cambios[0];
-	const todasCategorias = datos.catalogo.categorias;
-	/** Categorías nuevas que ya se han usado en opciones aún en preparación: se pueden volver a elegir. */
-	const nuevasPendientes = [...new Set(datos.pedidas.filter((x) => x.estado === 'pendiente' && !x.categoria && x.categoria_nueva).map((x) => x.categoria_nueva!))];
+	/** Las del catálogo y, detrás, las nuevas que aún están en preparación. */
+	const todasCategorias: { id: string; nombre: string }[] = [...datos.catalogo.categorias,
+		...Object.entries(datos.en_preparacion).map(([id, nombre]) => ({ id, nombre }))];
+	const nombreDe = (id: string | null) => todasCategorias.find((c) => c.id === id)?.nombre ?? id ?? 'Otra';
+	const pedidasDe = (cat: string) => enPreparacion.filter((x) => x.categoria === cat);
+	/** Lo que se edita: categorías que se pueden elegir y las que tienen algo en preparación. */
+	const secciones: Seccion[] = [
+		...datos.catalogo.categorias.filter((c) => categorias.includes(c) || pedidasDe(c.id).length)
+			.map((c) => ({ id: c.id, nombre: c.nombre, nueva: false, opciones: categorias.includes(c) ? c.opciones : [], pedidas: pedidasDe(c.id) })),
+		...Object.entries(datos.en_preparacion).map(([id, nombre]) => ({ id, nombre, nueva: true, opciones: [], pedidas: pedidasDe(id) })),
+	];
 
-	const cabeceraCategoria = (c: Categoria) => {
+	const cabeceraCategoria = (c: Seccion) => {
 		const pk = packDe(c.id);
 		const cuando = pk ? `${esc(pk.titulo)} · ` : '';
+		if (c.nueva) return `<span class="promo-lugar">${cuando}<span class="estado pendiente">En preparación</span> los compradores la verán cuando el equipo de MUNE la prepare</span>`;
 		return lanzada(c.id)
 			? `<span class="promo-lugar">${cuando}abierto a los compradores: <strong>sus precios ya no cambian</strong></span>`
 			: `<span class="promo-lugar">${cuando}${pk ? `se abre el ${esc(d.fecha(pk.desde))}: ` : ''}puedes cambiar los precios hasta entonces</span>`;
 	};
+	/** Una opción en preparación: todo se puede cambiar (los compradores aún no la ven) o retirar. */
+	const filaPedida = (x: Pedida) => `<tr data-pedida-fila="${x.id}">
+			<td><input name="nombre" value="${esc(x.nombre)}" maxlength="80" aria-label="Nombre de la opción" required><br><span class="estado pendiente">En preparación</span></td>
+			<td><input name="detalle" value="${esc(x.descripcion ?? '')}" maxlength="1000" aria-label="Descripción" placeholder="Opcional"></td>
+			<td class="precio"><input name="precio" type="number" min="0" max="10000000" step="0.01" value="${x.precio ?? 0}" aria-label="Precio en euros"></td>
+			<td><label class="interruptor"><input name="retirar" type="checkbox"> Retirar</label></td>
+			${tipologias.length > 1 ? '<td><span class="promo-lugar">Se decide al prepararla</span></td>' : ''}
+		</tr>`;
 	const fila = (c: Categoria, o: Opcion) => {
 		const k = `${c.id}|${o.id}`;
 		const v = original.get(k)!;
@@ -110,7 +134,7 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 		${ultimo ? `<p class="promo-versiones">Último cambio: ${esc(d.fecha(ultimo.actualizado_en))}, por ${esc(ultimo.por)}.</p>` : ''}
 		${aviso ? `<p class="aviso" role="status">${esc(aviso)}</p>` : ''}
 
-		${vacio ? '<p class="vacio">Todavía no hay personalizaciones ni mejoras. Añade las primeras abajo: cuando el equipo de MUNE haya preparado su aspecto en el 3D, aparecerán aquí para ponerles precio, fechas y packs.</p>' : ''}
+		${vacio ? '<p class="vacio">Todavía no hay personalizaciones ni mejoras. Añade las primeras abajo: aparecerán aquí enseguida para ponerles fechas, packs y precio.</p>' : ''}
 		<div${vacio ? ' hidden' : ''}>
 		<h3>Fechas de elección</h3>
 		<p class="ayuda">Cada categoría se elige <strong>por separado</strong>, con su propia apertura y cierre, o <strong>dentro de un pack</strong>: una ficha con título y fechas que agrupa las categorías que quieras (un solo pack con todas es «todo junto»). Cuando se abre una categoría o un pack, ya no cambian su apertura ni lo que agrupa; mientras esté abierto, puedes cambiar su cierre.</p>
@@ -129,12 +153,12 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 
 		<h3 class="separado">Opciones y precios</h3>
 		<form data-catalogo-form>
-			${categorias.map((c) => `
+			${secciones.map((c) => `
 				<label class="nombre-categoria" data-nombre-categoria="${esc(c.id)}">Categoría<input name="nombre_categoria" value="${esc(c.nombre)}" maxlength="60" required aria-label="Nombre de la categoría"></label>
 				${cabeceraCategoria(c)}
 				<div class="tabla catalogo"><table>
-					<thead><tr><th>Opción</th><th>Descripción</th><th>Precio (€)</th><th>Se ofrece</th>${tipologias.length > 1 ? '<th>Tipologías</th>' : ''}</tr></thead>
-					<tbody>${c.opciones.map((o) => fila(c, o)).join('')}</tbody>
+					<thead><tr><th>Opción</th><th>Descripción</th><th>Precio (€)</th><th>${c.opciones.length ? 'Se ofrece' : ''}</th>${tipologias.length > 1 ? '<th>Tipologías</th>' : ''}</tr></thead>
+					<tbody>${c.opciones.map((o) => fila(datos.catalogo!.categorias.find((x) => x.id === c.id)!, o)).join('')}${c.pedidas.map(filaPedida).join('')}</tbody>
 				</table></div>`).join('')}
 			<div class="confirmar" data-confirmar hidden></div>
 			<div class="acciones"><button class="boton" type="submit" disabled>Guardar cambios</button></div>
@@ -143,9 +167,9 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 		</div>
 
 		<h3 class="separado">Añadir personalizaciones y mejoras</h3>
-		<p class="ayuda">Añade aquí una opción nueva, en una categoría que ya existe o en una nueva (por ejemplo, «Climatización»), con su precio y su descripción. Si tienes una ficha o fotos, adjúntalas: el equipo de MUNE las usa para preparar su aspecto en la Experiencia 3D (los compradores nunca las ven). Mientras tanto queda <strong>En preparación</strong>; los compradores la verán en la próxima versión.</p>
+		<p class="ayuda">Añade aquí una opción nueva, en una categoría que ya existe o en una nueva (por ejemplo, «Climatización»), con su precio y su descripción. Si tienes una ficha o fotos, adjúntalas: el equipo de MUNE las usa para preparar su aspecto en la Experiencia 3D (los compradores nunca las ven). Mientras tanto queda <strong>En preparación</strong>, pero ya puedes meterla en un pack, ponerle fechas y cambiar su nombre, su precio o su descripción arriba. Los compradores la verán cuando el equipo de MUNE la prepare, ya con sus fechas.</p>
 		${datos.pedidas.length ? `<ul class="lista-pedidas">${datos.pedidas.map((x) => `<li data-pedida="${x.id}">
-			<strong>${esc(x.nombre)}</strong> · ${esc(x.categoria ? todasCategorias.find((c) => c.id === x.categoria)?.nombre ?? x.categoria : `${x.categoria_nueva ?? 'Otra'} (categoría nueva)`)}${x.precio != null ? ` · ${esc(euros(x.precio))}` : ''}
+			<strong>${esc(x.nombre)}</strong> · ${esc(x.categoria_nueva ? `${x.estado === 'pendiente' ? nombreDe(x.categoria) : x.categoria_nueva} (categoría nueva)` : nombreDe(x.categoria))}${x.precio != null ? ` · ${esc(euros(x.precio))}` : ''}
 			· <span class="estado ${x.estado === 'hecha' ? 'al-dia' : x.estado === 'pendiente' ? 'pendiente' : ''}">${ESTADO_PEDIDA[x.estado]}</span>
 			<span class="promo-lugar">pedida el ${esc(d.fecha(x.pedido_en))}</span>
 			${x.descripcion ? `<br><span class="promo-lugar">${esc(x.descripcion)}</span>` : ''}
@@ -154,7 +178,7 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 			${d.modo === 'administradora' && x.estado === 'pendiente' ? `<br><button class="enlace" type="button" data-atender="hecha">Marcar como añadida…</button> · <button class="enlace" type="button" data-atender="descartada">Descartar…</button>` : ''}
 		</li>`).join('')}</ul>` : ''}
 		<form class="pedir-opcion" data-pedir>
-			<label>Categoría<select name="categoria" required><option value="" disabled selected>Elige…</option>${todasCategorias.map((c) => `<option value="${esc(c.id)}">${esc(c.nombre)}</option>`).join('')}${nuevasPendientes.map((n) => `<option value="${esc(`nueva:${n}`)}">${esc(n)} (nueva, en preparación)</option>`).join('')}<option value="nueva">Una categoría nueva…</option></select></label>
+			<label>Categoría<select name="categoria" required><option value="" disabled selected>Elige…</option>${todasCategorias.map((c) => `<option value="${esc(c.id)}">${esc(c.nombre)}${c.id in datos.en_preparacion ? ' (nueva, en preparación)' : ''}</option>`).join('')}<option value="nueva">Una categoría nueva…</option></select></label>
 			<label data-categoria-nueva hidden>Nombre de la categoría nueva<input name="categoria_nueva" maxlength="60" placeholder="Por ejemplo: Climatización"></label>
 			<label>Opción<input name="nombre" maxlength="80" required placeholder="Por ejemplo: Roble ahumado"></label>
 			<label>Precio (€)<input name="precio" type="number" min="0" max="10000000" step="0.01" required></label>
@@ -205,14 +229,14 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 	};
 	listaPacks.innerHTML = grupos.map((pk) => tarjeta(pk)).join('');
 	/** Fila de una categoría: por separado (con sus fechas) o en un pack. */
-	const filaFechas = (c: Categoria) => {
+	const filaFechas = (c: { id: string; nombre: string }) => {
 		const pk = packDeCategoria(c.id);
 		const estado = pk ? estadoPack(pk, datos.hoy) : (lanzada(c.id) ? 'disponible' : 'proximamente');
 		const fijo = pk ? estado !== 'proximamente' : false;
 		const sola = !pk || pk.individual;
 		const ya = !pk && lanzada(c.id); // sin fechas y ya se puede elegir: solo se le pone el cierre
 		return `<tr data-categoria="${esc(c.id)}" data-estado="${estado}"${pk?.individual ? ` data-individual="${esc(pk.id)}"` : ''}>
-			<td><strong>${esc(c.nombre)}</strong>${pk || ya ? `<br><span class="promo-lugar">${ya ? 'Ya se puede elegir: ponle su cierre' : notaEstado(pk)}</span>` : ''}</td>
+			<td><strong>${esc(c.nombre)}</strong>${c.id in datos.en_preparacion ? ' <span class="estado pendiente">En preparación</span>' : ''}${pk || ya ? `<br><span class="promo-lugar">${ya ? 'Ya se puede elegir: ponle su cierre' : notaEstado(pk)}</span>` : ''}</td>
 			<td><select name="pack" aria-label="Cómo se elige ${esc(c.nombre)}"${fijo ? ' disabled' : ''}>${opcionesPack(sola ? '' : pk!.id, fijo)}</select></td>
 			<td><input name="desde" type="date" value="${esc(sola ? pk?.desde ?? (ya ? datos.hoy : '') : '')}"${ya ? ` max="${esc(datos.hoy)}"` : ` min="${esc(datos.hoy)}"`}${fijo || ya ? ' disabled' : ''} aria-label="Se abre"></td>
 			<td><input name="hasta" type="date" value="${esc(sola ? pk?.hasta ?? '' : '')}"${estado === 'finalizado' ? ' disabled' : ''}${estado === 'disponible' ? ` min="${esc(datos.hoy)}"` : ''} aria-label="Se cierra"></td>
@@ -323,9 +347,9 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 	const confirmar = form.querySelector<HTMLElement>('[data-confirmar]')!;
 	const leer = () => {
 		const cambios: Record<string, unknown>[] = [];
-		const resumen = { precios: 0, nombres: 0, quitadas: 0, vueltas: 0, tipologias: 0, categorias: 0 };
+		const resumen = { precios: 0, nombres: 0, quitadas: 0, vueltas: 0, tipologias: 0, categorias: 0, retiradas: 0 };
 		form.querySelectorAll<HTMLElement>('[data-nombre-categoria]').forEach((l) => {
-			const c = categorias.find((x) => x.id === l.dataset.nombreCategoria)!;
+			const c = secciones.find((x) => x.id === l.dataset.nombreCategoria)!;
 			const nuevo = l.querySelector('input')!.value.trim();
 			if (nuevo && nuevo !== c.nombre) {
 				cambios.push({ categoria: c.id, nombre_categoria: nuevo });
@@ -348,6 +372,23 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 			if (tipologias.length > 1 && tips.sort().join() !== [...v.tipologias].sort().join()) { c.tipologias = tips; resumen.tipologias++; }
 			if (Object.keys(c).length > 2) cambios.push(c);
 		});
+		// lo que está en preparación
+		form.querySelectorAll<HTMLTableRowElement>('tr[data-pedida-fila]').forEach((tr) => {
+			const x = enPreparacion.find((y) => y.id === Number(tr.dataset.pedidaFila))!;
+			const campo = (n: string) => tr.querySelector<HTMLInputElement>(`[name="${n}"]`)!;
+			if (campo('retirar').checked) {
+				cambios.push({ pedida: x.id, quitar: true });
+				resumen.retiradas++;
+				return;
+			}
+			const c: Record<string, unknown> = { pedida: x.id };
+			const nombre = campo('nombre').value.trim(), detalle = campo('detalle').value.trim();
+			const precio = Math.round(Number(campo('precio').value || 0) * 100) / 100;
+			if (nombre && nombre !== x.nombre) { c.nombre = nombre; resumen.nombres++; }
+			if (detalle !== (x.descripcion ?? '')) { c.detalle = detalle; resumen.nombres++; }
+			if (precio !== Number(x.precio ?? 0)) { c.precio = precio; resumen.precios++; }
+			if (Object.keys(c).length > 1) cambios.push(c);
+		});
 		return { cambios, resumen };
 	};
 	const refrescar = () => {
@@ -367,9 +408,11 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 			resumen.quitadas && `dejar de ofrecer ${resumen.quitadas} opci${resumen.quitadas === 1 ? 'ón' : 'ones'}`,
 			resumen.vueltas && `volver a ofrecer ${resumen.vueltas} opci${resumen.vueltas === 1 ? 'ón' : 'ones'}`,
 			resumen.tipologias && `cambiar las tipologías de ${resumen.tipologias} opci${resumen.tipologias === 1 ? 'ón' : 'ones'}`,
+			resumen.retiradas && `retirar ${resumen.retiradas} opci${resumen.retiradas === 1 ? 'ón' : 'ones'} en preparación (el equipo de MUNE ya no la${resumen.retiradas === 1 ? '' : 's'} preparará)`,
 		].filter(Boolean);
+		const soloPreparacion = cambios.every((x) => 'pedida' in x || (x.nombre_categoria && (x.categoria as string) in datos.en_preparacion));
 		confirmar.hidden = false;
-		confirmar.innerHTML = `<p>Vas a ${esc(partes.join(', '))}. Los compradores lo verán <strong>al momento</strong>.${resumen.precios ? ' Recuerda que, cuando su pack se abra, estos precios ya no se podrán cambiar.' : ''}</p>
+		confirmar.innerHTML = `<p>Vas a ${esc(partes.join(', '))}. ${soloPreparacion ? 'Lo que está en preparación lo verán los compradores cuando el equipo de MUNE lo prepare.' : 'Los compradores lo verán <strong>al momento</strong>.'}${resumen.precios ? ' Recuerda que, cuando su pack se abra, estos precios ya no se podrán cambiar.' : ''}</p>
 			<div class="acciones"><button class="boton" type="button" data-si>Confirmar y aplicar</button><button class="enlace" type="button" data-no>Seguir revisando</button></div>`;
 		confirmar.querySelector('[data-no]')!.addEventListener('click', () => { confirmar.hidden = true; });
 		confirmar.querySelector<HTMLButtonElement>('[data-si]')!.addEventListener('click', async (e) => {
@@ -380,7 +423,7 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 				confirmar.hidden = true;
 				return;
 			}
-			await pintarCatalogo(caja, d, p, '✓ Cambios aplicados: los compradores ya ven el catálogo actualizado.');
+			await pintarCatalogo(caja, d, p, soloPreparacion ? '✓ Cambios guardados.' : '✓ Cambios aplicados: los compradores ya ven el catálogo actualizado.');
 		});
 	});
 
@@ -417,9 +460,8 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 			}
 		}
 		const { error: err } = await d.sb.rpc('pedir_opcion', {
-			p_promocion: p.id, p_categoria: String(f.get('categoria') ?? '').startsWith('nueva') ? '' : String(f.get('categoria') ?? ''),
-			p_categoria_nueva: f.get('categoria') === 'nueva' ? String(f.get('categoria_nueva') ?? '')
-				: String(f.get('categoria') ?? '').startsWith('nueva:') ? String(f.get('categoria')).slice(6) : '',
+			p_promocion: p.id, p_categoria: f.get('categoria') === 'nueva' ? '' : String(f.get('categoria') ?? ''),
+			p_categoria_nueva: f.get('categoria') === 'nueva' ? String(f.get('categoria_nueva') ?? '') : '',
 			p_nombre: String(f.get('nombre') ?? ''),
 			p_descripcion: String(f.get('descripcion') ?? ''), p_precio: precio ? Number(precio) : null, p_archivos: archivos,
 		});
@@ -428,7 +470,7 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 			boton.disabled = false;
 			return;
 		}
-		await pintarCatalogo(caja, d, p, '✓ Opción añadida: queda En preparación hasta que el equipo de MUNE prepare su aspecto en el 3D.');
+		await pintarCatalogo(caja, d, p, '✓ Opción añadida: queda En preparación hasta que el equipo de MUNE prepare su aspecto en el 3D. Ya puedes ponerle fechas o meterla en un pack arriba.');
 	});
 
 	// ── ver un archivo adjunto (enlace temporal de un minuto)

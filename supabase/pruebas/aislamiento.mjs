@@ -1579,6 +1579,22 @@ await caso( DEBE_FUNCIONAR, 'Catálogo: la promotora cambia un precio de un pack
 	const adminVeFoto = await admin.storage.from( 'documentos' ).createSignedUrl( ruta, 60 );
 	// una categoría nueva, y el robot de Claude lee lo añadido y su documento para preparar el 3D
 	await exigir( gestorA.rpc( 'pedir_opcion', { p_promocion: 'prueba-a', p_categoria: '', p_categoria_nueva: 'Climatización', p_nombre: 'Aerotermia', p_descripcion: '', p_precio: 6500 } ), 'categoría nueva' );
+	// lo que está en preparación ya se mete en un pack y se cambia (los compradores aún no lo ven)
+	const enPrep = await exigir( gestorA.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ), 'ver en preparación' );
+	const aerotermia = enPrep.pedidas.find( ( x ) => x.nombre === 'Aerotermia' );
+	const packsConNueva = [ ...enPrep.packs.filter( ( x ) => x.id !== 'extras' ),
+		{ id: 'confort', titulo: 'Confort', desde: '2099-09-01', hasta: '2099-09-30', categorias: [ 'climatizacion' ] } ];
+	const faltaNueva = await gestorA.rpc( 'guardar_packs', { p_promocion: 'prueba-a', p_packs: enPrep.packs } );
+	await exigir( gestorA.rpc( 'guardar_packs', { p_promocion: 'prueba-a', p_packs: packsConNueva } ), 'pack con categoría en preparación' );
+	await exigir( guardarCatalogo( gestorA, [ { pedida: aerotermia.id, precio: 6900, nombre: 'Aerotermia y suelo radiante' },
+		{ categoria: 'climatizacion', nombre_categoria: 'Clima' } ] ), 'cambiar en preparación' );
+	// otra en una categoría nueva, por separado, que la promotora retira
+	const toldo = await exigir( gestorA.rpc( 'pedir_opcion', { p_promocion: 'prueba-a', p_categoria: '', p_categoria_nueva: 'Sombra', p_nombre: 'Toldo', p_descripcion: '', p_precio: 900 } ), 'pedir toldo' );
+	await exigir( gestorA.rpc( 'guardar_packs', { p_promocion: 'prueba-a', p_packs: [ ...packsConNueva,
+		{ id: 'sola-sombra', titulo: 'Sombra', desde: '2099-10-01', hasta: '2099-10-31', categorias: [ 'sombra' ], individual: true } ] } ), 'pack de sombra' );
+	await exigir( guardarCatalogo( gestorA, [ { pedida: toldo, quitar: true } ] ), 'retirar toldo' );
+	const trasRetirar = await exigir( gestorA.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ), 'tras retirar' );
+	const compradorNoVe = await exigir( anonimo.rpc( 'entrar_comprador', { p_promocion: 'prueba-a', p_codigo: codigo, p_version: 'v95' } ), 'comprador sin lo nuevo' );
 	const robotLee = await exigir( robot.rpc( 'opciones_pedidas_pendientes' ), 'robot lee pendientes' );
 	const robotDescarga = await robot.storage.from( 'documentos' ).download( ruta );
 	const pendientes = await exigir( admin.rpc( 'opciones_pedidas_pendientes' ), 'pendientes' );
@@ -1593,11 +1609,20 @@ await caso( DEBE_FUNCIONAR, 'Catálogo: la promotora cambia un precio de un pack
 		otroNoPuede: falla( otroElige ),
 		pendiente: pendientes.some( ( x ) => x.id === id ),
 		atendida: despues.pedidas.find( ( x ) => x.id === id )?.estado === 'hecha',
-		packs: conPacks.datos.packs.length === 3 && conPacks.datos.packs[ 2 ].categorias[ 0 ] === 'exterior' && conPacks.datos.packs[ 2 ].individual === true && conPacks.datos.packs[ 1 ].hasta === '2099-06-30',
+		// el pack que se quedó sin categorías no lo ven los compradores
+		packs: conPacks.datos.packs.length === 2 && conPacks.datos.packs[ 1 ].categorias[ 0 ] === 'exterior' && conPacks.datos.packs[ 1 ].individual === true
+			&& enPrep.packs.find( ( x ) => x.id === 'extras' )?.hasta === '2099-06-30',
+		enPreparacion: falla( faltaNueva ) && trasRetirar.packs.some( ( x ) => x.id === 'confort' && x.categorias[ 0 ] === 'climatizacion' )
+			&& trasRetirar.en_preparacion.climatizacion === 'Clima' && ! ( 'sombra' in trasRetirar.en_preparacion )
+			&& ! trasRetirar.packs.some( ( x ) => x.id === 'sola-sombra' )
+			&& trasRetirar.pedidas.find( ( x ) => x.id === toldo )?.estado === 'descartada'
+			&& trasRetirar.pedidas.find( ( x ) => x.id === aerotermia.id )?.precio === 6900
+			&& trasRetirar.pedidas.find( ( x ) => x.id === aerotermia.id )?.categoria_nueva === 'Clima'
+			&& ! compradorNoVe.datos.packs.some( ( x ) => x.id === 'confort' ),
 		foto: despues.pedidas.find( ( x ) => x.id === id )?.archivos?.[ 0 ]?.ruta === ruta && ! adminVeFoto.error,
-		robot: robotLee.some( ( x ) => x.categoria === 'Climatización' ) && ! robotDescarga.error,
+		robot: robotLee.some( ( x ) => x.categoria === 'climatizacion' && x.categoria_nombre === 'Clima' && x.categoria_nueva && x.pack?.id === 'confort' ) && ! robotDescarga.error,
 	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
-	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) } (${ JSON.stringify( { piscina, suelo: entra.datos.tipologia.opciones.suelo, lanzadas: vista.lanzadas, conserva, otro: otroElige.error?.message } ) })` );
+	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) } (${ JSON.stringify( { piscina, suelo: entra.datos.tipologia.opciones.suelo, lanzadas: vista.lanzadas, conserva, otro: otroElige.error?.message, packs: conPacks.datos.packs, trasRetirar: { packs: trasRetirar.packs, en_preparacion: trasRetirar.en_preparacion }, faltaNueva: faltaNueva.error?.message } ) })` );
 	return true;
 
 } );

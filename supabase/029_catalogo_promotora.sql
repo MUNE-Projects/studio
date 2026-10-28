@@ -29,7 +29,12 @@
 -- MUNE (Claude, con el robot, que solo puede leerlos) prepare su aspecto en el
 -- 3D (pedir_opcion, en documentos/<promotora>/<promoción>/opciones/). Queda «En
 -- preparación» y los compradores la ven en la versión siguiente. El documento
--- nunca llega al comprador.
+-- nunca llega al comprador. Mientras está en preparación, la promotora ya puede
+-- meterla (y su categoría nueva) en un pack, ponerle fechas, cambiar su nombre,
+-- su precio y su descripción, o retirarla; los compradores no la ven hasta que
+-- MUNE la prepara, y entonces aparece ya con su pack y sus fechas. Cada
+-- categoría nueva recibe su identificador al pedirla (opciones_pedidas.categoria),
+-- que MUNE usa al prepararla para que encaje con los packs.
 
 -- ═══ 1. Ajustes del catálogo y opciones pedidas ═════════════════════════════
 
@@ -134,6 +139,64 @@ as $$
 $$;
 revoke all on function public._sin(jsonb, text) from public, anon, authenticated;
 
+-- Identificador de una categoría nueva desde su nombre («Iluminación» → «iluminacion»)
+create or replace function public._id_de(p_nombre text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+	select coalesce(nullif(left(btrim(regexp_replace(translate(lower(coalesce(p_nombre, '')),
+		'áàäâãéèëêíìïîóòöôõúùüûñç', 'aaaaaeeeeiiiiooooouuuunc'), '[^a-z0-9]+', '-', 'g'), '-'), 50), ''), 'categoria');
+$$;
+revoke all on function public._id_de(text) from public, anon, authenticated;
+
+-- las opciones pedidas antes de tener identificador de categoría
+update public.opciones_pedidas set categoria = public._id_de(categoria_nueva)
+where categoria is null and categoria_nueva is not null;
+
+-- Datos de una promoción sin versión preparada todavía: catálogo vacío
+create or replace function public._datos_o_vacio(p_promocion text)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+	select coalesce(public._ultimos_datos(p_promocion), jsonb_build_object('catalogo', jsonb_build_object('categorias', '[]'::jsonb),
+		'packs', '[]'::jsonb, 'tipologias', '[]'::jsonb, 'viviendas', '[]'::jsonb));
+$$;
+revoke all on function public._datos_o_vacio(text) from public, anon, authenticated;
+
+-- Los packs tal como los guardó la promotora, también con las categorías que
+-- aún están en preparación (los compradores solo ven las del catálogo).
+create or replace function public._packs_de(p_promocion text, d jsonb)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+	select coalesce((select pp.packs from public.packs_promocion pp where pp.promocion_id = p_promocion), d->'packs', '[]'::jsonb);
+$$;
+revoke all on function public._packs_de(text, jsonb) from public, anon, authenticated;
+
+-- Categorías nuevas en preparación: { id: nombre }
+create or replace function public._categorias_en_preparacion(p_promocion text)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+	select coalesce(jsonb_object_agg(x.categoria, coalesce(cc.nombre, x.nombre)), '{}'::jsonb)
+	from (select op.categoria, min(op.categoria_nueva) as nombre from public.opciones_pedidas op
+		where op.promocion_id = p_promocion and op.estado = 'pendiente' and op.categoria_nueva is not null and op.categoria is not null
+		group by op.categoria) x
+	left join public.catalogo_categorias cc on cc.promocion_id = p_promocion and cc.categoria = x.categoria;
+$$;
+revoke all on function public._categorias_en_preparacion(text) from public, anon, authenticated;
+
 -- Estado de un pack hoy: proximamente | disponible | finalizado
 create or replace function public._estado_pack(p jsonb)
 returns text
@@ -194,10 +257,16 @@ begin
 	if d is null then
 		return d;
 	end if;
-	-- packs de la promotora
+	-- packs de la promotora, solo con las categorías del catálogo (las que están
+	-- en preparación esperan a que MUNE las prepare; un pack sin ninguna no se ve)
 	select pp.packs into lista from public.packs_promocion pp where pp.promocion_id = p_promocion;
 	if lista is not null then
-		r := jsonb_set(r, '{packs}', lista);
+		r := jsonb_set(r, '{packs}', coalesce((select jsonb_agg(p || jsonb_build_object('categorias', (p->'categorias') - (
+				select coalesce(array_agg(z), '{}') from jsonb_array_elements_text(p->'categorias') z
+				where not exists (select 1 from jsonb_array_elements(coalesce(d->'catalogo'->'categorias', '[]'::jsonb)) k where k->>'id' = z))))
+			from jsonb_array_elements(lista) p
+			where exists (select 1 from jsonb_array_elements_text(p->'categorias') z
+				join jsonb_array_elements(coalesce(d->'catalogo'->'categorias', '[]'::jsonb)) k on k->>'id' = z)), '[]'::jsonb));
 	end if;
 	if not exists (select 1 from public.catalogo_ajustes ca where ca.promocion_id = p_promocion)
 		and not exists (select 1 from public.catalogo_categorias cc where cc.promocion_id = p_promocion) then
@@ -280,13 +349,15 @@ begin
 		raise exception 'No tienes acceso al catálogo de esta promoción';
 	end if;
 	-- sin versión preparada todavía: catálogo vacío (la promotora ya puede añadir sus primeras opciones)
-	d := coalesce(public._ultimos_datos(p_promocion), jsonb_build_object('catalogo', jsonb_build_object('categorias', '[]'::jsonb),
-		'packs', '[]'::jsonb, 'tipologias', '[]'::jsonb, 'viviendas', '[]'::jsonb));
+	d := public._datos_o_vacio(p_promocion);
 	e := public._aplicar_catalogo(p_promocion, d);
 	return jsonb_build_object(
 		'hoy', public._hoy_espana(),
 		'catalogo', e->'catalogo',
-		'packs', coalesce(e->'packs', '[]'::jsonb),
+		-- los packs con todas sus categorías, también las que están en preparación
+		'packs', public._packs_de(p_promocion, d),
+		-- categorías nuevas en preparación: { id: nombre }
+		'en_preparacion', public._categorias_en_preparacion(p_promocion),
 		-- en qué tipologías se ofrece cada opción ahora, y cuál es la incluida de cada tipología
 		'tipologias', coalesce(e->'tipologias', '[]'::jsonb),
 		'tipologias_version', coalesce(d->'tipologias', '[]'::jsonb),
@@ -321,6 +392,8 @@ revoke all on function public.es_admin_usuario(uuid) from public, anon, authenti
 -- Guarda los cambios de la sección «Catálogo y precios», todos o ninguno.
 -- p_cambios: [{ categoria, opcion, nombre?, detalle?, precio?, ofrecida?, tipologias? }]
 -- o, para cambiar el nombre de una categoría: [{ categoria, nombre_categoria }]
+-- o, para una opción en preparación: [{ pedida, nombre?, detalle?, precio? }] y,
+-- para retirarla, [{ pedida, quitar: true }]
 create or replace function public.guardar_catalogo(p_promocion text, p_cambios jsonb)
 returns int
 language plpgsql
@@ -338,6 +411,8 @@ declare
 	n int := 0;
 	v_tipologias text[];
 	v_precio numeric;
+	pe public.opciones_pedidas%rowtype;
+	nuevas jsonb := public._categorias_en_preparacion(p_promocion);
 begin
 	if not (public.es_admin() or public.equipo_puede(p_promocion, 'personalizacion')) then
 		raise exception 'No tienes acceso al catálogo de esta promoción';
@@ -345,24 +420,67 @@ begin
 	if jsonb_typeof(p_cambios) is distinct from 'array' or jsonb_array_length(p_cambios) > 500 then
 		raise exception 'Cambios no válidos';
 	end if;
-	d := public._ultimos_datos(p_promocion);
-	if d is null then
-		raise exception 'Esta promoción todavía no tiene catálogo';
-	end if;
+	d := public._datos_o_vacio(p_promocion);
 	e := public._aplicar_catalogo(p_promocion, d);
 
 	for x in select y from jsonb_array_elements(p_cambios) y loop
 		v_tipologias := null;
+		-- una opción en preparación: los compradores aún no la ven, así que todo se puede cambiar
+		if x ? 'pedida' then
+			select * into pe from public.opciones_pedidas op
+			where op.id = (x->>'pedida')::bigint and op.promocion_id = p_promocion and op.estado = 'pendiente';
+			if pe.id is null then
+				raise exception 'Esa opción ya no está en preparación';
+			end if;
+			if (x->>'quitar')::boolean then
+				update public.opciones_pedidas set estado = 'descartada', atendido_en = now(),
+					nota = case when public.es_admin() then 'Retirada por MUNE' else 'Retirada por la promotora' end
+				where id = pe.id;
+				-- su categoría nueva, si ya no le queda nada, sale de los packs
+				if pe.categoria_nueva is not null and not exists (select 1 from public.opciones_pedidas op
+					where op.promocion_id = p_promocion and op.categoria = pe.categoria and op.estado in ('pendiente', 'hecha'))
+					and not exists (select 1 from jsonb_array_elements(e->'catalogo'->'categorias') c where c->>'id' = pe.categoria) then
+					update public.packs_promocion pp set packs = coalesce((select jsonb_agg(p || jsonb_build_object('categorias', public._sin(p->'categorias', pe.categoria)))
+						from jsonb_array_elements(pp.packs) p
+						where not ((p->>'individual')::boolean and p->'categorias' ? pe.categoria)), '[]'::jsonb)
+					where pp.promocion_id = p_promocion;
+				end if;
+			else
+				if x ? 'nombre' and char_length(btrim(coalesce(x->>'nombre', ''))) not between 1 and 80 then
+					raise exception 'Escribe el nombre de la opción (como mucho, 80 letras)';
+				end if;
+				if x ? 'detalle' and char_length(coalesce(x->>'detalle', '')) > 1000 then
+					raise exception 'La descripción de «%» es demasiado larga', pe.nombre;
+				end if;
+				if x ? 'precio' then
+					v_precio := round((x->>'precio')::numeric, 2);
+					if v_precio is null or v_precio < 0 or v_precio > 10000000 then
+						raise exception 'El precio de «%» no es válido', pe.nombre;
+					end if;
+				end if;
+				update public.opciones_pedidas set
+					nombre = case when x ? 'nombre' then btrim(x->>'nombre') else nombre end,
+					descripcion = case when x ? 'detalle' then nullif(btrim(coalesce(x->>'detalle', '')), '') else descripcion end,
+					precio = case when x ? 'precio' then v_precio else precio end
+				where id = pe.id;
+			end if;
+			n := n + 1;
+			continue;
+		end if;
 		select c into k from jsonb_array_elements(e->'catalogo'->'categorias') c where c->>'id' = x->>'categoria' limit 1;
-		-- nombre de la categoría
+		-- nombre de la categoría (también de una nueva en preparación)
 		if x ? 'nombre_categoria' and x->>'opcion' is null then
-			if k is null then raise exception 'Esa categoría no está en el catálogo'; end if;
+			if k is null and not nuevas ? (x->>'categoria') then raise exception 'Esa categoría no está en el catálogo'; end if;
 			if char_length(btrim(coalesce(x->>'nombre_categoria', ''))) not between 1 and 60 then
 				raise exception 'Escribe el nombre de la categoría (como mucho, 60 letras)';
 			end if;
 			insert into public.catalogo_categorias as cc (promocion_id, categoria, nombre, actualizado_por, actualizado_en)
-			values (p_promocion, k->>'id', btrim(x->>'nombre_categoria'), auth.uid(), now())
+			values (p_promocion, x->>'categoria', btrim(x->>'nombre_categoria'), auth.uid(), now())
 			on conflict (promocion_id, categoria) do update set nombre = excluded.nombre, actualizado_por = excluded.actualizado_por, actualizado_en = now();
+			if k is null then
+				update public.opciones_pedidas set categoria_nueva = btrim(x->>'nombre_categoria')
+				where promocion_id = p_promocion and categoria = x->>'categoria' and estado = 'pendiente' and categoria_nueva is not null;
+			end if;
 			n := n + 1;
 			continue;
 		end if;
@@ -406,7 +524,8 @@ begin
 	end loop;
 	insert into public.registro (user_id, accion, detalle)
 	values (auth.uid(), 'cambia el catálogo', jsonb_build_object('promocion', p_promocion, 'cambios', n,
-		'opciones', (select jsonb_agg(y->>'categoria' || ':' || coalesce(y->>'opcion', 'nombre')) from jsonb_array_elements(p_cambios) y)));
+		'opciones', (select jsonb_agg(case when y ? 'pedida' then 'en preparación:' || (y->>'pedida') || case when (y->>'quitar')::boolean then ':retirada' else '' end
+			else y->>'categoria' || ':' || coalesce(y->>'opcion', 'nombre') end) from jsonb_array_elements(p_cambios) y)));
 	return n;
 end $$;
 revoke all on function public.guardar_catalogo(text, jsonb) from public, anon;
@@ -428,6 +547,11 @@ declare
 	v_id bigint;
 	a jsonb;
 	v_archivos jsonb := '[]'::jsonb;
+	v_categoria text := nullif(btrim(p_categoria), '');
+	v_nueva text := nullif(btrim(p_categoria_nueva), '');
+	cats text[];
+	nuevas jsonb := public._categorias_en_preparacion(p_promocion);
+	i int := 1;
 begin
 	if not (public.es_admin() or public.equipo_puede(p_promocion, 'personalizacion')) then
 		raise exception 'No tienes acceso al catálogo de esta promoción';
@@ -435,8 +559,34 @@ begin
 	if char_length(btrim(coalesce(p_nombre, ''))) = 0 then
 		raise exception 'Escribe el nombre de la opción';
 	end if;
-	if nullif(btrim(p_categoria), '') is null and nullif(btrim(p_categoria_nueva), '') is null then
+	if v_categoria is null and v_nueva is null then
 		raise exception 'Elige la categoría o escribe el nombre de la nueva';
+	end if;
+	if char_length(v_nueva) > 60 then
+		raise exception 'El nombre de la categoría es demasiado largo (como mucho, 60 letras)';
+	end if;
+	select coalesce(array_agg(k->>'id'), '{}') into cats
+	from jsonb_array_elements(public._datos_o_vacio(p_promocion)->'catalogo'->'categorias') k;
+	if v_categoria is not null then
+		-- una del catálogo, o una nueva que ya está en preparación
+		if nuevas ? v_categoria then
+			v_nueva := nuevas->>v_categoria;
+		elsif v_categoria = any (cats) then
+			v_nueva := null;
+		else
+			raise exception 'Esa categoría no está en el catálogo';
+		end if;
+	else
+		-- una categoría nueva: con el mismo nombre que otra en preparación, es esa
+		select key into v_categoria from jsonb_each_text(nuevas) where lower(value) = lower(v_nueva) limit 1;
+		if v_categoria is null then
+			v_categoria := public._id_de(v_nueva);
+			while v_categoria = any (cats) or exists (select 1 from public.opciones_pedidas op
+				where op.promocion_id = p_promocion and op.categoria = v_categoria) loop
+				i := i + 1;
+				v_categoria := public._id_de(v_nueva) || '-' || i;
+			end loop;
+		end if;
 	end if;
 	if p_precio is not null and (p_precio < 0 or p_precio > 10000000) then
 		raise exception 'El precio no es válido';
@@ -453,7 +603,7 @@ begin
 		v_archivos := v_archivos || jsonb_build_array(jsonb_build_object('ruta', a->>'ruta', 'nombre', left(coalesce(a->>'nombre', ''), 120)));
 	end loop;
 	insert into public.opciones_pedidas (promocion_id, categoria, categoria_nueva, nombre, descripcion, precio, archivos)
-	values (p_promocion, nullif(btrim(p_categoria), ''), case when nullif(btrim(p_categoria), '') is null then btrim(p_categoria_nueva) end,
+	values (p_promocion, v_categoria, v_nueva,
 		btrim(p_nombre), nullif(btrim(p_descripcion), ''), p_precio, v_archivos)
 	returning id into v_id;
 	insert into public.registro (user_id, accion, detalle)
@@ -467,7 +617,7 @@ grant execute on function public.pedir_opcion(text, text, text, text, text, nume
 -- Guarda las fechas de elección de la promoción, todas de una vez: los packs y
 -- las categorías por separado (packs «individual» de una sola categoría).
 -- p_packs: [{ id, titulo, descripcion?, desde, hasta, categorias: [...], individual? }]
--- Todas las categorías del catálogo tienen que tener sus fechas.
+-- Todas las categorías del catálogo (y las nuevas en preparación) tienen que tener sus fechas.
 create or replace function public.guardar_packs(p_promocion text, p_packs jsonb)
 returns int
 language plpgsql
@@ -481,6 +631,11 @@ declare
 	x jsonb;
 	viejo jsonb;
 	cats text[];
+	-- categorías nuevas en preparación: { id: nombre }
+	nuevas jsonb := public._categorias_en_preparacion(p_promocion);
+	-- las de opciones ya preparadas, por si aún no ha llegado su versión
+	hechas text[];
+	packs jsonb;
 	usadas text[] := '{}';
 	ids text[] := '{}';
 	c text;
@@ -494,12 +649,12 @@ begin
 	if jsonb_typeof(p_packs) is distinct from 'array' or jsonb_array_length(p_packs) > 30 then
 		raise exception 'Packs no válidos';
 	end if;
-	d := public._ultimos_datos(p_promocion);
-	if d is null then
-		raise exception 'Esta promoción todavía no tiene catálogo';
-	end if;
+	d := public._datos_o_vacio(p_promocion);
 	e := public._aplicar_catalogo(p_promocion, d);
-	select array_agg(k->>'id') into cats from jsonb_array_elements(e->'catalogo'->'categorias') k;
+	packs := public._packs_de(p_promocion, d);
+	select coalesce(array_agg(k->>'id'), '{}') into cats from jsonb_array_elements(e->'catalogo'->'categorias') k;
+	select coalesce(array_agg(distinct op.categoria), '{}') into hechas from public.opciones_pedidas op
+	where op.promocion_id = p_promocion and op.estado = 'hecha' and op.categoria_nueva is not null;
 
 	for x in select y from jsonb_array_elements(p_packs) y loop
 		if coalesce(x->>'id', '') !~ '^[a-z0-9-]{1,40}$' or x->>'id' = 'personalizacion' or x->>'id' = any (ids) then
@@ -519,11 +674,11 @@ begin
 			raise exception 'El pack «%» tiene que cerrar después de abrir', x->>'titulo';
 		end if;
 		for c in select jsonb_array_elements_text(coalesce(x->'categorias', '[]'::jsonb)) loop
-			if not c = any (cats) then raise exception 'La categoría % no está en el catálogo', c; end if;
+			if not (c = any (cats) or nuevas ? c or c = any (hechas)) then raise exception 'La categoría % no está en el catálogo', c; end if;
 			if c = any (usadas) then raise exception 'Una categoría solo puede estar en un pack'; end if;
 			usadas := usadas || c;
 		end loop;
-		select y into viejo from jsonb_array_elements(coalesce(e->'packs', '[]'::jsonb)) y where y->>'id' = x->>'id' limit 1;
+		select y into viejo from jsonb_array_elements(packs) y where y->>'id' = x->>'id' limit 1;
 		if viejo is not null and public._estado_pack(viejo) <> 'proximamente' then
 			-- abierto o terminado: misma apertura y mismas categorías
 			if v_desde <> (viejo->>'desde')::date
@@ -539,8 +694,8 @@ begin
 			end if;
 		elsif viejo is null and jsonb_array_length(coalesce(x->'categorias', '[]'::jsonb)) > 0 and not exists (
 			select 1 from jsonb_array_elements_text(x->'categorias') z
-			where not public._categoria_lanzada(p_promocion, e, z)
-				or exists (select 1 from jsonb_array_elements(coalesce(e->'packs', '[]'::jsonb)) y where y->'categorias' ? z)) then
+			where not (z = any (cats) and public._categoria_lanzada(p_promocion, e, z))
+				or exists (select 1 from jsonb_array_elements(packs) y where y->'categorias' ? z)) then
 			-- categorías que ya se podían elegir siempre (sin pack, con la promoción publicada):
 			-- se les pone fecha de cierre y siguen abiertas
 			if v_desde > public._hoy_espana() then
@@ -555,7 +710,7 @@ begin
 			end if;
 			-- una categoría ya lanzada no pasa a un pack sin abrir
 			for c in select jsonb_array_elements_text(coalesce(x->'categorias', '[]'::jsonb)) loop
-				if public._categoria_lanzada(p_promocion, e, c) then
+				if c = any (cats) and public._categoria_lanzada(p_promocion, e, c) then
 					raise exception 'La categoría «%» ya está abierta a los compradores: no puede pasar a un pack sin abrir',
 						(select k->>'nombre' from jsonb_array_elements(e->'catalogo'->'categorias') k where k->>'id' = c);
 				end if;
@@ -570,14 +725,14 @@ begin
 			'individual', case when (x->>'individual')::boolean then true end)));
 	end loop;
 	-- todas las categorías con sus fechas (por separado o en un pack)
-	for c in select unnest(cats) loop
+	for c in select unnest(cats) union select jsonb_object_keys(nuevas) loop
 		if not c = any (usadas) then
 			raise exception 'Falta la fecha de «%»: elígela por separado o métela en un pack',
-				(select k->>'nombre' from jsonb_array_elements(e->'catalogo'->'categorias') k where k->>'id' = c);
+				coalesce((select k->>'nombre' from jsonb_array_elements(e->'catalogo'->'categorias') k where k->>'id' = c), nuevas->>c);
 		end if;
 	end loop;
 	-- ningún pack abierto o terminado desaparece
-	for viejo in select y from jsonb_array_elements(coalesce(e->'packs', '[]'::jsonb)) y loop
+	for viejo in select y from jsonb_array_elements(packs) y loop
 		if public._estado_pack(viejo) <> 'proximamente' and not (viejo->>'id') = any (ids) then
 			raise exception 'El pack «%» ya se ha abierto: no se puede quitar', viejo->>'titulo';
 		end if;
@@ -629,9 +784,16 @@ begin
 		raise exception 'Solo MUNE ve las opciones pedidas de todas las promociones';
 	end if;
 	return coalesce((select jsonb_agg(jsonb_build_object('id', op.id, 'promocion_id', op.promocion_id, 'promocion', pr.nombre,
-		'nombre', op.nombre, 'categoria', coalesce(op.categoria, op.categoria_nueva), 'precio', op.precio, 'descripcion', op.descripcion,
-		'archivos', op.archivos, 'pedido_en', op.pedido_en) order by op.pedido_en)
+		-- categoria: el identificador que hay que usar al prepararla (también si es nueva)
+		'nombre', op.nombre, 'categoria', op.categoria, 'categoria_nombre', coalesce(cc.nombre, op.categoria_nueva, op.categoria),
+		'categoria_nueva', op.categoria_nueva is not null, 'precio', op.precio, 'descripcion', op.descripcion,
+		'archivos', op.archivos, 'pedido_en', op.pedido_en,
+		-- con qué fechas se elegirá: su pack (o «por separado»)
+		'pack', (select jsonb_build_object('id', p->>'id', 'titulo', p->>'titulo', 'desde', p->>'desde', 'hasta', p->>'hasta')
+			from jsonb_array_elements(coalesce(pp.packs, '[]'::jsonb)) p where p->'categorias' ? op.categoria limit 1)) order by op.pedido_en)
 		from public.opciones_pedidas op join public.promociones pr on pr.id = op.promocion_id
+		left join public.catalogo_categorias cc on cc.promocion_id = op.promocion_id and cc.categoria = op.categoria
+		left join public.packs_promocion pp on pp.promocion_id = op.promocion_id
 		where op.estado = 'pendiente'), '[]'::jsonb);
 end $$;
 revoke all on function public.opciones_pedidas_pendientes() from public, anon;
