@@ -71,7 +71,7 @@ create table if not exists public.marcas (
 	-- vacía: la general de la promotora; con promoción: la propia de esa promoción
 	promocion_id     text references public.promociones (id) on delete cascade,
 	nombre           text not null check (char_length(nombre) between 1 and 80),
-	logo_svg         text check (public.svg_seguro(logo_svg)),
+	logo_svg         text,
 	color_principal  text not null check (color_principal ~ '^#[0-9a-fA-F]{6}$'),
 	color_secundario text not null check (color_secundario ~ '^#[0-9a-fA-F]{6}$'),
 	tipografia       text not null check (tipografia = any (public.tipografias_marca())),
@@ -83,6 +83,9 @@ create table if not exists public.marcas (
 	actualizado_en   timestamptz not null default now()
 );
 create unique index if not exists marcas_una_por_sitio on public.marcas (promotora_id, coalesce(promocion_id, ''));
+-- sin logo vale (se escribe el nombre); con logo, solo un SVG sin código
+alter table public.marcas drop constraint if exists marcas_logo_svg_check;
+alter table public.marcas add constraint marcas_logo_svg_check check (logo_svg is null or public.svg_seguro(logo_svg));
 alter table public.marcas enable row level security;
 revoke all on public.marcas from anon, authenticated;
 
