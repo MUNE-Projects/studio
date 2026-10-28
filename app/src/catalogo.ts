@@ -78,6 +78,8 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 	});
 	const ultimo = datos.cambios[0];
 	const todasCategorias = datos.catalogo.categorias;
+	/** Categorías nuevas que ya se han usado en opciones aún en preparación: se pueden volver a elegir. */
+	const nuevasPendientes = [...new Set(datos.pedidas.filter((x) => x.estado === 'pendiente' && !x.categoria && x.categoria_nueva).map((x) => x.categoria_nueva!))];
 
 	const cabeceraCategoria = (c: Categoria) => {
 		const pk = packDe(c.id);
@@ -128,7 +130,7 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 		<h3 class="separado">Opciones y precios</h3>
 		<form data-catalogo-form>
 			${categorias.map((c) => `
-				<h3>${esc(c.nombre)}</h3>
+				<label class="nombre-categoria" data-nombre-categoria="${esc(c.id)}">Categoría<input name="nombre_categoria" value="${esc(c.nombre)}" maxlength="60" required aria-label="Nombre de la categoría"></label>
 				${cabeceraCategoria(c)}
 				<div class="tabla catalogo"><table>
 					<thead><tr><th>Opción</th><th>Descripción</th><th>Precio (€)</th><th>Se ofrece</th>${tipologias.length > 1 ? '<th>Tipologías</th>' : ''}</tr></thead>
@@ -152,7 +154,7 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 			${d.modo === 'administradora' && x.estado === 'pendiente' ? `<br><button class="enlace" type="button" data-atender="hecha">Marcar como añadida…</button> · <button class="enlace" type="button" data-atender="descartada">Descartar…</button>` : ''}
 		</li>`).join('')}</ul>` : ''}
 		<form class="pedir-opcion" data-pedir>
-			<label>Categoría<select name="categoria" required><option value="" disabled selected>Elige…</option>${todasCategorias.map((c) => `<option value="${esc(c.id)}">${esc(c.nombre)}</option>`).join('')}<option value="nueva">Una categoría nueva…</option></select></label>
+			<label>Categoría<select name="categoria" required><option value="" disabled selected>Elige…</option>${todasCategorias.map((c) => `<option value="${esc(c.id)}">${esc(c.nombre)}</option>`).join('')}${nuevasPendientes.map((n) => `<option value="${esc(`nueva:${n}`)}">${esc(n)} (nueva, en preparación)</option>`).join('')}<option value="nueva">Una categoría nueva…</option></select></label>
 			<label data-categoria-nueva hidden>Nombre de la categoría nueva<input name="categoria_nueva" maxlength="60" placeholder="Por ejemplo: Climatización"></label>
 			<label>Opción<input name="nombre" maxlength="80" required placeholder="Por ejemplo: Roble ahumado"></label>
 			<label>Precio (€)<input name="precio" type="number" min="0" max="10000000" step="0.01" required></label>
@@ -321,7 +323,15 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 	const confirmar = form.querySelector<HTMLElement>('[data-confirmar]')!;
 	const leer = () => {
 		const cambios: Record<string, unknown>[] = [];
-		const resumen = { precios: 0, nombres: 0, quitadas: 0, vueltas: 0, tipologias: 0 };
+		const resumen = { precios: 0, nombres: 0, quitadas: 0, vueltas: 0, tipologias: 0, categorias: 0 };
+		form.querySelectorAll<HTMLElement>('[data-nombre-categoria]').forEach((l) => {
+			const c = categorias.find((x) => x.id === l.dataset.nombreCategoria)!;
+			const nuevo = l.querySelector('input')!.value.trim();
+			if (nuevo && nuevo !== c.nombre) {
+				cambios.push({ categoria: c.id, nombre_categoria: nuevo });
+				resumen.categorias++;
+			}
+		});
 		form.querySelectorAll<HTMLTableRowElement>('tr[data-opcion]').forEach((tr) => {
 			const [categoria, opcion] = tr.dataset.opcion!.split('|');
 			const v = original.get(tr.dataset.opcion!)!;
@@ -351,6 +361,7 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 		const { cambios, resumen } = leer();
 		if (!cambios.length) return;
 		const partes = [
+			resumen.categorias && `cambiar el nombre de ${resumen.categorias} categoría${resumen.categorias === 1 ? '' : 's'}`,
 			resumen.precios && `cambiar ${resumen.precios} precio${resumen.precios === 1 ? '' : 's'}`,
 			resumen.nombres && `cambiar ${resumen.nombres} nombre${resumen.nombres === 1 ? '' : 's'} o descripci${resumen.nombres === 1 ? 'ón' : 'ones'}`,
 			resumen.quitadas && `dejar de ofrecer ${resumen.quitadas} opci${resumen.quitadas === 1 ? 'ón' : 'ones'}`,
@@ -406,8 +417,10 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 			}
 		}
 		const { error: err } = await d.sb.rpc('pedir_opcion', {
-			p_promocion: p.id, p_categoria: f.get('categoria') === 'nueva' ? '' : String(f.get('categoria') ?? ''),
-			p_categoria_nueva: f.get('categoria') === 'nueva' ? String(f.get('categoria_nueva') ?? '') : '', p_nombre: String(f.get('nombre') ?? ''),
+			p_promocion: p.id, p_categoria: String(f.get('categoria') ?? '').startsWith('nueva') ? '' : String(f.get('categoria') ?? ''),
+			p_categoria_nueva: f.get('categoria') === 'nueva' ? String(f.get('categoria_nueva') ?? '')
+				: String(f.get('categoria') ?? '').startsWith('nueva:') ? String(f.get('categoria')).slice(6) : '',
+			p_nombre: String(f.get('nombre') ?? ''),
 			p_descripcion: String(f.get('descripcion') ?? ''), p_precio: precio ? Number(precio) : null, p_archivos: archivos,
 		});
 		if (err) {
