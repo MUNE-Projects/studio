@@ -23,9 +23,9 @@ interface Dependencias {
 interface Promo { id: string; nombre: string }
 interface Opcion { id: string; nombre: string; detalle?: string; precio: number; ofrecida?: boolean }
 interface Categoria { id: string; nombre: string; opciones: Opcion[] }
-interface Pack { id: string; titulo: string; descripcion?: string; desde: string; hasta: string; categorias: string[]; estado?: string }
+interface Pack { id: string; titulo: string; descripcion?: string; desde: string; hasta: string; categorias: string[]; estado?: string; individual?: boolean }
 interface Tipologia { id: string; opciones: Record<string, string[]> }
-interface Pedida { id: number; categoria: string | null; nombre: string; descripcion: string | null; precio: number | null; pedido_en: string; estado: 'pendiente' | 'hecha' | 'descartada'; nota: string | null; archivos: { ruta: string; nombre: string }[] }
+interface Pedida { id: number; categoria: string | null; categoria_nueva: string | null; nombre: string; descripcion: string | null; precio: number | null; pedido_en: string; estado: 'pendiente' | 'hecha' | 'descartada'; nota: string | null; archivos: { ruta: string; nombre: string }[] }
 interface Datos {
 	hoy: string;
 	catalogo: { categorias: Categoria[] } | null;
@@ -45,7 +45,7 @@ const euros = (n: number) => {
 	return `${entero.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}${dec === '00' ? '' : `,${dec}`} €`;
 };
 const nombreTipologia = (id: string) => `Tipología ${id.toUpperCase()}`;
-const ESTADO_PEDIDA = { pendiente: 'Pendiente', hecha: 'Añadida', descartada: 'Descartada' } as const;
+const ESTADO_PEDIDA = { pendiente: 'En preparación', hecha: 'Añadida', descartada: 'Descartada' } as const;
 const MAX_ARCHIVO = 15 * 1024 * 1024;
 /** Estado de un pack hoy (como en Supabase). */
 function estadoPack(p: Pack, hoy: string): 'proximamente' | 'disponible' | 'finalizado' {
@@ -110,13 +110,17 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 		${ultimo ? `<p class="promo-versiones">Último cambio: ${esc(d.fecha(ultimo.actualizado_en))}, por ${esc(ultimo.por)}.</p>` : ''}
 		${aviso ? `<p class="aviso" role="status">${esc(aviso)}</p>` : ''}
 
-		<h3>Packs y fechas</h3>
-		<p class="ayuda">Cada pack es un periodo en el que los compradores eligen las categorías que lleva. Puedes decidir qué categorías van en cada pack, sus títulos y sus fechas, y crear packs nuevos. Cuando un pack se abre, ya no cambian su apertura ni sus categorías; puedes cambiar su cierre mientras esté abierto. Las categorías que no estén en ningún pack se pueden elegir siempre.</p>
-		${datos.packs_actualizado ? `<p class="promo-versiones">Packs cambiados el ${esc(d.fecha(datos.packs_actualizado.en))}, por ${esc(datos.packs_actualizado.por)}.</p>` : ''}
+		<h3>Fechas de elección</h3>
+		<p class="ayuda">Cada categoría se elige <strong>por separado</strong>, con su propia apertura y cierre, o <strong>dentro de un pack</strong>: una ficha con título y fechas que agrupa las categorías que quieras (un solo pack con todas es «todo junto»). Cuando se abre una categoría o un pack, ya no cambian su apertura ni lo que agrupa; mientras esté abierto, puedes cambiar su cierre.</p>
+		${datos.packs_actualizado ? `<p class="promo-versiones">Fechas cambiadas el ${esc(d.fecha(datos.packs_actualizado.en))}, por ${esc(datos.packs_actualizado.por)}.</p>` : ''}
 		<form data-packs-form>
+			<div class="tabla catalogo"><table>
+				<thead><tr><th>Categoría</th><th>Se elige</th><th>Se abre</th><th>Se cierra</th></tr></thead>
+				<tbody data-filas-fechas></tbody>
+			</table></div>
+			<h4>Packs</h4>
 			<div class="lista-packs" data-lista-packs></div>
-			<p class="promo-lugar" data-sin-pack></p>
-			<div class="acciones"><button class="boton secundario" type="button" data-nuevo-pack>Añadir un pack</button><button class="boton" type="submit" disabled>Guardar los packs</button></div>
+			<div class="acciones"><button class="boton secundario" type="button" data-nuevo-pack>Crear un pack</button><button class="boton" type="submit" disabled>Guardar las fechas</button></div>
 			<div class="confirmar" data-confirmar-packs hidden></div>
 			<p class="error" role="alert"></p>
 		</form>
@@ -135,10 +139,10 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 			<p class="error" role="alert"></p>
 		</form>
 
-		<h3 class="separado">Opciones nuevas</h3>
-		<p class="ayuda">Una opción con un aspecto nuevo (otro suelo, otro acabado) hay que crearla en el 3D. Pídela aquí, con una foto o su ficha si la tienes: el equipo de MUNE la añade en la próxima versión. Aquí verás cuándo está añadida.</p>
+		<h3 class="separado">Añadir personalizaciones y mejoras</h3>
+		<p class="ayuda">Añade aquí una opción nueva, en una categoría que ya existe o en una nueva (por ejemplo, «Climatización»), con su precio y su descripción. Si tienes una ficha o fotos, adjúntalas: el equipo de MUNE las usa para preparar su aspecto en la Experiencia 3D (los compradores nunca las ven). Mientras tanto queda <strong>En preparación</strong>; los compradores la verán en la próxima versión.</p>
 		${datos.pedidas.length ? `<ul class="lista-pedidas">${datos.pedidas.map((x) => `<li data-pedida="${x.id}">
-			<strong>${esc(x.nombre)}</strong>${x.categoria ? ` · ${esc(categorias.find((c) => c.id === x.categoria)?.nombre ?? x.categoria)}` : ''}${x.precio != null ? ` · ${esc(euros(x.precio))}` : ''}
+			<strong>${esc(x.nombre)}</strong> · ${esc(x.categoria ? todasCategorias.find((c) => c.id === x.categoria)?.nombre ?? x.categoria : `${x.categoria_nueva ?? 'Otra'} (categoría nueva)`)}${x.precio != null ? ` · ${esc(euros(x.precio))}` : ''}
 			· <span class="estado ${x.estado === 'hecha' ? 'al-dia' : x.estado === 'pendiente' ? 'pendiente' : ''}">${ESTADO_PEDIDA[x.estado]}</span>
 			<span class="promo-lugar">pedida el ${esc(d.fecha(x.pedido_en))}</span>
 			${x.descripcion ? `<br><span class="promo-lugar">${esc(x.descripcion)}</span>` : ''}
@@ -147,26 +151,44 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 			${d.modo === 'administradora' && x.estado === 'pendiente' ? `<br><button class="enlace" type="button" data-atender="hecha">Marcar como añadida…</button> · <button class="enlace" type="button" data-atender="descartada">Descartar…</button>` : ''}
 		</li>`).join('')}</ul>` : ''}
 		<form class="pedir-opcion" data-pedir>
-			<label>Categoría<select name="categoria" required><option value="" disabled selected>Elige…</option>${categorias.map((c) => `<option value="${esc(c.id)}">${esc(c.nombre)}</option>`).join('')}<option value="otra">Otra</option></select></label>
-			<label>Nombre<input name="nombre" maxlength="80" required placeholder="Por ejemplo: Roble ahumado"></label>
-			<label>Precio orientativo (€)<input name="precio" type="number" min="0" step="0.01" placeholder="Opcional"></label>
+			<label>Categoría<select name="categoria" required><option value="" disabled selected>Elige…</option>${todasCategorias.map((c) => `<option value="${esc(c.id)}">${esc(c.nombre)}</option>`).join('')}<option value="nueva">Una categoría nueva…</option></select></label>
+			<label data-categoria-nueva hidden>Nombre de la categoría nueva<input name="categoria_nueva" maxlength="60" placeholder="Por ejemplo: Climatización"></label>
+			<label>Opción<input name="nombre" maxlength="80" required placeholder="Por ejemplo: Roble ahumado"></label>
+			<label>Precio (€)<input name="precio" type="number" min="0" max="10000000" step="0.01" required></label>
 			<label>Descripción<input name="descripcion" maxlength="1000" placeholder="Marca, modelo, dónde va…"></label>
-			<label class="archivos">Foto o ficha (opcional, hasta 5; imágenes o PDF de 15 MB como mucho)<input name="archivos" type="file" accept="image/*,application/pdf" multiple></label>
-			<div class="acciones"><button class="boton secundario" type="submit">Pedir la opción a MUNE</button></div>
+			<label class="archivos">Documento con la descripción detallada o fotos (opcional; hasta 5 archivos PDF, Word o imágenes, de 15 MB como mucho)<input name="archivos" type="file" accept="image/*,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple></label>
+			<div class="acciones"><button class="boton secundario" type="submit">Añadir la opción</button></div>
 			<p class="error" role="alert"></p>
 		</form>`;
 
-	// ── packs: una tarjeta por pack; cada categoría solo puede estar en uno
+	// ── fechas de elección: cada categoría por separado (pack «individual» de una
+	// sola categoría) o en un pack (ficha con título y fechas)
 	const formPacks = caja.querySelector<HTMLFormElement>('[data-packs-form]')!;
+	const filasFechas = formPacks.querySelector<HTMLElement>('[data-filas-fechas]')!;
 	const listaPacks = formPacks.querySelector<HTMLElement>('[data-lista-packs]')!;
 	const guardarPacks = formPacks.querySelector<HTMLButtonElement>('button[type=submit]')!;
 	const confirmarPacks = formPacks.querySelector<HTMLElement>('[data-confirmar-packs]')!;
+	const grupos = datos.packs.filter((x) => !x.individual);
+	const packDeCategoria = (c: string) => datos.packs.find((x) => x.categorias.includes(c));
+	const notaEstado = (pk: Pack | undefined) => {
+		if (!pk) return '';
+		const e = estadoPack(pk, datos.hoy);
+		return e === 'disponible' ? `Abierto desde el ${esc(d.fecha(pk.desde))}` : e === 'finalizado' ? `Terminado el ${esc(d.fecha(pk.hasta))}` : '';
+	};
+	const opcionesPack = (actual: string, fijo: boolean) => `<option value=""${actual === '' ? ' selected' : ''}>Por separado</option>${
+		[...listaPacks.querySelectorAll<HTMLFieldSetElement>('fieldset.pack')].map((f) => {
+			const id = f.dataset.pack!;
+			const titulo = f.querySelector<HTMLInputElement>('[name="titulo"]')!.value || 'Pack sin título';
+			// a un pack ya abierto no entra nada nuevo
+			const cerrado = f.dataset.estado !== 'proximamente' && id !== actual;
+			return `<option value="${esc(id)}"${id === actual ? ' selected' : ''}${cerrado || fijo ? ' disabled' : ''}>${esc(titulo)}</option>`;
+		}).join('')}`;
 	const tarjeta = (pk: Pack, nuevo = false) => {
 		const estado = nuevo ? 'proximamente' : estadoPack(pk, datos.hoy);
 		const fijo = estado !== 'proximamente';
-		const nota = nuevo ? 'Pack nuevo' : estado === 'disponible' ? `Abierto desde el ${esc(d.fecha(pk.desde))}: ya no cambian su apertura ni sus categorías`
+		const nota = nuevo ? 'Pack nuevo' : estado === 'disponible' ? `Abierto desde el ${esc(d.fecha(pk.desde))}: ya no cambian su apertura ni lo que agrupa`
 			: estado === 'finalizado' ? `Terminado el ${esc(d.fecha(pk.hasta))}: ya no cambia` : `Se abre el ${esc(d.fecha(pk.desde))}`;
-		return `<fieldset class="pack" data-pack="${esc(pk.id)}" data-estado="${estado}"${nuevo ? ' data-nuevo' : ''}>
+		return `<fieldset class="pack" data-pack="${esc(pk.id)}" data-estado="${estado}">
 			<p class="promo-lugar">${nota}</p>
 			<label>Título<input name="titulo" value="${esc(pk.titulo)}" maxlength="80" required${estado === 'finalizado' ? ' disabled' : ''}></label>
 			<label>Descripción<input name="descripcion" value="${esc(pk.descripcion ?? '')}" maxlength="300" placeholder="Opcional"${estado === 'finalizado' ? ' disabled' : ''}></label>
@@ -174,47 +196,92 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 				<label>Se abre<input name="desde" type="date" value="${esc(pk.desde)}" min="${esc(datos.hoy)}" required${fijo ? ' disabled' : ''}></label>
 				<label>Se cierra<input name="hasta" type="date" value="${esc(pk.hasta)}" required${estado === 'finalizado' ? ' disabled' : ''}${estado === 'disponible' ? ` min="${esc(datos.hoy)}"` : ''}></label>
 			</div>
-			<div class="categorias-pack">${todasCategorias.map((c) => `<label class="interruptor"><input type="checkbox" name="categoria" value="${esc(c.id)}"${pk.categorias.includes(c.id) ? ' checked' : ''}${fijo || (lanzada(c.id) && !pk.categorias.includes(c.id)) ? ' disabled' : ''}> ${esc(c.nombre)}</label>`).join('')}</div>
+			<p class="promo-lugar" data-agrupa></p>
 			${fijo ? '' : '<button class="enlace" type="button" data-quitar-pack>Quitar este pack</button>'}
 		</fieldset>`;
 	};
-	listaPacks.innerHTML = datos.packs.map((pk) => tarjeta(pk)).join('');
-	const leerPacks = (): Pack[] => [...listaPacks.querySelectorAll<HTMLFieldSetElement>('fieldset.pack')].map((f) => {
-		const v = (n: string) => f.querySelector<HTMLInputElement>(`[name="${n}"]`)!.value.trim();
-		return { id: f.dataset.pack!, titulo: v('titulo'), descripcion: v('descripcion'), desde: v('desde'), hasta: v('hasta'),
-			categorias: [...f.querySelectorAll<HTMLInputElement>('[name="categoria"]')].filter((x) => x.checked).map((x) => x.value) };
-	});
-	const firma = (lista: Pack[]) => JSON.stringify(lista.map((x) => [x.id, x.titulo, x.descripcion ?? '', x.desde, x.hasta, [...x.categorias].sort()]));
-	const packsAntes = firma(datos.packs);
-	const sinPack = () => {
-		const usadas = new Set(leerPacks().flatMap((x) => x.categorias));
-		const libres = todasCategorias.filter((c) => !usadas.has(c.id)).map((c) => c.nombre);
-		formPacks.querySelector<HTMLElement>('[data-sin-pack]')!.textContent = libres.length ? `Sin pack (se pueden elegir siempre): ${libres.join(', ')}.` : '';
+	listaPacks.innerHTML = grupos.map((pk) => tarjeta(pk)).join('');
+	/** Fila de una categoría: por separado (con sus fechas) o en un pack. */
+	const filaFechas = (c: Categoria) => {
+		const pk = packDeCategoria(c.id);
+		const estado = pk ? estadoPack(pk, datos.hoy) : (lanzada(c.id) ? 'disponible' : 'proximamente');
+		const fijo = pk ? estado !== 'proximamente' : false;
+		const sola = !pk || pk.individual;
+		const ya = !pk && lanzada(c.id); // sin fechas y ya se puede elegir: solo se le pone el cierre
+		return `<tr data-categoria="${esc(c.id)}" data-estado="${estado}"${pk?.individual ? ` data-individual="${esc(pk.id)}"` : ''}>
+			<td><strong>${esc(c.nombre)}</strong>${pk || ya ? `<br><span class="promo-lugar">${ya ? 'Ya se puede elegir: ponle su cierre' : notaEstado(pk)}</span>` : ''}</td>
+			<td><select name="pack" aria-label="Cómo se elige ${esc(c.nombre)}"${fijo ? ' disabled' : ''}>${opcionesPack(sola ? '' : pk!.id, fijo)}</select></td>
+			<td><input name="desde" type="date" value="${esc(sola ? pk?.desde ?? (ya ? datos.hoy : '') : '')}"${ya ? ` max="${esc(datos.hoy)}"` : ` min="${esc(datos.hoy)}"`}${fijo || ya ? ' disabled' : ''} aria-label="Se abre"></td>
+			<td><input name="hasta" type="date" value="${esc(sola ? pk?.hasta ?? '' : '')}"${estado === 'finalizado' ? ' disabled' : ''}${estado === 'disponible' ? ` min="${esc(datos.hoy)}"` : ''} aria-label="Se cierra"></td>
+		</tr>`;
 	};
+	filasFechas.innerHTML = todasCategorias.map(filaFechas).join('');
+	/** Pone al día lo que depende de otras partes: fechas de las filas en un pack, nombres de los packs, qué agrupa cada uno. */
+	const sincronizar = () => {
+		filasFechas.querySelectorAll<HTMLTableRowElement>('tr[data-categoria]').forEach((tr) => {
+			const sel = tr.querySelector<HTMLSelectElement>('[name="pack"]')!;
+			const valor = sel.value;
+			sel.innerHTML = opcionesPack(valor, sel.disabled);
+			sel.value = valor;
+			const enPack = valor !== '';
+			const f = enPack ? listaPacks.querySelector<HTMLFieldSetElement>(`fieldset[data-pack="${CSS.escape(valor)}"]`) : null;
+			for (const n of ['desde', 'hasta'] as const) {
+				const i = tr.querySelector<HTMLInputElement>(`[name="${n}"]`)!;
+				if (enPack) {
+					i.value = f?.querySelector<HTMLInputElement>(`[name="${n}"]`)!.value ?? '';
+					i.disabled = true;
+					i.required = false;
+				} else {
+					const fija = tr.dataset.estado !== 'proximamente';
+					i.disabled = (n === 'desde' && (fija || !!i.max)) || (n === 'hasta' && tr.dataset.estado === 'finalizado');
+					i.required = !i.disabled;
+				}
+			}
+		});
+		listaPacks.querySelectorAll<HTMLFieldSetElement>('fieldset.pack').forEach((f) => {
+			const nombres = [...filasFechas.querySelectorAll<HTMLTableRowElement>('tr[data-categoria]')]
+				.filter((tr) => tr.querySelector<HTMLSelectElement>('[name="pack"]')!.value === f.dataset.pack)
+				.map((tr) => tr.querySelector('strong')!.textContent);
+			f.querySelector<HTMLElement>('[data-agrupa]')!.textContent = nombres.length ? `Agrupa: ${nombres.join(', ')}.` : 'Todavía no agrupa ninguna categoría: elígelo en la lista de arriba.';
+		});
+	};
+	const leerPacks = (): Pack[] => {
+		const filas = [...filasFechas.querySelectorAll<HTMLTableRowElement>('tr[data-categoria]')];
+		const packs: Pack[] = [...listaPacks.querySelectorAll<HTMLFieldSetElement>('fieldset.pack')].map((f) => {
+			const v = (n: string) => f.querySelector<HTMLInputElement>(`[name="${n}"]`)!.value.trim();
+			return { id: f.dataset.pack!, titulo: v('titulo'), descripcion: v('descripcion'), desde: v('desde'), hasta: v('hasta'),
+				categorias: filas.filter((tr) => tr.querySelector<HTMLSelectElement>('[name="pack"]')!.value === f.dataset.pack).map((tr) => tr.dataset.categoria!) };
+		});
+		for (const tr of filas.filter((x) => x.querySelector<HTMLSelectElement>('[name="pack"]')!.value === '')) {
+			const c = tr.dataset.categoria!;
+			const v = (n: string) => tr.querySelector<HTMLInputElement>(`[name="${n}"]`)!.value;
+			packs.push({ id: tr.dataset.individual ?? `sola-${c}`, titulo: todasCategorias.find((x) => x.id === c)!.nombre, desde: v('desde'), hasta: v('hasta'), categorias: [c], individual: true });
+		}
+		return packs;
+	};
+	const firma = (lista: Pack[]) => JSON.stringify([...lista].sort((a, b) => a.id.localeCompare(b.id))
+		.map((x) => [x.id, x.titulo, x.descripcion ?? '', x.desde, x.hasta, [...x.categorias].sort(), !!x.individual]));
+	sincronizar();
+	const packsAntes = firma(leerPacks());
 	const refrescarPacks = () => {
+		sincronizar();
 		guardarPacks.disabled = firma(leerPacks()) === packsAntes;
 		confirmarPacks.hidden = true;
-		sinPack();
 	};
-	sinPack();
 	formPacks.addEventListener('input', refrescarPacks);
-	formPacks.addEventListener('change', (ev) => {
-		// una categoría marcada en un pack se desmarca en los demás
-		const t = ev.target as HTMLInputElement;
-		if (t.name === 'categoria' && t.checked) {
-			listaPacks.querySelectorAll<HTMLInputElement>(`[name="categoria"][value="${CSS.escape(t.value)}"]`).forEach((x) => { if (x !== t && !x.disabled) x.checked = false; });
-		}
-		refrescarPacks();
-	});
+	formPacks.addEventListener('change', refrescarPacks);
 	listaPacks.addEventListener('click', (ev) => {
 		const b = (ev.target as HTMLElement).closest('[data-quitar-pack]');
 		if (!b) return;
+		const id = b.closest<HTMLFieldSetElement>('fieldset')!.dataset.pack!;
+		// sus categorías vuelven a «Por separado»
+		filasFechas.querySelectorAll<HTMLSelectElement>('[name="pack"]').forEach((sel) => { if (sel.value === id) sel.value = ''; });
 		b.closest('fieldset')!.remove();
 		refrescarPacks();
 	});
 	formPacks.querySelector('[data-nuevo-pack]')!.addEventListener('click', () => {
-		const usados = new Set(leerPacks().map((x) => x.id));
-		let n = usados.size + 1;
+		const usados = new Set([...datos.packs.map((x) => x.id), ...[...listaPacks.querySelectorAll<HTMLFieldSetElement>('fieldset.pack')].map((f) => f.dataset.pack!)]);
+		let n = listaPacks.children.length + 1;
 		while (usados.has(`pack-${n}`)) n++;
 		listaPacks.insertAdjacentHTML('beforeend', tarjeta({ id: `pack-${n}`, titulo: `Pack ${n}`, desde: '', hasta: '', categorias: [] }, true));
 		listaPacks.lastElementChild?.querySelector<HTMLInputElement>('[name="titulo"]')?.focus();
@@ -224,20 +291,26 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 		ev.preventDefault();
 		if (!formPacks.reportValidity()) return;
 		const packs = leerPacks();
-		const abiertosHoy = packs.filter((x) => x.desde === datos.hoy && !datos.packs.some((y) => y.id === x.id && y.desde === x.desde));
+		const vacios = packs.filter((x) => !x.individual && !x.categorias.length);
+		if (vacios.length) {
+			formPacks.querySelector('.error')!.textContent = `El pack «${vacios[0].titulo}» no agrupa ninguna categoría: elígelo en alguna o quítalo.`;
+			return;
+		}
+		formPacks.querySelector('.error')!.textContent = '';
+		const n = packs.filter((x) => !x.individual).length, solas = packs.length - n;
 		confirmarPacks.hidden = false;
-		confirmarPacks.innerHTML = `<p>Vas a guardar ${packs.length} pack${packs.length === 1 ? '' : 's'}. Los compradores verán las fechas nuevas <strong>al momento</strong>.${abiertosHoy.length ? ' Un pack que se abre hoy queda abierto ya: sus precios y sus categorías quedarán fijos.' : ''}</p>
+		confirmarPacks.innerHTML = `<p>Vas a guardar ${n} pack${n === 1 ? '' : 's'} y ${solas} categoría${solas === 1 ? '' : 's'} por separado. Los compradores verán las fechas nuevas <strong>al momento</strong>. Lo que se abra hoy queda abierto ya: sus precios y lo que agrupa quedarán fijos.</p>
 			<div class="acciones"><button class="boton" type="button" data-si>Confirmar y aplicar</button><button class="enlace" type="button" data-no>Seguir revisando</button></div>`;
 		confirmarPacks.querySelector('[data-no]')!.addEventListener('click', () => { confirmarPacks.hidden = true; });
 		confirmarPacks.querySelector<HTMLButtonElement>('[data-si]')!.addEventListener('click', async (e) => {
 			(e.currentTarget as HTMLButtonElement).disabled = true;
-			const { error: err } = await d.sb.rpc('guardar_packs', { p_promocion: p.id, p_packs: packs });
+			const { error: err } = await d.sb.rpc('guardar_packs', { p_promocion: p.id, p_packs: packs.map(({ estado: _e, ...x }) => x) });
 			if (err) {
 				formPacks.querySelector('.error')!.textContent = d.traducir(err);
 				confirmarPacks.hidden = true;
 				return;
 			}
-			await pintarCatalogo(caja, d, p, '✓ Packs guardados: los compradores ya ven las fechas nuevas.');
+			await pintarCatalogo(caja, d, p, '✓ Fechas guardadas: los compradores ya las ven.');
 		});
 	});
 
@@ -299,8 +372,13 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 		});
 	});
 
-	// ── pedir una opción nueva
+	// ── añadir una opción (y, si hace falta, una categoría nueva)
 	const pedir = caja.querySelector<HTMLFormElement>('[data-pedir]')!;
+	pedir.querySelector('[name="categoria"]')!.addEventListener('change', (ev) => {
+		const nueva = (ev.target as HTMLSelectElement).value === 'nueva';
+		pedir.querySelector<HTMLElement>('[data-categoria-nueva]')!.hidden = !nueva;
+		pedir.querySelector<HTMLInputElement>('[name="categoria_nueva"]')!.required = nueva;
+	});
 	pedir.addEventListener('submit', async (ev) => {
 		ev.preventDefault();
 		const f = new FormData(pedir);
@@ -314,19 +392,21 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 		const ficheros = [...(pedir.querySelector<HTMLInputElement>('[name="archivos"]')!.files ?? [])];
 		if (ficheros.length > 5) return fallo('Como mucho, cinco archivos.');
 		if (ficheros.some((x) => x.size > MAX_ARCHIVO)) return fallo('Cada archivo puede ocupar 15 MB como mucho.');
-		if (ficheros.some((x) => !/^image\//.test(x.type) && x.type !== 'application/pdf')) return fallo('Solo fotos o PDF.');
+		if (ficheros.some((x) => !/^image\//.test(x.type) && !/\.(pdf|docx?)$/i.test(x.name))) return fallo('Solo PDF, Word o imágenes.');
+		if (f.get('categoria') === 'nueva' && !String(f.get('categoria_nueva') ?? '').trim()) return fallo('Escribe el nombre de la categoría nueva.');
 		const archivos: { ruta: string; nombre: string }[] = [];
 		if (ficheros.length) {
 			const { data: pr } = await d.sb.from('promociones').select('promotora_id').eq('id', p.id).single();
 			for (const x of ficheros) {
 				const ruta = `${pr?.promotora_id}/${p.id}/opciones/${Date.now()}-${limpio(x.name)}`;
-				const { error: e } = await d.sb.storage.from('documentos').upload(ruta, x, { contentType: x.type, upsert: false });
+				const { error: e } = await d.sb.storage.from('documentos').upload(ruta, x, { contentType: x.type || 'application/octet-stream', upsert: false });
 				if (e) return fallo(`No se ha podido subir «${x.name}». ${d.traducir(e)}`);
 				archivos.push({ ruta, nombre: x.name });
 			}
 		}
 		const { error: err } = await d.sb.rpc('pedir_opcion', {
-			p_promocion: p.id, p_categoria: f.get('categoria') === 'otra' ? '' : String(f.get('categoria') ?? ''), p_nombre: String(f.get('nombre') ?? ''),
+			p_promocion: p.id, p_categoria: f.get('categoria') === 'nueva' ? '' : String(f.get('categoria') ?? ''),
+			p_categoria_nueva: f.get('categoria') === 'nueva' ? String(f.get('categoria_nueva') ?? '') : '', p_nombre: String(f.get('nombre') ?? ''),
 			p_descripcion: String(f.get('descripcion') ?? ''), p_precio: precio ? Number(precio) : null, p_archivos: archivos,
 		});
 		if (err) {
@@ -334,7 +414,7 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 			boton.disabled = false;
 			return;
 		}
-		await pintarCatalogo(caja, d, p, '✓ Opción pedida. Aquí verás cuándo la añade el equipo de MUNE.');
+		await pintarCatalogo(caja, d, p, '✓ Opción añadida: queda En preparación hasta que el equipo de MUNE prepare su aspecto en el 3D.');
 	});
 
 	// ── ver un archivo adjunto (enlace temporal de un minuto)
