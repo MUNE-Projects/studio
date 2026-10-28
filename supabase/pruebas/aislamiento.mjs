@@ -1560,13 +1560,17 @@ await caso( DEBE_FUNCIONAR, 'Catálogo: la promotora cambia un precio de un pack
 	const pendientes = await exigir( admin.rpc( 'opciones_pedidas_pendientes' ), 'pendientes' );
 	await exigir( admin.rpc( 'atender_opcion', { p_id: id, p_estado: 'hecha', p_nota: 'Añadida en la v96' } ), 'atender' );
 	const despues = await exigir( gestorA.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ), 'ver catálogo después' );
-	return piscina.precio === 19500 && piscina.nombre === 'Piscina privada'
-		&& ! entra.datos.tipologia.opciones.suelo.includes( 'nogal' )
-		&& vista.lanzadas.includes( 'suelo' ) && ! vista.lanzadas.includes( 'exterior' )
-		&& conserva.opciones.suelo === 'nogal' && Number( conserva.importe ) === 1900
-		&& falla( otroElige )
-		&& pendientes.some( ( x ) => x.id === id )
-		&& despues.pedidas.find( ( x ) => x.id === id )?.estado === 'hecha';
+	const mal = Object.entries( {
+		precioNuevo: piscina.precio === 19500 && piscina.nombre === 'Piscina privada',
+		nogalRetirado: ! entra.datos.tipologia.opciones.suelo.includes( 'nogal' ),
+		lanzadas: vista.lanzadas.includes( 'suelo' ) && ! vista.lanzadas.includes( 'exterior' ),
+		conserva: conserva.opciones.suelo === 'nogal' && Number( conserva.importe ) === 1900,
+		otroNoPuede: falla( otroElige ),
+		pendiente: pendientes.some( ( x ) => x.id === id ),
+		atendida: despues.pedidas.find( ( x ) => x.id === id )?.estado === 'hecha',
+	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
+	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) } (${ JSON.stringify( { piscina, suelo: entra.datos.tipologia.opciones.suelo, lanzadas: vista.lanzadas, conserva, otro: otroElige.error?.message } ) })` );
+	return true;
 
 } );
 
