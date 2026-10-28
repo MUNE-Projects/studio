@@ -412,10 +412,6 @@ body[data-modo="personalizar"] .pie { display: none; }
 .etiqueta.minima .sup { font-size: 8.5px; }
 body.con-etiquetas .etiqueta { opacity: 1; }
 
-/* ------------------------------------------------ maqueta de la promoción */
-.modos [hidden] { display: none; }
-body[data-modo="promocion"] .vistas { display: none; }
-
 /* ------------------------------------------------ resumen guardado */
 #resumen-configuracion {
 	width: min(520px, calc(100% - 32px));

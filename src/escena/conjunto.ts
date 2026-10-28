@@ -9,7 +9,7 @@
 import * as THREE from 'three/webgpu';
 import type { Material } from 'three/webgpu';
 import type { Punto, Vivienda } from '../modelo/tipos';
-import { alturaPlanta, girar, type Conjunto, type Edificio, type PlantaEdificio } from '../modelo/conjunto';
+import { girar, type Colocacion, type Conjunto, type Edificio, type PlantaEdificio } from '../modelo/conjunto';
 import { dePlanta, plantasDe } from '../modelo/plantas';
 import { esCerrada } from '../modelo/estancias';
 import { contornos, desplazar, type Contorno } from '../util/contorno';
@@ -98,7 +98,7 @@ function enParcela( e: Edificio ) {
 
 }
 
-function construirEdificio( e: Edificio, cargar: Cargar, mat: { muros: Record<string, Material>; losa: Material; cubierta: Material; vidrio: Material } ) {
+function construirEdificio( e: Edificio, cargar: Cargar, mat: { muros: Record<string, Material>; losa: Material; cubierta: Material; vidrio: Material }, omitir?: Colocacion ) {
 
 	const g = enParcela( e );
 	const forjado = e.forjado ?? 0.3;
@@ -119,7 +119,8 @@ function construirEdificio( e: Edificio, cargar: Cargar, mat: { muros: Record<st
 
 		const H = libre( p );
 		// viviendas: fachada, carpinterías, barandillas y suelos de sus exteriores
-		for ( const c of p.viviendas ) {
+		// la vivienda que se está visitando no se dibuja: está ella misma en su sitio
+		for ( const c of p.viviendas.filter( ( x ) => x !== omitir ) ) {
 
 			const v = soloFachada( cargar( c.tipologia, !! c.espejo ) );
 			const gv = new THREE.Group();
@@ -159,7 +160,10 @@ function construirEdificio( e: Edificio, cargar: Cargar, mat: { muros: Record<st
 		for ( const n of ( e.nucleos ?? [] ).filter( ( n ) => ! n.plantas || n.plantas.includes( p.nombre ) ) ) {
 
 			const [ x0, y0, x1, y1 ] = n.rect;
-			const caja = new THREE.Mesh( new THREE.BoxGeometry( x1 - x0, H, y1 - y0 ), mat.muros.fachada );
+			const geo = new THREE.BoxGeometry( x1 - x0, H, y1 - y0 );
+			// el material de fachada lee la cota inferior de cada pieza (aquí, el suelo)
+			geo.setAttribute( 'base', new THREE.Float32BufferAttribute( new Array( geo.attributes.position.count ).fill( 0 ), 1 ) );
+			const caja = new THREE.Mesh( geo, mat.muros.fachada );
 			caja.position.set( ( x0 + x1 ) / 2, p.cota + H / 2, - ( y0 + y1 ) / 2 );
 			caja.castShadow = caja.receiveShadow = true;
 			g.add( caja );
@@ -301,7 +305,7 @@ function distSegmento( [ px, py ]: Punto, [ ax, ay ]: Punto, [ bx, by ]: Punto )
 
 }
 
-export function construirMaqueta( conjunto: Conjunto, cargar: Cargar, matMuros: Record<string, Material> ): Maqueta {
+export function construirMaqueta( conjunto: Conjunto, cargar: Cargar, matMuros: Record<string, Material>, omitir?: Colocacion ): Maqueta {
 
 	const grupo = new THREE.Group();
 	grupo.name = 'maqueta-promocion';
@@ -310,7 +314,7 @@ export function construirMaqueta( conjunto: Conjunto, cargar: Cargar, matMuros: 
 	const aceras: { contorno: Contorno; edificio: Edificio }[] = [];
 	for ( const e of conjunto.edificios ) {
 
-		const { g, acera } = construirEdificio( e, cargar, mat );
+		const { g, acera } = construirEdificio( e, cargar, mat, omitir );
 		grupo.add( g );
 		for ( const c of acera ) aceras.push( { contorno: c, edificio: e } );
 
@@ -325,5 +329,17 @@ export function construirMaqueta( conjunto: Conjunto, cargar: Cargar, matMuros: 
 
 }
 
-/** Alturas de cada planta (para quien las necesite fuera de la maqueta). */
-export { alturaPlanta };
+/**
+ * Matriz que lleva la maqueta al sistema de la vivienda que se visita: su sitio
+ * en el conjunto (edificio, planta y colocación) cae en el origen de la vivienda.
+ */
+export function aVivienda( e: Edificio, cota: number, c: Colocacion ) {
+
+	const giroY = ( g?: number ) => new THREE.Matrix4().makeRotationY( ( ( g ?? 0 ) * Math.PI ) / 180 );
+	const m = new THREE.Matrix4().makeTranslation( e.pos?.[ 0 ] ?? 0, 0, - ( e.pos?.[ 1 ] ?? 0 ) )
+		.multiply( giroY( e.giro ) )
+		.multiply( new THREE.Matrix4().makeTranslation( c.pos[ 0 ], cota, - c.pos[ 1 ] ) )
+		.multiply( giroY( c.giro ) );
+	return m.invert();
+
+}

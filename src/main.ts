@@ -39,7 +39,8 @@ import { ACABADOS } from './promocion/acabados';
 import { generarPDF } from './documento/pdf';
 import { planoPDF, planoPNG, type DatosPlano } from './documento/plano';
 import { RenderHD } from './escena/renderHD';
-import { construirMaqueta, type Maqueta } from './escena/conjunto';
+import { aVivienda, construirMaqueta, type Maqueta } from './escena/conjunto';
+import { sitioDe } from './modelo/conjunto';
 import './estilos.css';
 
 const $ = <T extends HTMLElement>( s: string ) => document.querySelector( s ) as T;
@@ -225,6 +226,8 @@ async function iniciar() {
 	// Maqueta exterior del conjunto (entorno/conjunto.json): se construye la
 	// primera vez que se abre el modo Promoción y se vuelve a la misma vivienda.
 	let maqueta: Maqueta | null = null;
+	let maquetaClave = '';
+	let maquetaVisible = false;
 	// a pie (dentro, en el jardín, en la rampa…) se ven también las plantas de encima
 	let aPie = false;
 	const cotaActiva = () => plantasDe( vivienda )[ plantaActiva ]?.cota ?? 0;
@@ -233,7 +236,7 @@ async function iniciar() {
 		const multi = esMultiplanta( vivienda );
 		const enPlano = document.body.dataset.modo === 'plano';
 		// en un sótano, el terreno de alrededor se aparta para verlo (desde dentro, se queda)
-		suelo!.visible = cotaActiva() >= 0 || ( aPie && ! enPlano );
+		suelo!.visible = ! maquetaVisible && ( cotaActiva() >= 0 || ( aPie && ! enPlano ) );
 		for ( const g of [ c.muros, c.suelos, c.techos, c.volumenes, c.carpinterias, c.barandilla, c.fijo, c.mobiliario, lucesVentana ] ) {
 
 			for ( const h of g.children ) {
@@ -601,7 +604,7 @@ async function iniciar() {
 	cam.reducido = est.reducido;
 	// al terminar cada transición se ajusta la navegación a la vista
 	cam.alLlegar = ( v ) => nav.configurar( modo === 'plano' ? 'planta' : v.interior ? 'interior' : 'exterior' );
-	type Modo = 'plano' | 'vivienda' | 'personalizar' | 'promocion';
+	type Modo = 'plano' | 'vivienda' | 'personalizar';
 	let modo: Modo = 'vivienda';
 	// La visita se abre en el plano (rápido de preparar); la vivienda 3D se
 	// prepara mientras tanto. Si se pide antes de estar lista, se recuerda y se
@@ -798,7 +801,6 @@ async function iniciar() {
 		const anterior = modo;
 		modo = m;
 		document.body.dataset.modo = m;
-		if ( m === 'promocion' || anterior === 'promocion' ) entrarPromocion( m === 'promocion' );
 		botonesModo.forEach( ( b ) => b.setAttribute( 'aria-current', String( b.dataset.modo === m ) ) );
 		const n = m === 'plano' ? 1 : 4;
 		if ( est.actual !== n ) est.ir( n );
@@ -814,77 +816,92 @@ async function iniciar() {
 			return;
 
 		}
-		if ( m === 'promocion' ) return;
 
-		// al salir del plano (o de la promoción) se vuelve a la vista general;
-		// entre Vivienda y Personalizar la cámara no se mueve
-		if ( anterior === 'plano' || anterior === 'promocion' ) irVista( 'aerea' );
+		// al salir del plano se vuelve a la vista general; entre Vivienda y
+		// Personalizar la cámara no se mueve
+		if ( anterior === 'plano' ) irVista( 'aerea' );
 
 	};
 
-	/** Abre (o cierra) la maqueta de la promoción completa: la vivienda se oculta y la cámara se aleja. */
-	const entrarPromocion = ( si: boolean ) => {
+	/**
+	 * Promoción completa al alejarse: la vivienda se queda en su sitio dentro de su
+	 * edificio y alrededor aparece la maqueta exterior del conjunto (sin la propia
+	 * vivienda, que ya está). Al acercarse, vuelve la vivienda sola con su jardín.
+	 */
+	const ponerMaqueta = ( si: boolean ) => {
 
-		if ( si && ! maqueta && CONJUNTO ) {
+		const sitio = si && CONJUNTO ? sitioDe( CONJUNTO, fichaVivienda.tipologia, fichaVivienda.espejo, fichaVivienda.ref ) : null;
+		if ( si && ! sitio ) return;
+		maquetaVisible = si;
+		if ( sitio ) {
 
-			const cache = new Map<string, Vivienda>();
-			const cargar = ( t: string, e: boolean ) => {
+			const clave = `${ fichaVivienda.tipologia }:${ fichaVivienda.espejo }:${ sitio.edificio.id }:${ sitio.planta.nombre }:${ sitio.colocacion.ref ?? '' }:${ sitio.colocacion.pos }`;
+			if ( clave !== maquetaClave ) {
 
-				const k = `${ t }${ e ? '-espejo' : '' }`;
-				if ( ! cache.has( k ) ) cache.set( k, cargarModelo( t, e ).vivienda );
-				return cache.get( k )!;
+				if ( maqueta ) {
 
-			};
-			maqueta = construirMaqueta( CONJUNTO, cargar, matMuros );
-			escena.add( maqueta.grupo );
+					escena.remove( maqueta.grupo );
+					maqueta.grupo.traverse( ( o ) => ( o as THREE.Mesh ).geometry?.dispose() );
+
+				}
+				const cache = new Map<string, Vivienda>();
+				const cargar = ( t: string, e: boolean ) => {
+
+					const k = `${ t }${ e ? '-espejo' : '' }`;
+					if ( ! cache.has( k ) ) cache.set( k, cargarModelo( t, e ).vivienda );
+					return cache.get( k )!;
+
+				};
+				maqueta = construirMaqueta( CONJUNTO!, cargar, matMuros, sitio.colocacion );
+				maqueta.grupo.matrixAutoUpdate = false;
+				maqueta.grupo.matrix.copy( aVivienda( sitio.edificio, sitio.planta.cota, sitio.colocacion ) );
+				maqueta.grupo.updateMatrixWorld( true );
+				maqueta.caja.applyMatrix4( maqueta.grupo.matrix );
+				escena.add( maqueta.grupo );
+				maquetaClave = clave;
+
+			}
 
 		}
-		if ( ! maqueta ) return;
-		raizVivienda.visible = ! si;
-		maqueta.grupo.visible = si;
-		// bruma en la lejanía: el campo se funde con el horizonte
-		escena.fog = si ? new THREE.Fog( '#e3e6e3', maqueta.caja.getBoundingSphere( new THREE.Sphere() ).radius * 2.5, maqueta.caja.getBoundingSphere( new THREE.Sphere() ).radius * 9 ) : null;
-		// sol, sombras y distancias de la cámara a la medida del conjunto (o de la vivienda)
-		const centro = maqueta.caja.getCenter( new THREE.Vector3() );
-		const radio = maqueta.caja.getBoundingSphere( new THREE.Sphere() ).radius;
+		if ( maqueta ) maqueta.grupo.visible = si;
+		// sol, sombras y bruma a la medida del conjunto (o de la vivienda)
 		const sc = luzSol.shadow.camera;
-		if ( si ) {
+		if ( si && maqueta ) {
 
+			const centro = maqueta.caja.getCenter( new THREE.Vector3() );
+			const radio = maqueta.caja.getBoundingSphere( new THREE.Sphere() ).radius;
 			// sol alto de media mañana: sombras cortas, como en una infografía
 			luzSol.target.position.copy( centro );
 			luzSol.position.copy( centro ).addScaledVector( new THREE.Vector3( - 0.42, 0.82, 0.39 ).normalize(), radio * 2.5 );
 			sc.left = sc.bottom = - radio; sc.right = sc.top = radio; sc.far = radio * 5;
+			escena.fog = new THREE.Fog( '#e3e6e3', radio * 2.5, radio * 9 );
 
 		} else {
 
-			luzSol.target.position.set( mc.cx, 0, mc.cz );
+			const m = marcoEntorno( dePlanta( vivienda, plantaCalle( vivienda ) ) );
+			luzSol.target.position.set( m.cx, 0, m.cz );
 			luzSol.position.copy( luzSol.target.position ).addScaledVector( DIR_SOL, 25 );
 			sc.left = sc.bottom = - 11; sc.right = sc.top = 11; sc.far = 50;
+			escena.fog = null;
 
 		}
 		sc.updateProjectionMatrix();
-		camara.far = si ? Math.max( 200, radio * 8 ) : 200;
-		camara.updateProjectionMatrix();
-		nav.alcance = si ? Math.max( 40, radio * 2.5 ) : 40;
-		botonesPlanta.hidden = si || plantasDe( vivienda ).length < 2;
-		if ( si ) {
-
-			// vista aérea de tres cuartos, encuadrando los edificios
-			const ce = maqueta.edificios.getCenter( new THREE.Vector3() );
-			const re = maqueta.edificios.getBoundingSphere( new THREE.Sphere() ).radius;
-			const fov = 32;
-			const d = re / Math.sin( ( fov / 2 ) * Math.PI / 180 ) * 1.15;
-			const dir = new THREE.Vector3( 0.5, 0.2, 0.84 ).normalize();
-			cam.ir( { nombre: 'Promoción', pos: ce.clone().addScaledVector( dir, d ).toArray() as [ number, number, number ], obj: ce.clone().setY( ce.y * 0.6 ).toArray() as [ number, number, number ], fov } );
-			marcarVista( '' );
-
-		} else mostrarPlantas();
+		mostrarPlantas();
 		despertar();
 
 	};
+	if ( CONJUNTO ) {
+
+		// la órbita exterior puede alejarse hasta ver toda la parcela
+		const pts = CONJUNTO.parcela?.poligono ?? CONJUNTO.edificios.map( ( e ) => e.pos ?? [ 0, 0 ] );
+		const xs = pts.map( ( p ) => p[ 0 ] ), ys = pts.map( ( p ) => p[ 1 ] );
+		nav.alcance = Math.max( 60, Math.hypot( Math.max( ...xs ) - Math.min( ...xs ), Math.max( ...ys ) - Math.min( ...ys ) ) * 1.6 + 30 );
+		camara.far = Math.max( 200, nav.alcance * 6 );
+		camara.updateProjectionMatrix();
+
+	}
 	botonesModo.forEach( ( b ) => b.addEventListener( 'click', () => irModo( b.dataset.modo as Modo ) ) );
-	// el modo Promoción solo existe si la promoción tiene sus plantas generales
-	document.querySelector<HTMLButtonElement>( '.modos [data-modo="promocion"]' )!.hidden = ! CONJUNTO;
+
 	addEventListener( 'keydown', ( ev ) => {
 
 		const t = ev.target as HTMLElement | null;
@@ -1550,8 +1567,21 @@ async function iniciar() {
 
 		if ( ! preparado || pausado || capturando ) return;
 		est.actualizar( t );
+		// al alejarse de la vivienda aparece la promoción completa alrededor (y al acercarse se va)
+		if ( CONJUNTO ) {
+
+			const aerea = ( modelo.tipologia.vistas as Record<string, Vista> ).aerea;
+			const umbral = aerea ? Math.hypot( aerea.pos[ 0 ] - aerea.obj[ 0 ], aerea.pos[ 1 ] - aerea.obj[ 1 ], aerea.pos[ 2 ] - aerea.obj[ 2 ] ) * 1.3 : 30;
+			const d = camara.position.distanceTo( ctrl.target );
+			const lejos = modo !== 'plano' && ! aPie && ( maquetaVisible ? d > umbral * 0.9 : d > umbral );
+			if ( lejos !== maquetaVisible ) ponerMaqueta( lejos );
+
+		}
 		// la maqueta de la promoción se ve con su cielo (no sobre el papel del plano ni el fondo de estudio)
-		if ( modo === 'promocion' ) {
+		if ( maquetaVisible ) {
+
+			// el jardín genérico de la vivienda sobra: la promoción tiene el suyo
+			for ( const h of c.mobiliario.children ) if ( h.userData.x === 13 ) h.visible = false;
 
 			uFondo.papel.value = 0;
 			uFondo.estudio.value = 0;
