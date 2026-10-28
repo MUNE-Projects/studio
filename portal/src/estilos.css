@@ -320,4 +320,15 @@ label.nombre-categoria input { padding: 6px 8px; font-size: 17px; font-weight: 6
 .marca-muestra { display: flex; align-items: center; gap: 12px; margin: 0; }
 .marca-boton { display: inline-block; padding: 8px 14px; border-radius: 999px; background: var(--marca-1); color: #fff; font-weight: 600; font-size: 0.9rem; }
 .marca-detalle { flex: 1; height: 4px; border-radius: 2px; background: var(--marca-2); }
-.marca-form input[type=color] { width: 100%; height: 40px; padding: 2px; }
+
+.marca-color { display: grid; grid-template-columns: 90px 56px minmax(0, 120px); gap: 10px; align-items: center; margin: 6px 0; }
+.marca-color input[type=color] { height: 38px; padding: 2px; }
+.marca-color input.invalido { border-color: #b3261e; }
+.marca-origen { border: 0; padding: 0; margin: 4px 0 8px; display: grid; gap: 4px; }
+.marca-fuentes { list-style: none; padding: 0; margin: 6px 0; display: grid; gap: 6px; }
+.marca-fuentes li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--linea); border-radius: 8px; background: var(--superficie); }
+.marca-fuentes li span { flex: 1; min-width: 140px; overflow-wrap: anywhere; }
+.marca-licencia { align-items: flex-start; }
+.marca-origen label, .marca-licencia { display: flex; gap: 8px; align-items: center; justify-content: flex-start; text-align: left; }
+.marca-origen input, .marca-licencia input { width: auto; flex: none; }
+.marca-fuentes select { width: auto; padding: 4px 8px; }

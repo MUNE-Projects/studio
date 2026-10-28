@@ -20,12 +20,14 @@ export function aplicarMarca( p: Promocion ) {
 	raiz.setProperty( '--acento-suave', rgba( m.colorPrincipal, 0.09 ) );
 	raiz.setProperty( '--secundario', m.colorSecundario );
 
-	// tipografía de la promotora (Google Fonts) con alternativas del sistema
-	if ( m.tipografia.googleFonts ) {
+	// tipografía de la promotora, con alternativas del sistema: en cada versión va dentro de la
+	// propia web (fuentes/marca.css, de «preparar»); Google Fonts solo al desarrollar
+	const css = m.tipografia.css ?? ( m.tipografia.googleFonts ? `https://fonts.googleapis.com/css2?family=${ m.tipografia.googleFonts }&display=swap` : null );
+	if ( css ) {
 
 		const link = document.createElement( 'link' );
 		link.rel = 'stylesheet';
-		link.href = `https://fonts.googleapis.com/css2?family=${ m.tipografia.googleFonts }&display=swap`;
+		link.href = css;
 		document.head.append( link );
 
 	}

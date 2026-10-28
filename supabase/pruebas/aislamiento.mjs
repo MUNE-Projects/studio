@@ -1635,6 +1635,11 @@ const soloMarca = await altaEquipo( 'marca.a@prueba.local', 'prueba-a', [ 'marca
 const marcaBuena = ( nombre, logo ) => ( { nombre, logo_svg: logo ?? null, color_principal: '#7a2e3b', color_secundario: '#b8946a', tipografia: 'Lora', telefono: '900 000 000', web: 'promotora-a.es' } );
 const LOGO_PNG = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><image href="data:image/png;base64,iVBORw0KGgo=" width="10" height="10"/></svg>';
 const guardarMarca = ( sb, promotora, promocion, marca ) => sb.rpc( 'guardar_marca', { p_promotora: promotora, p_promocion: promocion, p_marca: marca } );
+// una tipografía propia (y un PDF) subidos por quien administra la promotora a su carpeta de marca
+const FUENTE_A = `${ pA.id }/marca/mi-fuente.woff2`;
+const PDF_EN_MARCA = `${ pA.id }/marca/no-es-fuente.pdf`;
+await exigir( aprobA.storage.from( 'documentos' ).upload( FUENTE_A, pdf( 'fuente' ), { upsert: true } ), 'subir tipografía' );
+await exigir( aprobA.storage.from( 'documentos' ).upload( PDF_EN_MARCA, pdf( 'pdf' ), { upsert: true } ), 'subir pdf a marca' );
 
 await caso( DEBE_FALLAR, '44. Marca: otra promotora, alguien sin «marca», sin administrar la promotora, sin sesión o el robot la leen o la cambian; un logo con código; una tipografía o un color que no valen', async () => {
 
@@ -1655,7 +1660,14 @@ await caso( DEBE_FALLAR, '44. Marca: otra promotora, alguien sin «marca», sin 
 		logoConEvento: await guardarMarca( aprobA, pA.id, null, marcaBuena( 'A', '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>' ) ),
 		logoConEnlaceFuera: await guardarMarca( aprobA, pA.id, null, marcaBuena( 'A', '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://fuera.example/x.png"/></svg>' ) ),
 		logoNoSvg: await guardarMarca( aprobA, pA.id, null, marcaBuena( 'A', '<html><body>hola</body></html>' ) ),
-		tipografiaRara: await guardarMarca( aprobA, pA.id, null, { ...marcaBuena( 'A' ), tipografia: 'Comic Sans MS' } ),
+		tipografiaRara: await guardarMarca( aprobA, pA.id, null, { ...marcaBuena( 'A' ), tipografia: 'Lora"><script>' } ),
+		fuenteSinLicencia: await guardarMarca( aprobA, pA.id, null, { ...marcaBuena( 'A' ), tipografia: 'Mi Fuente', tipografia_archivos: [ { ruta: FUENTE_A, nombre: 'mi.woff2', peso: 400, estilo: 'normal' } ] } ),
+		fuenteDeOtraPromotora: await guardarMarca( aprobB, pB.id, null, { ...marcaBuena( 'B' ), tipografia: 'Mi Fuente', licencia: true, tipografia_archivos: [ { ruta: FUENTE_A, nombre: 'mi.woff2', peso: 400, estilo: 'normal' } ] } ),
+		fuenteQueNoEsFuente: await guardarMarca( aprobA, pA.id, null, { ...marcaBuena( 'A' ), tipografia: 'Mi Fuente', licencia: true, tipografia_archivos: [ { ruta: PDF_EN_MARCA, nombre: 'x.pdf', peso: 400, estilo: 'normal' } ] } ),
+		otraSubeFuente: await aprobB.storage.from( 'documentos' ).upload( `${ pA.id }/marca/intrusa.woff2`, pdf( 'x' ) ),
+		sinCapacidadSubeFuente: await soloCompradores.sb.storage.from( 'documentos' ).upload( `${ pA.id }/prueba-a/marca/x.woff2`, pdf( 'x' ) ),
+		sinAdministrarSubeFuenteGeneral: await gestorA.storage.from( 'documentos' ).upload( `${ pA.id }/marca/x.woff2`, pdf( 'x' ) ),
+		otraVeFuente: await aprobB.storage.from( 'documentos' ).download( FUENTE_A ),
 		colorRaro: await guardarMarca( aprobA, pA.id, null, { ...marcaBuena( 'A' ), color_principal: 'red' } ),
 	};
 	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
@@ -1667,7 +1679,10 @@ await caso( DEBE_FALLAR, '44. Marca: otra promotora, alguien sin «marca», sin 
 await caso( DEBE_FUNCIONAR, 'Marca: la administradora de la promotora pone la general (con un logo PNG dentro de un SVG); quien tiene «marca» pone una propia en su promoción y la quita; el robot de Claude lee la que se usa en cada promoción', async () => {
 
 	await exigir( guardarMarca( aprobA, pA.id, null, marcaBuena( 'Promotora A', LOGO_PNG ) ), 'general' );
-	await exigir( guardarMarca( soloMarca.sb, pA.id, 'prueba-a', { ...marcaBuena( 'Residencial A' ), tipografia: 'Inter', color_principal: '#123456' } ), 'propia' );
+	// la propia de la promoción usa la tipografía de la promotora (sus archivos), con la licencia confirmada
+	await exigir( guardarMarca( soloMarca.sb, pA.id, 'prueba-a', { ...marcaBuena( 'Residencial A' ), tipografia: 'Mi Fuente', color_principal: '#123456', licencia: true,
+		tipografia_archivos: [ { ruta: FUENTE_A, nombre: 'mi.woff2', peso: 700, estilo: 'italic' } ] } ), 'propia' );
+	const robotBajaFuente = await robot.storage.from( 'documentos' ).download( FUENTE_A );
 	const conPropia = await exigir( robot.rpc( 'marca_de_promocion', { p_promocion: 'prueba-a' } ), 'robot lee prueba-a' );
 	const otra = await exigir( robot.rpc( 'marca_de_promocion', { p_promocion: 'prueba-a2' } ), 'robot lee prueba-a2' );
 	const equipoVe = await exigir( soloCompradores.sb.rpc( 'marca_de_promocion', { p_promocion: 'prueba-a' } ), 'el equipo la ve' );
@@ -1675,9 +1690,10 @@ await caso( DEBE_FUNCIONAR, 'Marca: la administradora de la promotora pone la ge
 	await exigir( soloMarca.sb.rpc( 'quitar_marca_propia', { p_promocion: 'prueba-a' } ), 'quitar propia' );
 	const sinPropia = await exigir( robot.rpc( 'marca_de_promocion', { p_promocion: 'prueba-a' } ), 'robot lee sin propia' );
 	const mal = Object.entries( {
-		propia: conPropia.efectiva?.promotora === 'Residencial A' && conPropia.efectiva?.tipografia?.familia === 'Inter' && conPropia.efectiva?.colorPrincipal === '#123456',
+		propia: conPropia.efectiva?.promotora === 'Residencial A' && conPropia.efectiva?.tipografia?.familia === 'Mi Fuente' && conPropia.efectiva?.colorPrincipal === '#123456'
+			&& conPropia.efectiva?.tipografia?.archivos?.[ 0 ]?.peso === 700 && !! conPropia.efectiva?.tipografia?.licencia && ! robotBajaFuente.error,
 		general: otra.efectiva?.promotora === 'Promotora A' && otra.efectiva?.logoSvg === LOGO_PNG && otra.efectiva?.contacto?.telefono === '900 000 000'
-			&& otra.efectiva?.tipografia?.googleFonts === 'Lora:wght@400;500;600;700',
+			&& otra.efectiva?.tipografia?.familia === 'Lora' && ! otra.efectiva?.tipografia?.archivos,
 		equipo: equipoVe.puede_cambiar === false && equipoVe.efectiva?.promotora === 'Residencial A',
 		lista: general.puede_cambiar === true && general.propias?.some( ( x ) => x.id === 'prueba-a' ),
 		quitada: sinPropia.propia === null && sinPropia.efectiva?.promotora === 'Promotora A',

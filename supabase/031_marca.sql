@@ -6,8 +6,13 @@
 -- La marca es de la promotora: la pone una vez y vale para todas sus
 -- promociones. Una promoción puede tener una marca propia (por ejemplo, con el
 -- logo del residencial), que sustituye entera a la de la promotora solo en esa
--- promoción. La marca lleva el nombre que se enseña, el logo, los colores, la
--- tipografía (de una lista de tipografías gratuitas) y el contacto comercial.
+-- promoción. La marca lleva el nombre que se enseña, el logo, los colores
+-- (con su código, #7a2e3b), la tipografía y el contacto comercial.
+-- Tipografía: cualquiera de Google Fonts, por su nombre, o la suya propia
+-- (archivos WOFF2, WOFF, TTF u OTF subidos a documentos/<promotora>/marca/ o
+-- documentos/<promotora>/<promoción>/marca/), confirmando que tiene licencia
+-- para usarla en web. «preparar» la descarga y la guarda dentro de cada
+-- versión: la Experiencia no pide nada a Google ni a nadie al visitarla.
 -- Los textos legales siguen en *Ficha y datos* de cada promoción (020).
 --
 -- La Experiencia 3D pública es una web fija: la marca nueva sale en la
@@ -52,7 +57,7 @@ $$;
 revoke all on function public.svg_seguro(text) from public, anon;
 grant execute on function public.svg_seguro(text) to authenticated;
 
--- Tipografías que se pueden elegir (gratuitas, de Google Fonts)
+-- Tipografías sugeridas (gratuitas, de Google Fonts); se puede escribir cualquier otra de Google Fonts
 create or replace function public.tipografias_marca()
 returns text[]
 language sql
@@ -74,7 +79,7 @@ create table if not exists public.marcas (
 	logo_svg         text,
 	color_principal  text not null check (color_principal ~ '^#[0-9a-fA-F]{6}$'),
 	color_secundario text not null check (color_secundario ~ '^#[0-9a-fA-F]{6}$'),
-	tipografia       text not null check (tipografia = any (public.tipografias_marca())),
+	tipografia       text not null,
 	telefono         text check (char_length(telefono) <= 40),
 	email            text check (char_length(email) <= 120),
 	web              text check (char_length(web) <= 120),
@@ -83,6 +88,13 @@ create table if not exists public.marcas (
 	actualizado_en   timestamptz not null default now()
 );
 create unique index if not exists marcas_una_por_sitio on public.marcas (promotora_id, coalesce(promocion_id, ''));
+-- tipografía: el nombre de una de Google Fonts o el de la propia
+alter table public.marcas drop constraint if exists marcas_tipografia_check;
+alter table public.marcas add constraint marcas_tipografia_check check (tipografia ~ '^[A-Za-z0-9][A-Za-z0-9 ]{0,59}$');
+-- la propia: [{ ruta, nombre, peso, estilo }] en el almacén «documentos»; con la licencia confirmada
+alter table public.marcas add column if not exists tipografia_archivos jsonb not null default '[]'::jsonb
+	check (jsonb_typeof(tipografia_archivos) = 'array' and jsonb_array_length(tipografia_archivos) <= 6);
+alter table public.marcas add column if not exists licencia_tipografia timestamptz;
 -- sin logo vale (se escribe el nombre); con logo, solo un SVG sin código
 alter table public.marcas drop constraint if exists marcas_logo_svg_check;
 alter table public.marcas add constraint marcas_logo_svg_check check (logo_svg is null or public.svg_seguro(logo_svg));
@@ -99,14 +111,65 @@ as $$
 	select case when m.id is null then null else jsonb_strip_nulls(jsonb_build_object(
 		'promotora', m.nombre, 'logoSvg', m.logo_svg,
 		'colorPrincipal', lower(m.color_principal), 'colorSecundario', lower(m.color_secundario),
-		'tipografia', jsonb_build_object('familia', m.tipografia,
-			'googleFonts', replace(m.tipografia, ' ', '+') || ':wght@400;500;600;700'),
+		'tipografia', jsonb_strip_nulls(jsonb_build_object('familia', m.tipografia,
+			'archivos', nullif(m.tipografia_archivos, '[]'::jsonb), 'licencia', m.licencia_tipografia)),
 		'contacto', nullif(jsonb_strip_nulls(jsonb_build_object('telefono', m.telefono, 'email', m.email, 'web', m.web,
 			'direccion', m.direccion)), '{}'::jsonb),
 		'actualizado_en', m.actualizado_en,
 		'por', case when public.es_admin_usuario(m.actualizado_por) then 'MUNE' else 'la promotora' end)) end;
 $$;
 revoke all on function public._marca_json(public.marcas) from public, anon, authenticated;
+
+-- documentos/<promotora>/marca/<archivo> (general) o documentos/<promotora>/<promoción>/marca/<archivo>
+-- (propia): { promotora, promocion } si la carpeta es de una marca que existe
+create or replace function public.carpeta_de_marca(p_ruta text)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+	select case
+		when array_length(storage.foldername(p_ruta), 1) = 2 and (storage.foldername(p_ruta))[2] = 'marca'
+			and exists (select 1 from public.promotoras po where po.id::text = (storage.foldername(p_ruta))[1])
+			then jsonb_build_object('promotora', (storage.foldername(p_ruta))[1], 'promocion', null)
+		when array_length(storage.foldername(p_ruta), 1) = 3 and (storage.foldername(p_ruta))[3] = 'marca'
+			and exists (select 1 from public.promociones pr where pr.promotora_id::text = (storage.foldername(p_ruta))[1]
+				and pr.id = (storage.foldername(p_ruta))[2])
+			then jsonb_build_object('promotora', (storage.foldername(p_ruta))[1], 'promocion', (storage.foldername(p_ruta))[2])
+	end;
+$$;
+revoke all on function public.carpeta_de_marca(text) from public, anon;
+grant execute on function public.carpeta_de_marca(text) to authenticated;
+
+-- ¿Puede la sesión subir (cambiar) o ver los archivos de esa carpeta de marca?
+create or replace function public.puede_marca_en(p_ruta text, p_cambiar boolean)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+	c jsonb := public.carpeta_de_marca(p_ruta);
+begin
+	if c is null then return false; end if;
+	if public.es_admin() then return true; end if;
+	if not p_cambiar and (public.es_robot() or public.es_miembro_de_promotora((c->>'promotora')::uuid)) then return true; end if;
+	return case when c->>'promocion' is null then public.es_admin_promotora((c->>'promotora')::uuid)
+		else public.puede(c->>'promocion', 'marca') end;
+end $$;
+revoke all on function public.puede_marca_en(text, boolean) from public, anon;
+grant execute on function public.puede_marca_en(text, boolean) to authenticated;
+
+drop policy if exists "marca sube tipografias" on storage.objects;
+create policy "marca sube tipografias" on storage.objects
+	for insert to authenticated
+	with check (bucket_id = 'documentos' and public.puede_marca_en(name, true));
+drop policy if exists "ven tipografias de marca" on storage.objects;
+create policy "ven tipografias de marca" on storage.objects
+	for select to authenticated
+	using (bucket_id = 'documentos' and public.puede_marca_en(name, false));
 
 -- ═══ 2. Leer ════════════════════════════════════════════════════════════════
 
@@ -172,6 +235,7 @@ grant execute on function public.marca_de_promocion(text) to authenticated;
 
 -- Guarda la marca general (p_promocion vacía) o la propia de una promoción.
 -- p_marca: { nombre, logo_svg?, color_principal, color_secundario, tipografia,
+--            tipografia_archivos?: [{ ruta, nombre, peso, estilo }], licencia?: true,
 --            telefono?, email?, web?, direccion? }
 create or replace function public.guardar_marca(p_promotora uuid, p_promocion text, p_marca jsonb)
 returns void
@@ -183,7 +247,9 @@ as $$
 declare
 	v_promocion text := nullif(btrim(p_promocion), '');
 	v_logo text := nullif(btrim(coalesce(p_marca->>'logo_svg', '')), '');
-	v_tipografia text := btrim(coalesce(p_marca->>'tipografia', ''));
+	v_tipografia text := regexp_replace(btrim(coalesce(p_marca->>'tipografia', '')), '\s+', ' ', 'g');
+	v_archivos jsonb := '[]'::jsonb;
+	a jsonb;
 	t text;
 begin
 	if v_promocion is null then
@@ -212,8 +278,32 @@ begin
 			raise exception 'Elige los dos colores';
 		end if;
 	end loop;
-	if not v_tipografia = any (public.tipografias_marca()) then
-		raise exception 'Elige una tipografía de la lista';
+	if v_tipografia !~ '^[A-Za-z0-9][A-Za-z0-9 ]{0,59}$' then
+		raise exception 'Escribe el nombre de la tipografía (solo letras, números y espacios)';
+	end if;
+	-- tipografía propia: archivos ya subidos a la carpeta de marca de este sitio, con la licencia confirmada
+	if jsonb_typeof(coalesce(p_marca->'tipografia_archivos', '[]'::jsonb)) <> 'array'
+		or jsonb_array_length(coalesce(p_marca->'tipografia_archivos', '[]'::jsonb)) > 6 then
+		raise exception 'Como mucho, seis archivos de tipografía';
+	end if;
+	for a in select x from jsonb_array_elements(coalesce(p_marca->'tipografia_archivos', '[]'::jsonb)) x loop
+		-- la de este sitio o, en una promoción, también la general de su promotora (reutiliza sus archivos)
+		if public.carpeta_de_marca(a->>'ruta')->>'promotora' is distinct from p_promotora::text
+			or coalesce(public.carpeta_de_marca(a->>'ruta')->>'promocion', v_promocion, '') is distinct from coalesce(v_promocion, '')
+			or not exists (select 1 from storage.objects o where o.bucket_id = 'documentos' and o.name = a->>'ruta') then
+			raise exception 'Ese archivo de tipografía no está en la carpeta de esta marca';
+		end if;
+		if a->>'ruta' !~* '\.(woff2|woff|ttf|otf)$' then
+			raise exception 'La tipografía tiene que ser un archivo WOFF2, WOFF, TTF u OTF';
+		end if;
+		if coalesce(a->>'peso', '400') not in ('300', '400', '500', '600', '700', '800') or coalesce(a->>'estilo', 'normal') not in ('normal', 'italic') then
+			raise exception 'Peso o estilo de la tipografía no válido';
+		end if;
+		v_archivos := v_archivos || jsonb_build_array(jsonb_build_object('ruta', a->>'ruta', 'nombre', left(coalesce(a->>'nombre', ''), 120),
+			'peso', coalesce(a->>'peso', '400')::int, 'estilo', coalesce(a->>'estilo', 'normal')));
+	end loop;
+	if jsonb_array_length(v_archivos) > 0 and (p_marca->>'licencia')::boolean is not true then
+		raise exception 'Confirma que tienes licencia para usar esta tipografía en una web';
 	end if;
 	if char_length(coalesce(p_marca->>'telefono', '')) > 40 or char_length(coalesce(p_marca->>'email', '')) > 120
 		or char_length(coalesce(p_marca->>'web', '')) > 120 or char_length(coalesce(p_marca->>'direccion', '')) > 200 then
@@ -221,13 +311,18 @@ begin
 	end if;
 
 	insert into public.marcas as m (promotora_id, promocion_id, nombre, logo_svg, color_principal, color_secundario, tipografia,
-		telefono, email, web, direccion, actualizado_por, actualizado_en)
-	values (p_promotora, v_promocion, btrim(p_marca->>'nombre'), v_logo, p_marca->>'color_principal', p_marca->>'color_secundario',
-		v_tipografia, nullif(btrim(coalesce(p_marca->>'telefono', '')), ''), nullif(btrim(coalesce(p_marca->>'email', '')), ''),
+		tipografia_archivos, licencia_tipografia, telefono, email, web, direccion, actualizado_por, actualizado_en)
+	values (p_promotora, v_promocion, btrim(p_marca->>'nombre'), v_logo, lower(p_marca->>'color_principal'), lower(p_marca->>'color_secundario'),
+		v_tipografia, v_archivos, case when jsonb_array_length(v_archivos) > 0 then now() end, nullif(btrim(coalesce(p_marca->>'telefono', '')), ''), nullif(btrim(coalesce(p_marca->>'email', '')), ''),
 		nullif(btrim(coalesce(p_marca->>'web', '')), ''), nullif(btrim(coalesce(p_marca->>'direccion', '')), ''), auth.uid(), now())
 	on conflict (promotora_id, coalesce(promocion_id, '')) do update set
 		nombre = excluded.nombre, logo_svg = excluded.logo_svg, color_principal = excluded.color_principal,
-		color_secundario = excluded.color_secundario, tipografia = excluded.tipografia, telefono = excluded.telefono,
+		color_secundario = excluded.color_secundario, tipografia = excluded.tipografia,
+		tipografia_archivos = excluded.tipografia_archivos,
+		licencia_tipografia = case when excluded.tipografia_archivos = '[]'::jsonb then null
+			when excluded.tipografia_archivos = m.tipografia_archivos then coalesce(m.licencia_tipografia, excluded.licencia_tipografia)
+			else excluded.licencia_tipografia end,
+		telefono = excluded.telefono,
 		email = excluded.email, web = excluded.web, direccion = excluded.direccion,
 		actualizado_por = excluded.actualizado_por, actualizado_en = now();
 	insert into public.registro (user_id, accion, detalle)
