@@ -433,7 +433,7 @@ Sustituye al orden de pasos 0–5 anterior (los pasos 0, 2 y 3 de equipos y vali
 
 **Actualizado el 26/10/2026 (decisión 49):** todo este apartado pasa a ser **antes del primer cliente**, salvo la analítica de uso (punto 12), que queda para después. Además, antes del primer cliente: un 3D mucho más realista y renders con calidad de fotografía bajo demanda y sin límite. Descartado: dron, realidad virtual, firma electrónica y pago con tarjeta.
 
-8. Personalización configurable y Fase 2 (fases o grupos, opciones, restricciones, aplicabilidad, apertura y cierre; la promotora gestiona catálogo, precios, fechas y marca). En tres propuestas: 8a catálogo, precios, packs y fechas (`029_catalogo_promotora.sql`, decisión 52); 8b restricciones por vivienda; 8c marca.
+8. Personalización configurable y Fase 2 (fases o grupos, opciones, restricciones, aplicabilidad, apertura y cierre; la promotora gestiona catálogo, precios, fechas y marca). En tres propuestas: 8a catálogo, precios, packs y fechas (`029_catalogo_promotora.sql`, decisión 52); 8b restricciones por tipología (no por vivienda ni entre opciones; `030_tipologias_en_preparacion.sql`, decisión 53); 8c marca.
 9. Comparación entre versiones, impacto de cambios y vigencia (Vigente / Requiere actualizar / Pendiente de validar).
 10. Comentarios visuales en planos y Experience, unidos a su versión (no dependen del 9).
 11. Generación de materiales por lotes (depende del 6).
