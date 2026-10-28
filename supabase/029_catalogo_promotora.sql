@@ -451,9 +451,12 @@ begin
 		if s.id is not null and s.opciones->>cat is not null and not permitidas ? (s.opciones->>cat) then
 			permitidas := permitidas || to_jsonb(s.opciones->>cat);
 		end if;
+		-- una opción que no se ofrece da error aunque solo quede una (no se ignora en silencio)
+		if p_opciones ? cat and not permitidas ? (p_opciones->>cat) then
+			raise exception 'La opción % no se puede elegir en esta vivienda', p_opciones->>cat;
+		end if;
 		continue when jsonb_array_length(permitidas) < 2;
 		elegida := coalesce(p_opciones->>cat, permitidas->>0);
-		if not permitidas ? elegida then raise exception 'La opción % no se puede elegir en esta vivienda', elegida; end if;
 		select x into o from jsonb_array_elements(k->'opciones') x where x->>'id' = elegida limit 1;
 		if o is null then raise exception 'La opción % no existe', elegida; end if;
 		v_opciones := v_opciones || jsonb_build_object(cat, elegida);
