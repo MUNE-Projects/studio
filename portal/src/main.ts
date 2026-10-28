@@ -8,6 +8,7 @@ import { datosFormalizacion, formFormalizacion, type Formalizacion } from './for
 import { ESCAPARATE, REVISION, INACTIVIDAD_MAX, MIN_CLAVE, CABECERA, alEnviar, app, errorEnlace, esc, fecha, pintar, sb, tipoEnlace, traducir } from './comun';
 import { pintarCompradores } from './compradores';
 import { pintarPersonalizacion } from './personalizacion';
+import { pintarCatalogo } from './catalogo';
 import { COLUMNAS_DOCUMENTO, COLUMNAS_REQUISITO, type Documento, type Requisito, leerCubre, pintarDocumentacion, resumenDocumentos } from './documentos';
 import { pintarEquipo } from './equipo';
 import { pintarEstados } from './estado';
@@ -421,11 +422,13 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 	if (actual === 'personalizacion') {
 		caja.innerHTML = `
 			<div data-selecciones><p class="vacio">Cargando…</p></div>
+			<section class="separado" data-catalogo></section>
 			<h2 class="separado">Formalización de la personalización</h2>
 			<p class="ayuda">Cuando un comprador termina su personalización, descarga el documento de selección y lo firma. Indica aquí a quién debe enviarlo y, si las mejoras se pagan por transferencia, los datos de la cuenta. Solo lo ven los compradores que entran con su código.</p>
 			${formFormalizacion((p as unknown as { formalizacion: Formalizacion }).formalizacion)}`;
 		conectarFormulario('[data-formalizacion]', (d) => sb.rpc('guardar_formalizacion', datosFormalizacion(p.id, d)));
 		await pintarPersonalizacion(caja.querySelector<HTMLElement>('[data-selecciones]')!, { sb, esc, fecha, traducir, modo: 'promotora' }, p);
+		await pintarCatalogo(caja.querySelector<HTMLElement>('[data-catalogo]')!, { sb, esc, fecha, traducir, modo: 'promotora' }, p);
 	}
 
 	if (actual === 'datos') {

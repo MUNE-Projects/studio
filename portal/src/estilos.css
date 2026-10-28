@@ -278,3 +278,23 @@ details.desactivado { opacity: 0.45; pointer-events: none; }
 .personalizacion details.eleccion ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
 .personalizacion form.eleccion-equipo { display: grid; gap: 10px; max-width: 560px; padding: 8px 0; }
 .personalizacion form.eleccion-equipo label { display: grid; gap: 4px; }
+
+/* Catálogo y precios (paso 8a) */
+section.separado { margin-top: 28px; }
+.tabla.catalogo { overflow-x: auto; margin: 6px 0 14px; }
+.tabla.catalogo table { width: 100%; border-collapse: collapse; }
+.tabla.catalogo th { text-align: left; font-size: 12px; font-weight: 600; color: var(--tinta-2); padding: 6px 8px; border-bottom: 1px solid var(--linea); }
+.tabla.catalogo td { vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--linea); }
+.tabla.catalogo input[type=text], .tabla.catalogo input:not([type]), .tabla.catalogo input[type=number] { width: 100%; min-width: 120px; padding: 6px 8px; font-size: 14px; border: 1px solid var(--linea); border-radius: 6px; background: #fff; }
+.tabla.catalogo td.precio input { min-width: 90px; max-width: 120px; text-align: right; }
+.tabla.catalogo input:disabled { background: transparent; border-color: transparent; color: var(--tinta); }
+.interruptor { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
+.confirmar { margin: 10px 0; padding: 12px 14px; border-radius: 10px; background: var(--acento-suave); }
+.confirmar p { margin: 0 0 8px; }
+.lista-pedidas { list-style: none; padding: 0; margin: 8px 0 14px; display: grid; gap: 8px; }
+.lista-pedidas li { padding: 10px 12px; border: 1px solid var(--linea); border-radius: 10px; background: var(--superficie); }
+form.pedir-opcion { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: end; max-width: 860px; }
+form.pedir-opcion label { display: grid; gap: 4px; font-size: 13px; }
+form.pedir-opcion input, form.pedir-opcion select { padding: 7px 8px; font-size: 14px; border: 1px solid var(--linea); border-radius: 6px; background: #fff; }
+form.pedir-opcion .acciones, form.pedir-opcion .error { grid-column: 1 / -1; }
+.tabla.catalogo td.precio span { display: inline-block; padding: 6px 0; font-variant-numeric: tabular-nums; }
