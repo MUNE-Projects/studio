@@ -1,7 +1,8 @@
 // Inicio de MUNE Studio: lo que necesita tu atención, con enlace a cada sitio.
 // Arriba, los avisos del sistema (015_sistema.sql); después, las versiones
 // pendientes con el estado de su validación (planos comerciales y Experiencia
-// 3D), la documentación por revisar y las peticiones abiertas.
+// 3D), la documentación por revisar, las opciones nuevas pedidas y las
+// peticiones abiertas.
 
 import { esc, fecha, sb, traducir } from './comun';
 import { ESTADOS_PETICION, peticionesAbiertas } from './peticiones';
@@ -22,6 +23,11 @@ export async function pantallaInicio(destino: HTMLElement): Promise<void> {
 		<section class="tarjeta">
 			<h2>Documentación por revisar</h2>
 			<div data-documentos><p class="vacio">Cargando…</p></div>
+		</section>
+		<section class="tarjeta" data-opciones-pedidas hidden>
+			<h2>Opciones por preparar</h2>
+			<p class="ayuda">Personalizaciones y mejoras que una promotora ha añadido. Hay que preparar su aspecto en el 3D (con el documento que hayan adjuntado) y añadirlas en una versión nueva; después, márcalas como añadidas en la pestaña Personalización de su promoción. Claude puede leer esos documentos con el robot.</p>
+			<div data-lista-opciones></div>
 		</section>
 		<section class="tarjeta">
 			<h2>Peticiones de cambios abiertas</h2>
@@ -90,6 +96,18 @@ export async function pantallaInicio(destino: HTMLElement): Promise<void> {
 					<span class="estado pendiente">${g.n} por revisar</span>
 				</a>`).join('')}</div>` : '<p class="vacio">No hay documentación por revisar.</p>';
 		});
+
+	void sb.rpc('opciones_pedidas_pendientes').then(({ data: pedidas }) => {
+		const caja = destino.querySelector<HTMLElement>('[data-opciones-pedidas]');
+		const lista = (pedidas ?? []) as { promocion_id: string; promocion: string; nombre: string; pedido_en: string }[];
+		if (!caja || !lista.length) return;
+		caja.hidden = false;
+		caja.querySelector<HTMLElement>('[data-lista-opciones]')!.innerHTML = `<div class="lista-enlaces">${lista.map((x) => `
+			<a class="fila-enlace" href="#/promocion/${esc(x.promocion_id)}/personalizacion">
+				<span><strong>${esc(x.promocion)}</strong><br><span class="promo-lugar">${esc(x.nombre)} · pedida el ${esc(fecha(x.pedido_en))}</span></span>
+				<span class="estado pendiente">En preparación</span>
+			</a>`).join('')}</div>`;
+	});
 
 	const peticiones = await peticionesAbiertas();
 	const caja = destino.querySelector<HTMLElement>('[data-peticiones]');

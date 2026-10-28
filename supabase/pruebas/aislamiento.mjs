@@ -1504,6 +1504,129 @@ await caso( DEBE_FALLAR, '42. Experience pública: otra promotora, el robot, alg
 
 } );
 
+// ─── Catálogo y precios de la promotora (029_catalogo_promotora.sql, paso 8a) ─
+// Una versión nueva con un pack que aún no se ha abierto (exterior) además del
+// de acabados (abierto desde 2026). Va al final: cambia los últimos datos privados.
+
+const datosCatalogo = {
+	...datosPrueba,
+	catalogo: { moneda: 'EUR', categorias: [ ...datosPrueba.catalogo.categorias,
+		{ id: 'exterior', nombre: 'Exterior', opciones: [ { id: 'sin-mejora', nombre: 'Sin mejora', precio: 0 }, { id: 'piscina', nombre: 'Piscina', precio: 18000 } ] } ] },
+	packs: [ ...datosPrueba.packs, { id: 'extras', titulo: 'Extras', desde: '2099-01-01', hasta: '2099-12-31', categorias: [ 'exterior' ] } ],
+	tipologias: [ { id: 'a', opciones: { suelo: [ 'base', 'nogal' ], exterior: [ 'sin-mejora', 'piscina' ] } } ],
+};
+await exigir( robot.rpc( 'guardar_datos_privados', { p_promocion: 'prueba-a', p_version: 'v95', p_contenido: datosCatalogo } ), 'datos v95' );
+const guardarCatalogo = ( sb, cambios ) => sb.rpc( 'guardar_catalogo', { p_promocion: 'prueba-a', p_cambios: cambios } );
+
+await caso( DEBE_FALLAR, '43. Catálogo: otra promotora, alguien sin «personalización» o sin sesión lo leen o lo cambian; se cambia el precio de un pack ya abierto; se quita la opción incluida de serie; la promotora atiende las opciones pedidas', async () => {
+
+	const r = {
+		otraLee: await aprobB.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ),
+		otraCambia: await guardarCatalogo( aprobB, [ { categoria: 'exterior', opcion: 'piscina', precio: 1 } ] ),
+		sinPermisoLee: await soloCompradores.sb.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ),
+		sinPermisoCambia: await guardarCatalogo( soloCompradores.sb, [ { categoria: 'exterior', opcion: 'piscina', precio: 1 } ] ),
+		anonimoLee: await anonimo.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ),
+		anonimoCambia: await guardarCatalogo( anonimo, [ { categoria: 'exterior', opcion: 'piscina', precio: 1 } ] ),
+		anonimoLeeTabla: await anonimo.from( 'catalogo_ajustes' ).select( 'precio' ),
+		promotoraLeeTabla: await gestorA.from( 'catalogo_ajustes' ).select( 'precio' ),
+		precioPackAbierto: await guardarCatalogo( gestorA, [ { categoria: 'suelo', opcion: 'nogal', precio: 1 } ] ),
+		quitarIncluida: await guardarCatalogo( gestorA, [ { categoria: 'suelo', opcion: 'base', ofrecida: false } ] ),
+		otraPide: await aprobB.rpc( 'pedir_opcion', { p_promocion: 'prueba-a', p_categoria: 'suelo', p_categoria_nueva: '', p_nombre: 'X', p_descripcion: '', p_precio: null } ),
+		promotoraAtiende: await gestorA.rpc( 'atender_opcion', { p_id: 1, p_estado: 'hecha', p_nota: '' } ),
+		promotoraVePendientesDeTodas: await gestorA.rpc( 'opciones_pedidas_pendientes' ),
+		otraGuardaPacks: await aprobB.rpc( 'guardar_packs', { p_promocion: 'prueba-a', p_packs: datosCatalogo.packs } ),
+		quitarPackAbierto: await gestorA.rpc( 'guardar_packs', { p_promocion: 'prueba-a', p_packs: [ datosCatalogo.packs[ 1 ] ] } ),
+		moverCategoriaAbierta: await gestorA.rpc( 'guardar_packs', { p_promocion: 'prueba-a', p_packs: [ { ...datosCatalogo.packs[ 0 ], categorias: [] }, { ...datosCatalogo.packs[ 1 ], categorias: [ 'exterior', 'suelo' ] } ] } ),
+		packEnElPasado: await gestorA.rpc( 'guardar_packs', { p_promocion: 'prueba-a', p_packs: [ datosCatalogo.packs[ 0 ], { ...datosCatalogo.packs[ 1 ], desde: '2020-01-01' } ] } ),
+		archivoAjeno: await gestorA.rpc( 'pedir_opcion', { p_promocion: 'prueba-a', p_categoria: 'suelo', p_categoria_nueva: '', p_nombre: 'X', p_descripcion: '', p_precio: null, p_archivos: [ { ruta: 'otra/prueba-b/opciones/x.png', nombre: 'x.png' } ] } ),
+		otraSubeOpcion: await aprobB.storage.from( 'documentos' ).upload( `${ pA.id }/prueba-a/opciones/intruso.png`, pdf( 'intruso' ) ),
+		robotCambia: await guardarCatalogo( robot, [ { categoria: 'exterior', opcion: 'piscina', precio: 1 } ] ),
+		robotPide: await robot.rpc( 'pedir_opcion', { p_promocion: 'prueba-a', p_categoria: 'suelo', p_categoria_nueva: '', p_nombre: 'X', p_descripcion: '', p_precio: null } ),
+		robotSube: await robot.storage.from( 'documentos' ).upload( `${ pA.id }/prueba-a/opciones/robot.png`, pdf( 'robot' ) ),
+		sinFechas: await gestorA.rpc( 'guardar_packs', { p_promocion: 'prueba-a', p_packs: [ datosCatalogo.packs[ 0 ] ] } ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Catálogo: la promotora cambia un precio de un pack aún no abierto y deja de ofrecer una opción; el comprador lo ve al momento; quien ya la eligió la conserva; pide una opción nueva y MUNE la marca como añadida', async () => {
+
+	// un comprador elige nogal antes de que se deje de ofrecer
+	const codigo = String( await exigir( generar( admin, 'Bajo A', true ), 'código catálogo' ) );
+	await exigir( anonimo.rpc( 'guardar_seleccion', { p_promocion: 'prueba-a', p_codigo: codigo, p_version: 'v95', p_pack: 'acabados', p_opciones: { suelo: 'nogal' } } ), 'elige nogal' );
+	await exigir( guardarCatalogo( gestorA, [
+		{ categoria: 'exterior', opcion: 'piscina', precio: 19500, nombre: 'Piscina privada' },
+		{ categoria: 'suelo', opcion: 'nogal', ofrecida: false, nombre: 'Nogal americano' },
+		{ categoria: 'suelo', nombre_categoria: 'Pavimentos' },
+	] ), 'guardar catálogo' );
+	const vista = await exigir( gestorA.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ), 'ver catálogo' );
+	const entra = await exigir( anonimo.rpc( 'entrar_comprador', { p_promocion: 'prueba-a', p_codigo: codigo, p_version: 'v95' } ), 'entrar' );
+	const piscina = entra.datos.catalogo.categorias.find( ( c ) => c.id === 'exterior' ).opciones.find( ( o ) => o.id === 'piscina' );
+	const conserva = await exigir( anonimo.rpc( 'guardar_seleccion', { p_promocion: 'prueba-a', p_codigo: codigo, p_version: 'v95', p_pack: 'acabados', p_opciones: { suelo: 'nogal' } } ), 'conserva nogal' );
+	const otro = String( await exigir( generar( admin, 'Bajo B', true ), 'código otro' ) );
+	const otroElige = await anonimo.rpc( 'guardar_seleccion', { p_promocion: 'prueba-a', p_codigo: otro, p_version: 'v95', p_pack: 'acabados', p_opciones: { suelo: 'nogal' } } );
+	// packs: la promotora pasa «exterior» a un pack nuevo y alarga el que no se ha abierto
+	await exigir( gestorA.rpc( 'guardar_packs', { p_promocion: 'prueba-a', p_packs: [ datosCatalogo.packs[ 0 ],
+		{ ...datosCatalogo.packs[ 1 ], categorias: [], hasta: '2099-06-30' },
+		{ id: 'sola-exterior', titulo: 'Exterior', desde: '2099-07-01', hasta: '2099-08-31', categorias: [ 'exterior' ], individual: true } ] } ), 'packs' );
+	const conPacks = await exigir( anonimo.rpc( 'entrar_comprador', { p_promocion: 'prueba-a', p_codigo: codigo, p_version: 'v95' } ), 'entrar con packs' );
+	// opción nueva con una foto subida a la carpeta de opciones de la promoción
+	const ruta = `${ pA.id }/prueba-a/opciones/roble.png`;
+	await exigir( gestorA.storage.from( 'documentos' ).upload( ruta, pdf( 'foto' ), { upsert: true } ), 'subir foto' );
+	const id = await exigir( gestorA.rpc( 'pedir_opcion', { p_promocion: 'prueba-a', p_categoria: 'suelo', p_categoria_nueva: '', p_nombre: 'Roble ahumado', p_descripcion: 'Ficha en Documentación', p_precio: 1200, p_archivos: [ { ruta, nombre: 'roble.png' } ] } ), 'pedir' );
+	const adminVeFoto = await admin.storage.from( 'documentos' ).createSignedUrl( ruta, 60 );
+	// una categoría nueva, y el robot de Claude lee lo añadido y su documento para preparar el 3D
+	await exigir( gestorA.rpc( 'pedir_opcion', { p_promocion: 'prueba-a', p_categoria: '', p_categoria_nueva: 'Climatización', p_nombre: 'Aerotermia', p_descripcion: '', p_precio: 6500 } ), 'categoría nueva' );
+	// lo que está en preparación ya se mete en un pack y se cambia (los compradores aún no lo ven)
+	const enPrep = await exigir( gestorA.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ), 'ver en preparación' );
+	const aerotermia = enPrep.pedidas.find( ( x ) => x.nombre === 'Aerotermia' );
+	const packsConNueva = [ ...enPrep.packs.filter( ( x ) => x.id !== 'extras' ),
+		{ id: 'confort', titulo: 'Confort', desde: '2099-09-01', hasta: '2099-09-30', categorias: [ 'climatizacion' ] } ];
+	const faltaNueva = await gestorA.rpc( 'guardar_packs', { p_promocion: 'prueba-a', p_packs: enPrep.packs } );
+	await exigir( gestorA.rpc( 'guardar_packs', { p_promocion: 'prueba-a', p_packs: packsConNueva } ), 'pack con categoría en preparación' );
+	await exigir( guardarCatalogo( gestorA, [ { pedida: aerotermia.id, precio: 6900, nombre: 'Aerotermia y suelo radiante' },
+		{ categoria: 'climatizacion', nombre_categoria: 'Clima' } ] ), 'cambiar en preparación' );
+	// otra en una categoría nueva, por separado, que la promotora retira
+	const toldo = await exigir( gestorA.rpc( 'pedir_opcion', { p_promocion: 'prueba-a', p_categoria: '', p_categoria_nueva: 'Sombra', p_nombre: 'Toldo', p_descripcion: '', p_precio: 900 } ), 'pedir toldo' );
+	await exigir( gestorA.rpc( 'guardar_packs', { p_promocion: 'prueba-a', p_packs: [ ...packsConNueva,
+		{ id: 'sola-sombra', titulo: 'Sombra', desde: '2099-10-01', hasta: '2099-10-31', categorias: [ 'sombra' ], individual: true } ] } ), 'pack de sombra' );
+	await exigir( guardarCatalogo( gestorA, [ { pedida: toldo, quitar: true } ] ), 'retirar toldo' );
+	const trasRetirar = await exigir( gestorA.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ), 'tras retirar' );
+	const compradorNoVe = await exigir( anonimo.rpc( 'entrar_comprador', { p_promocion: 'prueba-a', p_codigo: codigo, p_version: 'v95' } ), 'comprador sin lo nuevo' );
+	const robotLee = await exigir( robot.rpc( 'opciones_pedidas_pendientes' ), 'robot lee pendientes' );
+	const robotDescarga = await robot.storage.from( 'documentos' ).download( ruta );
+	const pendientes = await exigir( admin.rpc( 'opciones_pedidas_pendientes' ), 'pendientes' );
+	await exigir( admin.rpc( 'atender_opcion', { p_id: id, p_estado: 'hecha', p_nota: 'Añadida en la v96' } ), 'atender' );
+	const despues = await exigir( gestorA.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ), 'ver catálogo después' );
+	const mal = Object.entries( {
+		precioNuevo: piscina.precio === 19500 && piscina.nombre === 'Piscina privada',
+		nogalRetirado: ! entra.datos.tipologia.opciones.suelo.includes( 'nogal' ),
+		nombreCategoria: entra.datos.catalogo.categorias.find( ( c ) => c.id === 'suelo' ).nombre === 'Pavimentos',
+		lanzadas: vista.lanzadas.includes( 'suelo' ) && ! vista.lanzadas.includes( 'exterior' ),
+		conserva: conserva.opciones.suelo === 'nogal' && Number( conserva.importe ) === 1900,
+		otroNoPuede: falla( otroElige ),
+		pendiente: pendientes.some( ( x ) => x.id === id ),
+		atendida: despues.pedidas.find( ( x ) => x.id === id )?.estado === 'hecha',
+		// el pack que se quedó sin categorías no lo ven los compradores
+		packs: conPacks.datos.packs.length === 2 && conPacks.datos.packs[ 1 ].categorias[ 0 ] === 'exterior' && conPacks.datos.packs[ 1 ].individual === true
+			&& enPrep.packs.find( ( x ) => x.id === 'extras' )?.hasta === '2099-06-30',
+		enPreparacion: falla( faltaNueva ) && trasRetirar.packs.some( ( x ) => x.id === 'confort' && x.categorias[ 0 ] === 'climatizacion' )
+			&& trasRetirar.en_preparacion.climatizacion === 'Clima' && ! ( 'sombra' in trasRetirar.en_preparacion )
+			&& ! trasRetirar.packs.some( ( x ) => x.id === 'sola-sombra' )
+			&& trasRetirar.pedidas.find( ( x ) => x.id === toldo )?.estado === 'descartada'
+			&& trasRetirar.pedidas.find( ( x ) => x.id === aerotermia.id )?.precio === 6900
+			&& trasRetirar.pedidas.find( ( x ) => x.id === aerotermia.id )?.categoria_nueva === 'Clima'
+			&& ! compradorNoVe.datos.packs.some( ( x ) => x.id === 'confort' ),
+		foto: despues.pedidas.find( ( x ) => x.id === id )?.archivos?.[ 0 ]?.ruta === ruta && ! adminVeFoto.error,
+		robot: robotLee.some( ( x ) => x.categoria === 'climatizacion' && x.categoria_nombre === 'Clima' && x.categoria_nueva && x.pack?.id === 'confort' ) && ! robotDescarga.error,
+	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
+	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) } (${ JSON.stringify( { piscina, suelo: entra.datos.tipologia.opciones.suelo, lanzadas: vista.lanzadas, conserva, otro: otroElige.error?.message, packs: conPacks.datos.packs, trasRetirar: { packs: trasRetirar.packs, en_preparacion: trasRetirar.en_preparacion }, faltaNueva: faltaNueva.error?.message } ) })` );
+	return true;
+
+} );
+
 // ─── Resumen ────────────────────────────────────────────────────────────────
 
 const fallidos = resultados.filter( ( r ) => ! r.ok );

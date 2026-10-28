@@ -44,6 +44,7 @@ Claude se usa **solo en producción** (preparar, interpretar, revisar), **nunca 
    - puede leer peticiones, fotos de referencia y promociones; cambiar el estado, la nota y el enlace de una petición; y anotar en el registro;
    - desde la Fase 1 (aprobado el 6/10/2026), también leer requisitos, documentos subidos y entregables, y marcar documentos como vigentes o rechazados, con nota (preguntándole antes, en la receta 2);
    - desde el paso 5a (aprobado el 22/10/2026), también guardar los datos privados de una versión (catálogo con precios, packs y viviendas) al prepararla, solo mientras no se haya enviado a validar (`guardar_datos_privados`, `024_datos_privados.sql`);
+   - desde el paso 8a (propuesta del 28/10/2026), también leer las personalizaciones y mejoras que añaden las promotoras y sus documentos adjuntos, para preparar su aspecto en el 3D (`029_catalogo_promotora.sql`); no puede cambiarlas;
    - **no** puede borrar, subir archivos, validar planos, publicar, crear administradores, cambiar reglas ni ver usuarios;
    - todo lo que hace queda registrado y se revoca al instante.
 5. **No hay lista pública de promociones ni de promotoras.** Es información del negocio y vive en Supabase.
