@@ -25,8 +25,8 @@ export async function pantallaInicio(destino: HTMLElement): Promise<void> {
 			<div data-documentos><p class="vacio">Cargando…</p></div>
 		</section>
 		<section class="tarjeta" data-opciones-pedidas hidden>
-			<h2>Opciones nuevas pedidas</h2>
-			<p class="ayuda">Opciones de personalización con un aspecto nuevo que una promotora ha pedido. Hay que crearlas en el 3D y añadirlas en una versión nueva; después, márcalas como añadidas en la pestaña Personalización de su promoción.</p>
+			<h2>Opciones por preparar</h2>
+			<p class="ayuda">Personalizaciones y mejoras que una promotora ha añadido. Hay que preparar su aspecto en el 3D (con el documento que hayan adjuntado) y añadirlas en una versión nueva; después, márcalas como añadidas en la pestaña Personalización de su promoción. Claude puede leer esos documentos con el robot.</p>
 			<div data-lista-opciones></div>
 		</section>
 		<section class="tarjeta">
@@ -105,7 +105,7 @@ export async function pantallaInicio(destino: HTMLElement): Promise<void> {
 		caja.querySelector<HTMLElement>('[data-lista-opciones]')!.innerHTML = `<div class="lista-enlaces">${lista.map((x) => `
 			<a class="fila-enlace" href="#/promocion/${esc(x.promocion_id)}/personalizacion">
 				<span><strong>${esc(x.promocion)}</strong><br><span class="promo-lugar">${esc(x.nombre)} · pedida el ${esc(fecha(x.pedido_en))}</span></span>
-				<span class="estado pendiente">Por añadir</span>
+				<span class="estado pendiente">En preparación</span>
 			</a>`).join('')}</div>`;
 	});
 
