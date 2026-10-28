@@ -3,6 +3,7 @@
 // permisos.ts; cada pestaña con lógica propia, en su archivo (documentos.ts,
 // planos.ts, experiencia.ts, equipo.ts, compradores.ts).
 
+import type { Factor } from '@supabase/supabase-js';
 import { textoFase } from './fase';
 import { datosFormalizacion, formFormalizacion, type Formalizacion } from './formalizacion';
 import { ESCAPARATE, REVISION, INACTIVIDAD_MAX, MIN_CLAVE, CABECERA, alEnviar, app, errorEnlace, esc, fecha, pintar, sb, tipoEnlace, traducir } from './comun';
@@ -25,8 +26,76 @@ async function decidir(): Promise<void> {
 		if (errorEnlace) return pantallaEntrada('El enlace del email ha caducado o ya se ha usado. Si es tu primera vez, pide al equipo de MUNE que te reenvíe la invitación; si no, pulsa «¿Has olvidado tu contraseña?».');
 		return pantallaEntrada();
 	}
-	if (tipoEnlace === 'invite' || tipoEnlace === 'recovery') return pantallaClave(tipoEnlace);
-	return navegar();
+	// Invitación: primero la contraseña y después el móvil. Contraseña olvidada:
+	// primero el código del móvil (si ya lo tiene) y después la contraseña nueva.
+	if (tipoEnlace === 'invite') return pantallaClave('invite');
+	if (tipoEnlace === 'recovery') return conMovil(() => pantallaClave('recovery'));
+	return conMovil(navegar);
+}
+
+// ── Código del móvil (032_movil_promotoras.sql) ───────────────────────────
+// Sin él, la base de datos no da nada a la sesión: solo con la contraseña no basta.
+
+const CAMPO_CODIGO = `<label>Código de 6 cifras
+	<input class="codigo" name="codigo" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required autofocus>
+</label>`;
+
+/** Pide el código del móvil (o lo vincula la primera vez) y después sigue. */
+async function conMovil(siguiente: () => void | Promise<void>): Promise<void> {
+	const { data: nivel, error } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+	if (error) throw error;
+	if (nivel.currentLevel === 'aal2') return siguiente();
+	const { data: factores, error: e2 } = await sb.auth.mfa.listFactors();
+	if (e2) throw e2;
+	const totp = factores.all.filter((f) => f.factor_type === 'totp');
+	const verificado = totp.find((f) => f.status === 'verified');
+	return verificado ? pantallaCodigo(verificado, siguiente) : pantallaAlta(totp, siguiente);
+}
+
+async function pantallaAlta(pendientes: Factor[], siguiente: () => void | Promise<void>): Promise<void> {
+	// Un alta a medias (QR que no se llegó a confirmar) impide crear otra.
+	for (const f of pendientes) await sb.auth.mfa.unenroll({ factorId: f.id });
+	const { data, error } = await sb.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'Móvil', issuer: 'MUNE Portal' });
+	if (error) throw error;
+	pintar(`<form class="caja" novalidate>
+		${CABECERA}
+		<h1>Protege tu acceso con el móvil</h1>
+		<p>Cada vez que entres, además de la contraseña, necesitarás un código del móvil. Así, aunque alguien conociera tu contraseña, no podría entrar. Para activarlo:</p>
+		<p>1. Instala en el móvil <strong>Google Authenticator</strong> o <strong>Microsoft Authenticator</strong> (son gratis) y ábrela.<br>
+		2. Pulsa <strong>+</strong> y elige <strong>Escanear código QR</strong>.<br>
+		3. Escribe aquí el código de 6 cifras que aparece en <strong>MUNE Portal</strong>.</p>
+		<div class="qr"><img alt="Código QR para la app de verificación" src="${esc(data.totp.qr_code)}"></div>
+		<p class="secreto">¿No puedes escanear el código? Escribe esta clave a mano en la app: ${esc(data.totp.secret)}</p>
+		${CAMPO_CODIGO}
+		<p class="error" role="alert"></p>
+		<button class="boton" type="submit">Confirmar</button>
+		<button class="boton secundario" type="button" data-salir>Salir</button>
+	</form>`);
+	app.querySelector('[data-salir]')!.addEventListener('click', () => void salir());
+	alEnviar(app.querySelector('form')!, async (d) => {
+		const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: data.id, code: String(d.get('codigo')).trim() });
+		if (error) throw error;
+		await siguiente();
+	});
+}
+
+function pantallaCodigo(factor: Factor, siguiente: () => void | Promise<void>): void {
+	pintar(`<form class="caja" novalidate>
+		${CABECERA}
+		<h1>Código del móvil</h1>
+		<p>Abre la app de verificación del móvil y escribe el código de 6 cifras que aparece en <strong>MUNE Portal</strong>.</p>
+		${CAMPO_CODIGO}
+		<p class="error" role="alert"></p>
+		<button class="boton" type="submit">Verificar</button>
+		<button class="boton secundario" type="button" data-salir>Salir</button>
+		<p class="ayuda">¿Has perdido el móvil o lo has cambiado? Pide a quien administra tu equipo, o al equipo de MUNE, que te quite el código del móvil. Al volver a entrar podrás vincular el nuevo.</p>
+	</form>`);
+	app.querySelector('[data-salir]')!.addEventListener('click', () => void salir());
+	alEnviar(app.querySelector('form')!, async (d) => {
+		const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: factor.id, code: String(d.get('codigo')).trim() });
+		if (error) throw error;
+		await siguiente();
+	});
 }
 
 // ── Entrar ────────────────────────────────────────────────────────────────
@@ -49,7 +118,7 @@ function pantallaEntrada(aviso = ''): void {
 			password: String(d.get('clave')),
 		});
 		if (error) throw error;
-		await navegar();
+		await conMovil(navegar);
 	});
 }
 
@@ -91,7 +160,7 @@ function pantallaClave(tipo: 'invite' | 'recovery'): void {
 		if (clave !== String(d.get('repetida'))) throw new Error('Las dos contraseñas no coinciden. Escríbelas de nuevo.');
 		const { error } = await sb.auth.updateUser({ password: clave });
 		if (error) throw error;
-		await navegar();
+		await conMovil(navegar);
 	});
 }
 

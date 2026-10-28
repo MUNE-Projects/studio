@@ -54,6 +54,7 @@ function paraPersonas(m: string): boolean {
 export function traducir(e: unknown, que = 'completar'): string {
 	const m = e instanceof Error ? e.message : typeof e === 'object' && e && 'message' in e ? String(e.message) : String(e);
 	if (/invalid login credentials/i.test(m)) return 'El correo o la contraseña no son correctos. Revísalos y vuelve a probar.';
+	if (/invalid totp|invalid code|expired/i.test(m)) return 'El código no es correcto o ya ha caducado. Escribe el que aparece ahora en la app.';
 	if (/rate limit|too many/i.test(m)) return 'Demasiados intentos. Espera unos minutos y vuelve a probar.';
 	if (/should be different/i.test(m)) return 'La contraseña nueva tiene que ser distinta de la anterior.';
 	if (/password/i.test(m) && /weak|short|characters/i.test(m)) return `La contraseña es demasiado débil. Usa al menos ${MIN_CLAVE} caracteres, mezclando letras y números.`;

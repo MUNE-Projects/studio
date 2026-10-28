@@ -98,6 +98,7 @@ export function tablaPersonas(lista: Acceso[]): string {
 				<td><div class="acciones">
 					${a.activo ? `<button class="boton secundario pequeno" type="button" data-cambiar>Cambiar acceso</button>
 						<button class="boton secundario pequeno" type="button" data-reenviar>Reenviar email</button>
+						<button class="boton secundario pequeno" type="button" data-quitar-movil>Quitar código del móvil</button>
 						<button class="boton secundario pequeno" type="button" data-quitar>Quitar acceso</button>`
 						: '<button class="boton secundario pequeno" type="button" data-devolver>Devolver acceso</button>'}
 				</div></td>
@@ -173,6 +174,15 @@ export function conectarPersonas(raiz: HTMLElement, accesos: Acceso[], promotora
 			const b = ev.currentTarget as HTMLButtonElement;
 			b.disabled = true;
 			const { data: r, error } = await sb.functions.invoke('invitar', { body: { accion: 'reenviar', promotora_id: promotora, user_id: a.user_id } });
+			b.disabled = false;
+			if (error) avisar(traducir(await errorDeFuncion(error)), true);
+			else avisar(r.mensaje);
+		});
+		fila.querySelector<HTMLButtonElement>('[data-quitar-movil]')?.addEventListener('click', async (ev) => {
+			if (!confirm(`¿Quitar el código del móvil a ${a.nombre}?\n\nHazlo solo si ha perdido o cambiado el móvil. La próxima vez que entre en MUNE Portal, vinculará el móvil de nuevo.`)) return;
+			const b = ev.currentTarget as HTMLButtonElement;
+			b.disabled = true;
+			const { data: r, error } = await sb.functions.invoke('invitar', { body: { accion: 'quitar-movil', promotora_id: promotora, user_id: a.user_id } });
 			b.disabled = false;
 			if (error) avisar(traducir(await errorDeFuncion(error)), true);
 			else avisar(r.mensaje);
