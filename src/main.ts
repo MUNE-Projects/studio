@@ -39,8 +39,7 @@ import { ACABADOS } from './promocion/acabados';
 import { generarPDF } from './documento/pdf';
 import { planoPDF, planoPNG, type DatosPlano } from './documento/plano';
 import { RenderHD } from './escena/renderHD';
-import { aVivienda, construirMaqueta, type Maqueta } from './escena/conjunto';
-import { sitioDe } from './modelo/conjunto';
+import { construirMaqueta, type Maqueta } from './escena/conjunto';
 import './estilos.css';
 
 const $ = <T extends HTMLElement>( s: string ) => document.querySelector( s ) as T;
@@ -226,7 +225,6 @@ async function iniciar() {
 	// Maqueta exterior del conjunto (entorno/conjunto.json): se construye la
 	// primera vez que se abre el modo Promoción y se vuelve a la misma vivienda.
 	let maqueta: Maqueta | null = null;
-	let maquetaClave = '';
 	let maquetaVisible = false;
 	// a pie (dentro, en el jardín, en la rampa…) se ven también las plantas de encima
 	let aPie = false;
@@ -824,45 +822,41 @@ async function iniciar() {
 	};
 
 	/**
-	 * Promoción completa al alejarse: la vivienda se queda en su sitio dentro de su
-	 * edificio y alrededor aparece la maqueta exterior del conjunto (sin la propia
-	 * vivienda, que ya está). Al acercarse, vuelve la vivienda sola con su jardín.
+	 * Promoción completa al alejarse: la vivienda da paso a la maqueta exterior del
+	 * conjunto (todas las viviendas por igual). Al acercarse, vuelve la vivienda.
 	 */
 	const ponerMaqueta = ( si: boolean ) => {
 
-		const sitio = si && CONJUNTO ? sitioDe( CONJUNTO, fichaVivienda.tipologia, fichaVivienda.espejo, fichaVivienda.ref ) : null;
-		if ( si && ! sitio ) return;
+		if ( si && ! CONJUNTO ) return;
 		maquetaVisible = si;
-		if ( sitio ) {
+		if ( si && ! maqueta ) {
 
-			const clave = `${ fichaVivienda.tipologia }:${ fichaVivienda.espejo }:${ sitio.edificio.id }:${ sitio.planta.nombre }:${ sitio.colocacion.ref ?? '' }:${ sitio.colocacion.pos }`;
-			if ( clave !== maquetaClave ) {
+			const cache = new Map<string, Vivienda>();
+			const cargar = ( t: string, e: boolean ) => {
 
-				if ( maqueta ) {
+				const k = `${ t }${ e ? '-espejo' : '' }`;
+				if ( ! cache.has( k ) ) cache.set( k, cargarModelo( t, e ).vivienda );
+				return cache.get( k )!;
 
-					escena.remove( maqueta.grupo );
-					maqueta.grupo.traverse( ( o ) => ( o as THREE.Mesh ).geometry?.dispose() );
-
-				}
-				const cache = new Map<string, Vivienda>();
-				const cargar = ( t: string, e: boolean ) => {
-
-					const k = `${ t }${ e ? '-espejo' : '' }`;
-					if ( ! cache.has( k ) ) cache.set( k, cargarModelo( t, e ).vivienda );
-					return cache.get( k )!;
-
-				};
-				maqueta = construirMaqueta( CONJUNTO!, cargar, matMuros, sitio.colocacion );
-				maqueta.grupo.matrixAutoUpdate = false;
-				maqueta.grupo.matrix.copy( aVivienda( sitio.edificio, sitio.planta.cota, sitio.colocacion ) );
-				maqueta.grupo.updateMatrixWorld( true );
-				maqueta.caja.applyMatrix4( maqueta.grupo.matrix );
-				escena.add( maqueta.grupo );
-				maquetaClave = clave;
-
-			}
+			};
+			maqueta = construirMaqueta( CONJUNTO!, cargar, matMuros );
+			escena.add( maqueta.grupo );
 
 		}
+		if ( si && maqueta ) {
+
+			// el conjunto, centrado donde estaba la vivienda: la cámara sigue girando alrededor del mismo punto
+			const m = marcoEntorno( dePlanta( vivienda, plantaCalle( vivienda ) ) );
+			const ce = maqueta.edificios.getCenter( new THREE.Vector3() ).sub( maqueta.grupo.position );
+			const antes = maqueta.grupo.position.clone();
+			maqueta.grupo.position.set( m.cx - ce.x, 0, m.cz - ce.z );
+			maqueta.grupo.updateMatrixWorld( true );
+			const mover = maqueta.grupo.position.clone().sub( antes );
+			maqueta.caja.translate( mover );
+			maqueta.edificios.translate( mover );
+
+		}
+		raizVivienda.visible = ! si;
 		if ( maqueta ) maqueta.grupo.visible = si;
 		// sol, sombras y bruma a la medida del conjunto (o de la vivienda)
 		const sc = luzSol.shadow.camera;
@@ -1580,8 +1574,6 @@ async function iniciar() {
 		// la maqueta de la promoción se ve con su cielo (no sobre el papel del plano ni el fondo de estudio)
 		if ( maquetaVisible ) {
 
-			// el jardín genérico de la vivienda sobra: la promoción tiene el suyo
-			for ( const h of c.mobiliario.children ) if ( h.userData.x === 13 ) h.visible = false;
 
 			uFondo.papel.value = 0;
 			uFondo.estudio.value = 0;

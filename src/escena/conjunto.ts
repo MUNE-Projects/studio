@@ -9,7 +9,7 @@
 import * as THREE from 'three/webgpu';
 import type { Material } from 'three/webgpu';
 import type { Punto, Vivienda } from '../modelo/tipos';
-import { girar, type Colocacion, type Conjunto, type Edificio, type PlantaEdificio } from '../modelo/conjunto';
+import { girar, type Conjunto, type Edificio, type PlantaEdificio } from '../modelo/conjunto';
 import { dePlanta, plantasDe } from '../modelo/plantas';
 import { esCerrada } from '../modelo/estancias';
 import { contornos, desplazar, type Contorno } from '../util/contorno';
@@ -98,7 +98,7 @@ function enParcela( e: Edificio ) {
 
 }
 
-function construirEdificio( e: Edificio, cargar: Cargar, mat: { muros: Record<string, Material>; losa: Material; cubierta: Material; vidrio: Material }, omitir?: Colocacion ) {
+function construirEdificio( e: Edificio, cargar: Cargar, mat: { muros: Record<string, Material>; losa: Material; cubierta: Material; vidrio: Material }) {
 
 	const g = enParcela( e );
 	const forjado = e.forjado ?? 0.3;
@@ -119,8 +119,7 @@ function construirEdificio( e: Edificio, cargar: Cargar, mat: { muros: Record<st
 
 		const H = libre( p );
 		// viviendas: fachada, carpinterías, barandillas y suelos de sus exteriores
-		// la vivienda que se está visitando no se dibuja: está ella misma en su sitio
-		for ( const c of p.viviendas.filter( ( x ) => x !== omitir ) ) {
+		for ( const c of p.viviendas ) {
 
 			const v = soloFachada( cargar( c.tipologia, !! c.espejo ) );
 			const gv = new THREE.Group();
@@ -305,7 +304,7 @@ function distSegmento( [ px, py ]: Punto, [ ax, ay ]: Punto, [ bx, by ]: Punto )
 
 }
 
-export function construirMaqueta( conjunto: Conjunto, cargar: Cargar, matMuros: Record<string, Material>, omitir?: Colocacion ): Maqueta {
+export function construirMaqueta( conjunto: Conjunto, cargar: Cargar, matMuros: Record<string, Material> ): Maqueta {
 
 	const grupo = new THREE.Group();
 	grupo.name = 'maqueta-promocion';
@@ -314,7 +313,7 @@ export function construirMaqueta( conjunto: Conjunto, cargar: Cargar, matMuros: 
 	const aceras: { contorno: Contorno; edificio: Edificio }[] = [];
 	for ( const e of conjunto.edificios ) {
 
-		const { g, acera } = construirEdificio( e, cargar, mat, omitir );
+		const { g, acera } = construirEdificio( e, cargar, mat );
 		grupo.add( g );
 		for ( const c of acera ) aceras.push( { contorno: c, edificio: e } );
 
@@ -326,20 +325,5 @@ export function construirMaqueta( conjunto: Conjunto, cargar: Cargar, matMuros: 
 	const radio = caja.getBoundingSphere( new THREE.Sphere() ).radius;
 	grupo.add( construirParcela( conjunto, aceras, radio, caja.getCenter( new THREE.Vector3() ) ) );
 	return { grupo, edificios, caja };
-
-}
-
-/**
- * Matriz que lleva la maqueta al sistema de la vivienda que se visita: su sitio
- * en el conjunto (edificio, planta y colocación) cae en el origen de la vivienda.
- */
-export function aVivienda( e: Edificio, cota: number, c: Colocacion ) {
-
-	const giroY = ( g?: number ) => new THREE.Matrix4().makeRotationY( ( ( g ?? 0 ) * Math.PI ) / 180 );
-	const m = new THREE.Matrix4().makeTranslation( e.pos?.[ 0 ] ?? 0, 0, - ( e.pos?.[ 1 ] ?? 0 ) )
-		.multiply( giroY( e.giro ) )
-		.multiply( new THREE.Matrix4().makeTranslation( c.pos[ 0 ], cota, - c.pos[ 1 ] ) )
-		.multiply( giroY( c.giro ) );
-	return m.invert();
 
 }

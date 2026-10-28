@@ -197,16 +197,3 @@ export function erroresConjunto( conjunto: Conjunto, viviendas: ViviendaPromocio
 	return errores;
 
 }
-
-/**
- * El sitio de una vivienda en el conjunto, para colocar la promoción alrededor
- * al alejarse de ella: el de su referencia si se conoce (MUNE Studio, planos);
- * si no (en la web pública no van las referencias), el primero de su tipología y
- * variante, empezando por las plantas más bajas.
- */
-export function sitioDe( conjunto: Conjunto, tipologia: string, espejo: boolean, ref?: string ) {
-
-	const todos = colocaciones( conjunto ).filter( ( x ) => x.colocacion.tipologia === tipologia && !! x.colocacion.espejo === espejo );
-	return ( ref && todos.find( ( x ) => normal( x.colocacion.ref ) === normal( ref ) ) ) || [ ...todos ].sort( ( a, b ) => a.planta.cota - b.planta.cota )[ 0 ] || null;
-
-}
