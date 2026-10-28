@@ -71,7 +71,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--acento); outlin
 }
 .ficha .marca { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .ficha .logo { display: block; height: 22px; flex: none; }
-.ficha .logo svg { display: block; height: 22px; width: auto; }
+.ficha .logo svg, .ficha .logo img { display: block; height: 22px; width: auto; }
 .ficha .marca .antetitulo { margin: 0; padding-left: 10px; border-left: 1px solid var(--linea); }
 .acceso-comprador { margin: 10px 0 0; padding-top: 9px; border-top: 1px solid var(--linea); }
 
@@ -493,7 +493,7 @@ body.listo #carga { opacity: 0; visibility: hidden; }
 /* si se pide la vivienda en 3D antes de que esté lista, vuelve la pantalla de carga */
 body.listo.cargando-3d #carga { opacity: 1; visibility: visible; transition: opacity 200ms var(--salida); background: color-mix(in srgb, var(--papel) 92%, transparent); }
 .carga-caja { display: grid; justify-items: center; gap: 14px; }
-.carga-logo svg { display: block; height: 32px; width: auto; }
+.carga-logo svg, .carga-logo img { display: block; height: 32px; width: auto; }
 .carga-texto { margin: 0; }
 .carga-barra { width: 180px; height: 3px; border-radius: 3px; background: var(--linea); overflow: hidden; }
 .carga-barra span { display: block; height: 100%; width: 0; background: var(--tinta-2); transition: width 200ms linear; }

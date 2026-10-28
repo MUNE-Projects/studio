@@ -42,6 +42,11 @@
 // ROBOT_CLAVE) y la construcción los pone en lugar de los de promocion.json
 // (vite.config.ts, variable TEXTOS_LEGALES). Sin esas variables, avisa y sigue
 // con los de promocion.json. La web pública no consulta Supabase.
+//
+// Marca: la promotora la pone en MUNE Portal (031: la general o la propia de la
+// promoción). «preparar» la lee igual, como el robot de Claude, y la construcción
+// la pone en lugar de la de promocion.json (vite.config.ts, variable MARCA). Sin
+// marca guardada, o sin esas variables, se usa la de promocion.json.
 
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -322,6 +327,34 @@ async function textosLegales( id ) {
 
 }
 
+/** La marca que se usa en la promoción (la propia o la de la promotora); null si no hay o no se puede leer. */
+async function marcaDePortal( id ) {
+
+	try {
+
+		const cabeceras = await entrarRobot();
+		if ( ! cabeceras ) {
+
+			console.warn( '⚠ Sin ROBOT_EMAIL y ROBOT_CLAVE: no se lee la marca de MUNE Portal. Se usa la de promocion.json.' );
+			return null;
+
+		}
+		const r = await fetch( `${ SUPABASE_URL }/rest/v1/rpc/marca_de_promocion`, { method: 'POST', headers: cabeceras, body: JSON.stringify( { p_promocion: id } ) } );
+		if ( ! r.ok ) throw new Error( `Supabase respondió ${ r.status } al leer la marca` );
+		const { efectiva, propia } = await r.json();
+		if ( ! efectiva ) return null;
+		const { actualizado_en: _a, por: _p, ...marca } = efectiva;
+		return { marca, origen: propia ? 'la propia de la promoción' : 'la de la promotora' };
+
+	} catch ( e ) {
+
+		console.warn( `⚠ No se ha podido leer la marca de MUNE Portal (${ e.message }). Se usa la de promocion.json.` );
+		return null;
+
+	}
+
+}
+
 // ---------------------------------------------------------------- datos privados (paso 5a, 024)
 
 /**
@@ -386,6 +419,9 @@ async function preparar( id ) {
 	if ( textos ) ok( `Textos legales de MUNE Portal: ${ Object.keys( textos ).join( ', ' ) || 'ninguno escrito (se usan los de promocion.json)' }` );
 	// la construcción y los planos (mismo proceso) usan los textos de MUNE Portal
 	process.env.TEXTOS_LEGALES = textos ? JSON.stringify( textos ) : '';
+	const marca = await marcaDePortal( id );
+	ok( marca ? `Marca de MUNE Portal: ${ marca.origen } («${ marca.marca.promotora }»)` : 'Marca: la de promocion.json (no hay ninguna guardada en MUNE Portal)' );
+	process.env.MARCA = marca ? JSON.stringify( marca.marca ) : '';
 	// la web sabe su versión: con ella pide al entrar el comprador los datos privados de esa versión
 	process.env.VERSION_PUBLICA = version;
 	const { destino } = construir( id );

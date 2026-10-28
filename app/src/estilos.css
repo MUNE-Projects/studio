@@ -310,3 +310,14 @@ fieldset.pack .categorias-pack label.interruptor { display: inline-flex; }
 form.pedir-opcion label.archivos { grid-column: 1 / -1; }
 label.nombre-categoria { display: grid; gap: 2px; margin-top: 18px; font-size: 12px; color: var(--tinta-2); max-width: 420px; }
 label.nombre-categoria input { padding: 6px 8px; font-size: 17px; font-weight: 600; color: var(--tinta); border: 1px solid var(--linea); border-radius: 6px; background: #fff; }
+
+/* Marca de la promotora (marca.ts, 031) */
+.marca-columnas { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 760px) { .marca-columnas { grid-template-columns: 1fr; } }
+.marca-vista { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--linea); border-radius: 12px; background: #fff; color: #1c1c1a; }
+.marca-logo { min-height: 48px; display: flex; align-items: center; }
+.marca-logo img { max-height: 56px; max-width: 100%; }
+.marca-muestra { display: flex; align-items: center; gap: 12px; margin: 0; }
+.marca-boton { display: inline-block; padding: 8px 14px; border-radius: 999px; background: var(--marca-1); color: #fff; font-weight: 600; font-size: 0.9rem; }
+.marca-detalle { flex: 1; height: 4px; border-radius: 2px; background: var(--marca-2); }
+.marca-form input[type=color] { width: 100%; height: 40px; padding: 2px; }

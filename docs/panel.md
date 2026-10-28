@@ -50,7 +50,7 @@ Bandeja con lo pendiente de todas las promociones:
 | **Versiones** | Historial (vN, fecha, quién aprobó, qué cambió), vista previa, **Publicar** y **Volver a una anterior** desde el Panel (recetas 10 y 11) |
 | **Entregables** | Planos PDF/PNG, renders y PDF de muestra: descargar y regenerar (receta 7) |
 | **Validación de planos** | Qué ha aprobado o rechazado la promotora, con sus comentarios |
-| **Marca e información** | Logo, colores, contacto y textos legales de la promotora (receta 16) |
+| **Marca** | La que se usa en la promoción: la de la promotora o una propia (nombre, logo, colores, tipografía y contacto; `031_marca.sql`). La promotora la pone en MUNE Portal (la general en su Inicio, la propia en la pestaña *Marca* de la promoción, con la capacidad «marca»); MUNE Studio la ve y la cambia como ayuda (la general, en la página de la promotora). Sale en la próxima versión que se prepare |
 | **Ficha y datos** | Ficha, datos fiscales de la promoción, formalización y *Textos legales* (planos comerciales, imágenes y renders, Experiencia 3D, personalización), que se aplican en la próxima versión que se prepare |
 | **Compradores** | Un código por vivienda: generar, cambiar (mismo comprador o comprador nuevo) y ver si ha entrado (receta 24). La promotora tiene la misma pestaña en su portal |
 | **Peticiones a Claude** | Las peticiones de esta promoción y su estado |
