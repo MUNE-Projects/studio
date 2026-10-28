@@ -62,10 +62,8 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 		return;
 	}
 	const datos = data as Datos;
-	if (!datos.catalogo) {
-		caja.innerHTML = '<h2>Catálogo y precios</h2><p class="vacio">Todavía no hay catálogo: aparecerá cuando MUNE prepare la próxima versión de la promoción.</p>';
-		return;
-	}
+	datos.catalogo ??= { categorias: [] };
+	const vacio = datos.catalogo.categorias.length === 0;
 	const tipologias = datos.tipologias_version.map((t) => t.id);
 	const packDe = (cat: string) => datos.packs.find((x) => x.categorias.includes(cat));
 	const lanzada = (cat: string) => datos.lanzadas.includes(cat);
@@ -110,6 +108,8 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 		${ultimo ? `<p class="promo-versiones">Último cambio: ${esc(d.fecha(ultimo.actualizado_en))}, por ${esc(ultimo.por)}.</p>` : ''}
 		${aviso ? `<p class="aviso" role="status">${esc(aviso)}</p>` : ''}
 
+		${vacio ? '<p class="vacio">Todavía no hay personalizaciones ni mejoras. Añade las primeras abajo: cuando el equipo de MUNE haya preparado su aspecto en el 3D, aparecerán aquí para ponerles precio, fechas y packs.</p>' : ''}
+		<div${vacio ? ' hidden' : ''}>
 		<h3>Fechas de elección</h3>
 		<p class="ayuda">Cada categoría se elige <strong>por separado</strong>, con su propia apertura y cierre, o <strong>dentro de un pack</strong>: una ficha con título y fechas que agrupa las categorías que quieras (un solo pack con todas es «todo junto»). Cuando se abre una categoría o un pack, ya no cambian su apertura ni lo que agrupa; mientras esté abierto, puedes cambiar su cierre.</p>
 		${datos.packs_actualizado ? `<p class="promo-versiones">Fechas cambiadas el ${esc(d.fecha(datos.packs_actualizado.en))}, por ${esc(datos.packs_actualizado.por)}.</p>` : ''}
@@ -138,6 +138,7 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 			<div class="acciones"><button class="boton" type="submit" disabled>Guardar cambios</button></div>
 			<p class="error" role="alert"></p>
 		</form>
+		</div>
 
 		<h3 class="separado">Añadir personalizaciones y mejoras</h3>
 		<p class="ayuda">Añade aquí una opción nueva, en una categoría que ya existe o en una nueva (por ejemplo, «Climatización»), con su precio y su descripción. Si tienes una ficha o fotos, adjúntalas: el equipo de MUNE las usa para preparar su aspecto en la Experiencia 3D (los compradores nunca las ven). Mientras tanto queda <strong>En preparación</strong>; los compradores la verán en la próxima versión.</p>
