@@ -12,6 +12,8 @@ import { defineConfig, type Plugin } from 'vite';
 //   MARCA=<json>        marca de la promotora (o la propia de la promoción) guardada en
 //                       MUNE Portal (031): nombre, logo, colores, tipografía y contacto;
 //                       la pone «preparar» y sustituye a la de promocion.json
+//   FUENTE_LOCAL=1      la tipografía va dentro de la versión (fuentes/marca.css, la escribe
+//                       «preparar»): la web no pide nada a Google Fonts al visitarla
 //
 // La web pública se construye SIN Studio: ni su código ni su acceso llegan al
 // navegador del visitante.
@@ -169,6 +171,7 @@ function marcaDePortal(): Record<string, unknown> | null {
 			promotora: m.promotora.trim().slice( 0, 80 ),
 			logoSvg: m.logoSvg || logoDeTexto( m.promotora.trim(), m.colorPrincipal ),
 			colorPrincipal: m.colorPrincipal, colorSecundario: m.colorSecundario,
+			// los archivos de una tipografía propia y su licencia no van a la web: «preparar» deja la tipografía en fuentes/
 			tipografia: { familia, googleFonts: `${ familia.replace( / /g, '+' ) }:wght@400;500;600;700` },
 			contacto,
 		};
@@ -182,14 +185,16 @@ function marcaDePortal(): Record<string, unknown> | null {
 
 }
 
-const conMarca = ( marca: Record<string, unknown> | null ): Plugin => ( {
+const conMarca = ( marca: Record<string, unknown> | null, fuenteLocal: boolean ): Plugin => ( {
 	name: 'marca',
 	enforce: 'pre',
 	transform( codigo, id ) {
 
-		if ( ! marca || ! /promociones[\\/][^\\/]+[\\/]promocion\.json$/.test( id ) ) return null;
+		if ( ( ! marca && ! fuenteLocal ) || ! /promociones[\\/][^\\/]+[\\/]promocion\.json$/.test( id ) ) return null;
 		const datos = JSON.parse( codigo );
-		datos.marca = { ...datos.marca, ...marca, contacto: { ...datos.marca?.contacto, ...( marca.contacto as object ) } };
+		if ( marca ) datos.marca = { ...datos.marca, ...marca, contacto: { ...datos.marca?.contacto, ...( marca.contacto as object ) } };
+		// la tipografía, desde la propia versión (fuentes/marca.css), nunca desde Google
+		if ( fuenteLocal && datos.marca?.tipografia ) datos.marca.tipografia = { familia: datos.marca.tipografia.familia, css: 'fuentes/marca.css' };
 		return { code: JSON.stringify( datos ), map: null };
 
 	},
@@ -211,7 +216,7 @@ export default defineConfig( ( { mode } ) => {
 		resolve: { alias: { '@promocion': carpeta } },
 		// versión de la web (la pone «publicacion.mjs preparar»): con ella pide el comprador sus datos
 		define: { __STUDIO__: JSON.stringify( studio ), __VERSION__: JSON.stringify( process.env.VERSION_PUBLICA ?? null ) },
-		plugins: [ conMarca( marcaDePortal() ), conTextosLegales( textosLegales() ), ...( completo ? [] : [ sinDatosDeStudio(), catalogoSinPrecios(), conjuntoSinReferencias() ] ) ],
+		plugins: [ conMarca( marcaDePortal(), process.env.FUENTE_LOCAL === '1' ), conTextosLegales( textosLegales() ), ...( completo ? [] : [ sinDatosDeStudio(), catalogoSinPrecios(), conjuntoSinReferencias() ] ) ],
 		build: { target: 'es2022', chunkSizeWarningLimit: 2000, outDir: process.env.SALIDA || 'dist' },
 	};
 
