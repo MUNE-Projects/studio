@@ -26,7 +26,7 @@
 //  - la web pública se construye SIN Studio y se comprueba que no lo contiene;
 //  - ningún archivo con forma de secreto llega al escaparate;
 //  - cada publicación es una versión numerada (v1, v2…) que fija el commit exacto
-//    del taller (producto maestro + datos) con una etiqueta inmutable;
+//    del código (producto maestro) y guarda la copia exacta de sus datos en Supabase;
 //  - nunca se borra una versión: volver atrás restaura una anterior y marca la
 //    vigente como «retirada»;
 //  - publicar exige el taller sin cambios pendientes (lo publicado = lo guardado);
