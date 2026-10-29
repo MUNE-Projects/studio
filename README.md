@@ -35,7 +35,8 @@ trabajo/<id>/                 datos de cada promoción (instancia del producto m
     vivienda.json       geometría (generada por herramientas/extraer_plano.py)
     alternativas.json   distribuciones alternativas que puede elegir el comprador (parches sobre la geometría)
     tipologia.json      cámaras maestras, vistas guiadas y extras ligados a la geometría (piscina)
-promociones/<id>/publicaciones.json   registro de versiones publicadas (v1, v2…); lo escribe el ejecutor
+experiencia-publica/          páginas fijas de la web pública (portada, 404, puerta del comprador); la web de
+                              cada versión y el registro de versiones viven en Supabase (decisión 60)
 biblioteca/                   biblioteca compartida del producto (activos de mobiliario y decoración)
 ```
 
@@ -48,11 +49,11 @@ biblioteca/                   biblioteca compartida del producto (activos de mob
 | `npm run dev` | Web pública en local (promoción por defecto: `residencial-demo`; otra con `PROMOCION=<id>`) |
 | `npm run studio` | Construcción interna con Studio (herramienta de producción; nunca se publica) |
 | `node herramientas/publicacion.mjs construir <id>` | Construye la web pública de una promoción en `salida/<id>/` y comprueba que no contiene Studio ni secretos |
-| `node herramientas/publicacion.mjs publicar <id> --aprobado-por "…" --cambios "…" [--confirmar]` | Publica una versión numerada en el escaparate (sin `--confirmar` solo simula) |
+| `node herramientas/publicacion.mjs aprobar <id> --version vN --aprobado-por "…" [--confirmar]` | Publica la versión en revisión (cuenta «ejecutor»; sin `--confirmar` solo simula). Después, `node herramientas/desplegar.mjs ambas` la envía a Cloudflare |
 | `node herramientas/publicacion.mjs volver <id> vN --motivo "…" [--confirmar]` | Vuelve a una versión anterior; la vigente queda como «retirada», nunca se borra |
 | `node herramientas/publicacion.mjs estado <id>` | Historial de versiones de la promoción |
 
-El escaparate (`MUNE-Projects/experience`) contiene solo lo publicado: `publico/<id>/`, una carpeta por promoción, que Cloudflare sirve tal cual.
+La web de cada versión se guarda en Supabase (almacén privado «versiones»); `herramientas/desplegar.mjs` monta la web pública y la vista previa (una carpeta por promoción, más `experiencia-publica/`) y las envía a Cloudflare.
 
 - **Una tipología por geometría distinta,** no un modelo por vivienda. Las viviendas que comparten geometría cargan la misma tipología.
 - **Viviendas simétricas** (`"espejo": true`): se espejan los datos al cargar (muros, huecos, giros de puerta, mobiliario, alternativas, cámaras y piscina) en lugar de crear otro modelo.
