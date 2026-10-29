@@ -12,7 +12,9 @@
 // y en <salida>/experiencia/experiencia.json las unidades de validación de la
 // Experiencia 3D: una por tipología y variante (o por vivienda en las
 // unifamiliares), con la huella de todo lo que define su 3D y sus vistas
-// guiadas; más «Entorno y elementos generales» si existe promociones/<id>/entorno/.
+// guiadas; más «Entorno y elementos generales» si existe trabajo/<id>/entorno/.
+// Los datos de la promoción se bajan antes de Supabase a trabajo/<id>/
+// (herramientas/promociones.mjs).
 // Por defecto, <salida> es salida/<promoción>/. «publicacion.mjs preparar» lo
 // llama solo, así que los planos viajan con cada versión a la vista previa.
 //
@@ -23,14 +25,15 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TRABAJO } from './promociones.mjs';
 
 const RAIZ = resolve( dirname( fileURLToPath( import.meta.url ) ), '..' );
 const CHROMIUM = [ process.env.CHROMIUM, '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-browsers/chromium/chrome-linux/chrome' ].find( ( r ) => r && existsSync( r ) );
 
-/** Huella del entorno (promociones/<id>/entorno/): rutas y contenido de todos sus archivos; null si no hay. */
+/** Huella del entorno (trabajo/<id>/entorno/): rutas y contenido de todos sus archivos; null si no hay. */
 function huellaEntorno( id ) {
 
-	const raiz = join( RAIZ, 'promociones', id, 'entorno' );
+	const raiz = join( TRABAJO, id, 'entorno' );
 	if ( ! existsSync( raiz ) ) return null;
 	const listar = ( d ) => readdirSync( d, { withFileTypes: true } ).flatMap( ( e ) => ( e.isDirectory() ? listar( join( d, e.name ) ) : [ join( d, e.name ) ] ) );
 	const h = createHash( 'sha256' );
@@ -46,12 +49,13 @@ function huellaEntorno( id ) {
 
 export async function generarPlanos( id, version, salida = join( RAIZ, 'salida', id ) ) {
 
-	if ( ! /^[a-z0-9-]{1,60}$/.test( id ) || ! existsSync( join( RAIZ, 'promociones', id, 'promocion.json' ) ) ) throw new Error( `No existe la promoción «${ id }»` );
+	if ( ! /^[a-z0-9-]{1,60}$/.test( id ) || ! existsSync( join( TRABAJO, id, 'promocion.json' ) ) ) throw new Error( `No hay datos de la promoción «${ id }» en trabajo/${ id }/ (node herramientas/promociones.mjs bajar ${ id })` );
 	if ( ! /^v[0-9]{1,5}$/.test( version ?? '' ) ) throw new Error( 'Indica la versión: --version v3' );
 	const { createServer } = await import( 'vite' );
 	const { chromium } = await import( 'playwright-core' );
 
 	process.env.PROMOCION = id;
+	process.env.PROMOCIONES = TRABAJO;
 	// modo «planos»: con todas las viviendas y distribuciones (vite.config.ts)
 	const servidor = await createServer( { root: RAIZ, mode: 'planos', logLevel: 'error', server: { port: 0, host: '127.0.0.1' } } );
 	await servidor.listen();

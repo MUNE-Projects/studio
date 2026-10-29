@@ -2,7 +2,7 @@
 // y aplicación de los acabados a los uniforms de los materiales.
 //
 // Las categorías y opciones vienen del catálogo de la promoción
-// (promociones/<id>/catalogo.json), filtrado para cada vivienda.
+// (trabajo/<id>/catalogo.json), filtrado para cada vivienda.
 
 import * as THREE from 'three/webgpu';
 import type { Categoria, Configuracion, Opcion } from '../modelo/tipos';

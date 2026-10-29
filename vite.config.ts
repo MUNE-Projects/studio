@@ -4,7 +4,10 @@ import { defineConfig, type Plugin } from 'vite';
 
 // Un solo producto maestro, una carpeta de datos por promoción.
 //
-//   PROMOCION=<id>      promoción que se construye (promociones/<id>/); por defecto la demo
+//   PROMOCION=<id>      promoción que se construye (trabajo/<id>/); por defecto la demo
+//   PROMOCIONES=<ruta>  carpeta con los datos de las promociones (por defecto trabajo/). Los
+//                       datos viven en Supabase, nunca en GitHub: se bajan con
+//                       «node herramientas/promociones.mjs bajar <id>» (035_modelo_promocion.sql)
 //   --mode studio       incluye el Studio (herramienta interna de producción)
 //   TEXTOS_LEGALES=<json>  textos legales escritos por la promotora en MUNE Portal
 //                       ({ planos, renders, experiencia, personalizacion }); los pone
@@ -20,13 +23,18 @@ import { defineConfig, type Plugin } from 'vite';
 
 const PROMOCION_POR_DEFECTO = 'residencial-demo';
 
+// carpeta de la promoción que se construye (la fija defineConfig, abajo)
+let carpetaPromocion = '';
+/** ¿Es este módulo el archivo indicado de la promoción que se construye? */
+const esDeLaPromocion = ( id: string, archivo: string ) => resolve( id.split( '?' )[ 0 ] ) === resolve( carpetaPromocion, archivo );
+
 /** Quita de promocion.json lo que solo usa el Studio y lo privado de cada comprador (no debe publicarse). */
 const sinDatosDeStudio = (): Plugin => ( {
 	name: 'sin-datos-de-studio',
 	enforce: 'pre',
 	transform( codigo, id ) {
 
-		if ( ! /promociones[\\/][^\\/]+[\\/]promocion\.json$/.test( id ) ) return null;
+		if ( ! esDeLaPromocion( id, 'promocion.json' ) ) return null;
 		const datos = JSON.parse( codigo );
 		delete datos.studio;
 		// el equipo de la promotora entra desde MUNE Portal (paso 6a): sin código en la web
@@ -73,7 +81,7 @@ const catalogoSinPrecios = (): Plugin => ( {
 	enforce: 'pre',
 	transform( codigo, id ) {
 
-		if ( ! /promociones[\\/][^\\/]+[\\/]catalogo\.json$/.test( id ) ) return null;
+		if ( ! esDeLaPromocion( id, 'catalogo.json' ) ) return null;
 		const datos = JSON.parse( codigo );
 		delete datos.nota;
 		for ( const c of datos.categorias ?? [] ) c.opciones = ( c.opciones ?? [] ).slice( 0, 1 ).map( ( o: Record<string, unknown> ) => ( { ...o, precio: 0 } ) );
@@ -130,7 +138,7 @@ const conTextosLegales = ( textos: Record<string, string> ): Plugin => ( {
 	enforce: 'pre',
 	transform( codigo, id ) {
 
-		if ( ! Object.keys( textos ).length || ! /promociones[\\/][^\\/]+[\\/]promocion\.json$/.test( id ) ) return null;
+		if ( ! Object.keys( textos ).length || ! esDeLaPromocion( id, 'promocion.json' ) ) return null;
 		const datos = JSON.parse( codigo );
 		if ( datos.marca ) datos.marca.legal = { ...datos.marca.legal, ...textos };
 		return { code: JSON.stringify( datos ), map: null };
@@ -190,7 +198,7 @@ const conMarca = ( marca: Record<string, unknown> | null, fuenteLocal: boolean )
 	enforce: 'pre',
 	transform( codigo, id ) {
 
-		if ( ( ! marca && ! fuenteLocal ) || ! /promociones[\\/][^\\/]+[\\/]promocion\.json$/.test( id ) ) return null;
+		if ( ( ! marca && ! fuenteLocal ) || ! esDeLaPromocion( id, 'promocion.json' ) ) return null;
 		const datos = JSON.parse( codigo );
 		if ( marca ) datos.marca = { ...datos.marca, ...marca, contacto: { ...datos.marca?.contacto, ...( marca.contacto as object ) } };
 		// la tipografía, desde la propia versión (fuentes/marca.css), nunca desde Google
@@ -203,8 +211,9 @@ const conMarca = ( marca: Record<string, unknown> | null, fuenteLocal: boolean )
 export default defineConfig( ( { mode } ) => {
 
 	const promocion = process.env.PROMOCION || PROMOCION_POR_DEFECTO;
-	const carpeta = resolve( import.meta.dirname, 'promociones', promocion );
-	if ( ! existsSync( resolve( carpeta, 'promocion.json' ) ) ) throw new Error( `No existe la promoción «${ promocion }» (promociones/${ promocion }/promocion.json)` );
+	const carpeta = resolve( process.env.PROMOCIONES || resolve( import.meta.dirname, 'trabajo' ), promocion );
+	if ( ! existsSync( resolve( carpeta, 'promocion.json' ) ) ) throw new Error( `No hay datos de «${ promocion }» en ${ carpeta }. Bájalos de Supabase: node herramientas/promociones.mjs bajar ${ promocion }` );
+	carpetaPromocion = carpeta;
 	const studio = mode === 'studio';
 	// «planos»: los planos comerciales de cada versión (herramientas/planos.mjs) se
 	// generan con todos los datos (todas las viviendas y distribuciones), sin Studio;

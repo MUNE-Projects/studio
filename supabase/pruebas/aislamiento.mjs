@@ -1856,6 +1856,77 @@ await caso( DEBE_FUNCIONAR, 'Comparar versiones: quien tiene «personalización�
 
 } );
 
+// ─── Modelo de cada promoción (035_modelo_promocion.sql) ────────────────────
+
+const MODELO = {
+	'promocion.json': JSON.stringify( { id: 'prueba-a', nombre: 'Residencial A' }, null, 2 ),
+	'catalogo.json': '{ "categorias": [] }',
+	'tipologias/a/vivienda.json': '{ "estancias": [] }',
+};
+const guardarModelo = ( sb, archivos, extra = {}, promocion = 'prueba-a' ) => sb.rpc( 'guardar_modelo_promocion', { p_promocion: promocion, p_archivos: archivos, ...extra } );
+const COMMIT = 'a'.repeat( 40 );
+
+await caso( DEBE_FALLAR, '48. Modelo de la promoción: la promotora, alguien sin sesión o MUNE sin el código del móvil lo leen o lo guardan; se cambia una versión ya guardada; archivos no válidos', async () => {
+
+	await exigir( guardarModelo( robot, MODELO, { p_version: 'v90', p_codigo: COMMIT, p_nota: 'v90 de prueba' } ), 'el robot guarda la v90' );
+	const r = {
+		promotoraGuarda: await guardarModelo( aprobA, MODELO ),
+		anonimoGuarda: await guardarModelo( anonimo, MODELO ),
+		adminSinMovilGuarda: await guardarModelo( adminSinMovil, MODELO ),
+		cambiarVersion: await guardarModelo( robot, { ...MODELO, 'catalogo.json': '{ "cambiado": true }' }, { p_version: 'v90', p_codigo: COMMIT } ),
+		versionSinCommit: await guardarModelo( robot, MODELO, { p_version: 'v91' } ),
+		commitSinVersion: await guardarModelo( robot, MODELO, { p_codigo: COMMIT } ),
+		sinPromocionJson: await guardarModelo( robot, { 'catalogo.json': '{}' } ),
+		rutaFuera: await guardarModelo( robot, { ...MODELO, '../promocion.json': '{}' } ),
+		rutaOculta: await guardarModelo( robot, { ...MODELO, 'tipologias/.oculto.json': '{}' } ),
+		noJson: await guardarModelo( robot, { ...MODELO, 'catalogo.json': 'esto no es JSON' } ),
+		noTexto: await guardarModelo( robot, { ...MODELO, 'catalogo.json': { categorias: [] } } ),
+		otraExtension: await guardarModelo( robot, { ...MODELO, 'plano.png': 'x' } ),
+		promocionInventada: await guardarModelo( robot, MODELO, {}, 'no-existe' ),
+	};
+	const lecturas = {
+		promotoraLee: await aprobA.from( 'modelo_promocion' ).select( 'id' ),
+		gestorLee: await gestorA.from( 'modelo_promocion' ).select( 'id' ),
+		anonimoLee: await anonimo.from( 'modelo_promocion' ).select( 'id' ),
+		adminSinMovilLee: await adminSinMovil.from( 'modelo_promocion' ).select( 'id' ),
+		copiasCuentaLee: await cuentaCopias.from( 'modelo_promocion' ).select( 'id' ),
+		promotoraCambia: await aprobA.from( 'modelo_promocion' ).update( { nota: 'x' } ).eq( 'promocion_id', 'prueba-a' ).select( 'id' ),
+		robotCambia: await robot.from( 'modelo_promocion' ).update( { nota: 'x' } ).eq( 'promocion_id', 'prueba-a' ).select( 'id' ),
+		robotBorra: await robot.from( 'modelo_promocion' ).delete().eq( 'promocion_id', 'prueba-a' ).select( 'id' ),
+	};
+	const v90 = ( await servicio.from( 'modelo_promocion' ).select( 'archivos, nota' ).eq( 'promocion_id', 'prueba-a' ).eq( 'version', 'v90' ) ).data;
+	const noFallan = [
+		...Object.keys( r ).filter( ( k ) => ! falla( r[ k ] ) ),
+		...Object.keys( lecturas ).filter( ( k ) => ! ( falla( lecturas[ k ] ) || vacio( lecturas[ k ] ) ) ),
+	];
+	if ( v90?.length !== 1 || v90[ 0 ].archivos[ 'catalogo.json' ] !== MODELO[ 'catalogo.json' ] || v90[ 0 ].nota !== 'v90 de prueba' ) noFallan.push( 'v90 cambiada' );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Modelo de la promoción: el robot guarda la versión de trabajo (sin pisar las anteriores) y la de cada versión; MUNE Studio los lee; al borrar la promoción se borran', async () => {
+
+	const h1 = await exigir( guardarModelo( robot, MODELO, { p_nota: 'primera' } ), 'guardar trabajo' );
+	const h2 = await exigir( guardarModelo( robot, { ...MODELO, 'catalogo.json': '{ "categorias": [ 1 ] }' }, { p_nota: 'segunda' } ), 'guardar trabajo otra vez' );
+	const filas = await exigir( admin.from( 'modelo_promocion' ).select( 'version, huella, nota, archivos' ).eq( 'promocion_id', 'prueba-a' ).is( 'version', null ).order( 'id' ), 'admin lee' );
+	const robotLee = await exigir( robot.from( 'modelo_promocion' ).select( 'version' ).eq( 'promocion_id', 'prueba-a' ), 'robot lee' );
+	const apunte = await exigir( admin.from( 'registro' ).select( 'accion' ).eq( 'accion', 'guarda los datos de una versión' ), 'registro' );
+
+	// una promoción con su modelo, desactivada y borrada: no queda nada suyo
+	await exigir( admin.from( 'promociones' ).insert( { id: 'prueba-modelo', promotora_id: pA.id, nombre: 'Modelo (se borra)' } ), 'alta prueba-modelo' );
+	await exigir( guardarModelo( robot, MODELO, {}, 'prueba-modelo' ), 'modelo de prueba-modelo' );
+	await exigir( guardarModelo( robot, MODELO, { p_version: 'v1', p_codigo: COMMIT }, 'prueba-modelo' ), 'v1 de prueba-modelo' );
+	await exigir( admin.from( 'promociones' ).update( { activa: false } ).eq( 'id', 'prueba-modelo' ), 'desactivar' );
+	await exigir( admin.rpc( 'borrar_promocion', { p_id: 'prueba-modelo', p_nombre: 'Modelo (se borra)' } ), 'borrar' );
+	const quedan = ( await servicio.from( 'modelo_promocion' ).select( 'id' ).eq( 'promocion_id', 'prueba-modelo' ) ).data;
+
+	return filas.length === 2 && filas[ 0 ].huella === h1 && filas[ 1 ].huella === h2 && filas[ 0 ].nota === 'primera'
+		&& filas[ 1 ].archivos[ 'catalogo.json' ] === '{ "categorias": [ 1 ] }' && robotLee.length === 3
+		&& apunte.length >= 1 && quedan?.length === 0;
+
+} );
+
 // ─── Resumen ────────────────────────────────────────────────────────────────
 
 const fallidos = resultados.filter( ( r ) => ! r.ok );

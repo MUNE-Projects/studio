@@ -3,10 +3,11 @@
 **Lo dices así:** «Interpreta la documentación de Residencial X» (o «pasa a datos la tipología B de Residencial X»).
 **Tipo:** mixta (criterio de Claude + comprobaciones automáticas). **Tu OK:** antes de preparar ninguna versión con estos datos.
 
-Convierte los planos y la memoria de calidades de una promoción en los datos de MUNE (`promociones/<id>/`), de los que salen la Experiencia 3D, los planos comerciales, los renders y la personalización. Se hace **siempre igual y con esta lista**, para que no dependa de quién lo haga (decisión 48): **cada promoción se interpreta desde su documentación; nada se copia de la demo ni de otra promoción.**
+Convierte los planos y la memoria de calidades de una promoción en los datos de MUNE (el **modelo de la promoción**, guardado en Supabase, nunca en GitHub: decisión 59), de los que salen la Experiencia 3D, los planos comerciales, los renders y la personalización. Se hace **siempre igual y con esta lista**, para que no dependa de quién lo haga (decisión 48): **cada promoción se interpreta desde su documentación; nada se copia de la demo ni de otra promoción.**
 
 ## Requisitos
-- La promoción dada de alta (MUNE Studio → *Promotoras* → la promotora → *Nueva promoción*) y su carpeta `promociones/<id>/`.
+- La promoción dada de alta (MUNE Studio → *Promotoras* → la promotora → *Nueva promoción*).
+- Sus datos en la carpeta de trabajo, `trabajo/<id>/`, que nunca va a GitHub: `node herramientas/promociones.mjs bajar <id>` si ya tiene (o se crea la carpeta, si es la primera vez), y al terminar `node herramientas/promociones.mjs subir <id> --nota "…"`.
 - La documentación marcada como **vigente** en la pestaña *Documentación* (receta 2). Como mínimo:
   - plano de **urbanización o implantación** (parcela, viales, accesos, zonas comunes, jardines, piscina, aparcamiento exterior);
   - planos de **plantas generales del edificio**, en las plurifamiliares (cómo se reparten las viviendas en cada planta, portales, núcleos de escalera y ascensor, zonas comunes interiores, garaje y trasteros);
@@ -113,10 +114,10 @@ Se describe en `entorno/conjunto.json` (formato en `src/modelo/conjunto.ts`). La
 - **Contradicción entre documentos:** se anota con su `origen` y se pregunta; nunca se elige en silencio.
 
 ## Registro
-Los datos quedan en el taller (GitHub) con su historial, en la propuesta que apruebas. Cada dato dice su `origen`.
+Los datos quedan en Supabase (`modelo_promocion`): cada `subir` añade una versión de trabajo nueva sin borrar las anteriores, y cada versión preparada guarda su copia exacta, que no se puede cambiar. Cada dato dice su `origen`.
 
 ## Sin Claude
-Lo mismo lo puede hacer cualquier persona del equipo de MUNE con esta lista: editar los archivos de `promociones/<id>/` siguiendo los apartados A a H, ejecutar las comprobaciones del paso 5 y revisar el resultado del paso 6.
+Lo mismo lo puede hacer cualquier persona del equipo de MUNE con esta lista: bajar los datos (`herramientas/promociones.mjs bajar <id>`), editar los archivos de `trabajo/<id>/` siguiendo los apartados A a H, ejecutar las comprobaciones del paso 5 y revisar el resultado del paso 6.
 
 ## Errores
 - «preparar» se detiene por superficies, choques o acabados: el mensaje dice qué dato y en qué tipología; se corrige y se vuelve a probar.

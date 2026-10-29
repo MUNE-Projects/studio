@@ -1,5 +1,5 @@
 """
-Genera promociones/residencial-demo/tipologias/a/vivienda.json (y alternativas.json) a partir de las medidas tomadas sobre
+Genera trabajo/residencial-demo/tipologias/a/vivienda.json (y alternativas.json) a partir de las medidas tomadas sobre
 docs/plano-original.png (2000 x 1413 px).
 
 Las coordenadas en píxeles se obtuvieron analizando el color de los muros
@@ -314,7 +314,7 @@ def main():
                 d[k] = [my(b), my(a)]
         out["equipamiento"].append(d)
 
-    dst = Path(__file__).resolve().parent.parent / "promociones" / "residencial-demo" / "tipologias" / "a" / "vivienda.json"
+    dst = Path(__file__).resolve().parent.parent / "trabajo" / "residencial-demo" / "tipologias" / "a" / "vivienda.json"
     dst.write_text(json.dumps(out, ensure_ascii=False, indent=2))
 
     dst_var = dst.parent / "alternativas.json"
