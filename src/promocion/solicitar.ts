@@ -10,6 +10,8 @@
 //   la experiencia (por ejemplo, lo de un comprador con código). Su dirección
 //   lleva las UTM, que es donde las buscan los CRM. MUNE no ve ni guarda nada.
 
+import type { Marca } from '../modelo/tipos';
+import { logoDataUrl } from './marca';
 import type { SolicitarInfo } from './promocion';
 
 /** Las UTM de esta visita: de MUNE, en la experiencia 3D, de esta promoción y tipología. */
@@ -60,7 +62,7 @@ const insertada = () => {
 
 /** Prepara el botón «Solicitar información» con lo que haya puesto la promotora. */
 export function conectarSolicitar( boton: HTMLAnchorElement, dialogo: HTMLDialogElement, s: SolicitarInfo,
-	promocion: { id: string; nombre: string }, tipologia: () => { id: string; nombre: string } ): void {
+	promocion: { id: string; nombre: string }, tipologia: () => { id: string; nombre: string }, marca: Marca ): void {
 
 	if ( s.modo === 'enlace' ) {
 
@@ -80,11 +82,24 @@ export function conectarSolicitar( boton: HTMLAnchorElement, dialogo: HTMLDialog
 	}
 
 	const marco = dialogo.querySelector<HTMLElement>( '.marco-formulario' )!;
+	// la ventana, con la marca: el logo, la tipología y la promoción
+	const logo = document.createElement( 'img' );
+	logo.src = logoDataUrl( marca );
+	logo.alt = '';
+	dialogo.querySelector( '.logo-formulario' )!.replaceChildren( logo );
+	// lo que el formulario usa por defecto: la tipografía y los colores de la marca (su CRM puede poner los suyos)
+	const estilo = {
+		familia: marca.tipografia.familia,
+		css: marca.tipografia.css ? new URL( marca.tipografia.css, location.href ).href
+			: marca.tipografia.googleFonts ? `https://fonts.googleapis.com/css2?family=${ marca.tipografia.googleFonts }&display=swap` : null,
+		color: marca.colorPrincipal,
+	};
 	boton.removeAttribute( 'target' );
 	boton.addEventListener( 'click', ( ev ) => {
 
 		ev.preventDefault();
 		const t = tipologia();
+		dialogo.querySelector( '.subtitulo-formulario' )!.textContent = `${ t.nombre } · ${ promocion.nombre }`;
 		const iframe = document.createElement( 'iframe' );
 		iframe.title = 'Formulario de solicitud de información';
 		// aislado: sus scripts funcionan, pero con un origen propio (no puede leer nada de aquí)
@@ -93,7 +108,7 @@ export function conectarSolicitar( boton: HTMLAnchorElement, dialogo: HTMLDialog
 		const alListo = ( e: MessageEvent ) => {
 
 			if ( e.source !== iframe.contentWindow || e.data !== 'formulario-listo' ) return;
-			iframe.contentWindow!.postMessage( { codigoFormulario: s.codigo }, '*' );
+			iframe.contentWindow!.postMessage( { codigoFormulario: s.codigo, estilo }, '*' );
 			removeEventListener( 'message', alListo );
 
 		};

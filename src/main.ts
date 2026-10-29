@@ -1716,7 +1716,7 @@ async function iniciar() {
 
 			conectarSolicitar( $<HTMLAnchorElement>( '#solicitar-info' ), $<HTMLDialogElement>( '#formulario-info' ), e.solicitarInfo,
 				{ id: PROMOCION.id, nombre: PROMOCION.promocion.nombre },
-				() => ( { id: fichaVivienda.tipologia, nombre: modelo.tipologia.nombre } ) );
+				() => ( { id: fichaVivienda.tipologia, nombre: modelo.tipologia.nombre } ), PROMOCION.marca );
 			$( '.solicitar-info' ).hidden = false;
 
 		}
