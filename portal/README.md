@@ -1,8 +1,10 @@
 # MUNE Portal
 
 El espacio de trabajo de las promotoras (antes «Portal de promotoras»). Es una
-web privada donde cada persona entra con su correo y su contraseña (la elige al
-aceptar la invitación) y ve solo las promociones de su promotora: la
+web privada donde cada persona entra con su correo, su contraseña (la elige al
+aceptar la invitación) y el código de 6 cifras de la app del móvil (lo vincula
+la primera vez; `032_movil_promotoras.sql`), y ve solo las promociones de su
+promotora: la
 documentación que tiene que entregar (y la sube), sus planos y entregables, y
 la versión publicada.
 

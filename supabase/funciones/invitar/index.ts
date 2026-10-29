@@ -12,6 +12,8 @@
 //    así lo comprueban las reglas de la base de datos y queda en el registro.
 //    «reenviar»: vuelve a enviar la invitación o, si ya la aceptó, un enlace
 //    para cambiar la contraseña.
+//    «quitar-movil»: si la persona ha perdido el móvil, le quita el código del
+//    móvil (032_movil_promotoras.sql); al volver a entrar, lo vincula de nuevo.
 //
 // Para crear cuentas hace falta la clave de servicio de Supabase. Supabase se
 // la da a la función automáticamente y no sale nunca de sus servidores: no
@@ -82,7 +84,7 @@ Deno.serve(async (req) => {
 	}
 	const accion = String(cuerpo.accion ?? '');
 	const promotora = String(cuerpo.promotora_id ?? '');
-	if (accion !== 'invitar' && accion !== 'reenviar') return responder(400, { error: 'Acción no válida' });
+	if (accion !== 'invitar' && accion !== 'reenviar' && accion !== 'quitar-movil') return responder(400, { error: 'Acción no válida' });
 	if (!/^[0-9a-f-]{36}$/.test(promotora)) return responder(400, { error: 'Promotora no válida' });
 
 	const [{ data: esAdmin }, { data: { user: quien } }] = await Promise.all([sb.rpc('es_admin'), sb.auth.getUser()]);
@@ -177,7 +179,7 @@ Deno.serve(async (req) => {
 		});
 	}
 
-	// «reenviar»: solo a quien tiene un acceso activo que quien llama podría dar.
+	// «reenviar» y «quitar-movil»: solo a quien tiene un acceso activo que quien llama podría dar.
 	const userId = String(cuerpo.user_id ?? '');
 	if (!/^[0-9a-f-]{36}$/.test(userId)) return responder(400, { error: 'Persona no válida' });
 	const { data: filas } = await servicio.from('miembros').select('email, promocion_id, administra')
@@ -194,6 +196,29 @@ Deno.serve(async (req) => {
 	const { data: u, error: eU } = await servicio.auth.admin.getUserById(userId);
 	if (eU || !u.user) return responder(404, { error: 'No se encuentra la cuenta' });
 	const email = u.user.email!;
+
+	if (accion === 'quitar-movil') {
+		if (userId === quien.id) return responder(409, { error: 'No puedes quitarte tu propio código del móvil: pídeselo a quien administra tu equipo o al equipo de MUNE.' });
+		const { data: cuentas } = await servicio.rpc('cuenta_por_email', { p_email: email });
+		if ((cuentas as { interna: boolean }[] | null)?.[0]?.interna) return sinPermiso();
+		const { data: lista, error: eLista } = await servicio.auth.admin.mfa.listFactors({ userId });
+		if (eLista) {
+			console.error('listFactors', eLista);
+			return responder(500, { error: 'No se ha podido quitar el código del móvil. Vuelve a probar en un momento.' });
+		}
+		for (const f of lista.factors) {
+			const { error } = await servicio.auth.admin.mfa.deleteFactor({ id: f.id, userId });
+			if (error) {
+				console.error('deleteFactor', error);
+				return responder(500, { error: 'No se ha podido quitar el código del móvil. Vuelve a probar en un momento.' });
+			}
+		}
+		await servicio.from('registro').insert({ user_id: quien.id, accion: 'quita el código del móvil', detalle: { promotora, email } });
+		return responder(200, {
+			ok: true,
+			mensaje: `Hecho. La próxima vez que ${email} entre en MUNE Portal, vinculará de nuevo su móvil.`,
+		});
+	}
 	const { error } = u.user.email_confirmed_at
 		? await createClient(SUPABASE_URL, CLAVE_PUBLICA, { auth: sinSesion }).auth.resetPasswordForEmail(email, { redirectTo: PORTAL })
 		: await servicio.auth.admin.inviteUserByEmail(email, { redirectTo: PORTAL });

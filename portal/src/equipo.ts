@@ -54,6 +54,7 @@ function htmlPersona(p: Persona, permisos: Permisos): string {
 			${p.activo ? `<button class="boton secundario pequeno" type="button" data-retirar>Retirar acceso</button>`
 				: `<button class="boton secundario pequeno" type="button" data-devolver>Devolver acceso</button>`}
 			${p.activo && !p.aceptada ? '<button class="boton secundario pequeno" type="button" data-reenviar>Reenviar invitación</button>' : ''}
+			${p.activo && p.aceptada ? '<button class="boton secundario pequeno" type="button" data-quitar-movil>Quitar código del móvil</button>' : ''}
 		</div>
 		${p.activo ? `<details class="cambiar-acceso"><summary>Cambiar lo que puede hacer</summary>
 			<form class="peticion-form" data-cambiar novalidate>
@@ -204,6 +205,17 @@ export async function pintarEquipo(caja: HTMLElement, promo: { id: string; nombr
 			b.disabled = false;
 			if (error) avisar(traducir(await errorDeFuncion(error), 'reenviar la invitación'), true);
 			else avisar(r?.mensaje ?? `Hemos reenviado la invitación a ${p.email}.`);
+		});
+		fila.querySelector<HTMLButtonElement>('[data-quitar-movil]')?.addEventListener('click', async (ev) => {
+			if (!confirm(`¿Quitar el código del móvil a ${p.nombre}?\n\nHazlo solo si ha perdido o cambiado el móvil. La próxima vez que entre, vinculará el móvil de nuevo.`)) return;
+			const b = ev.currentTarget as HTMLButtonElement;
+			b.disabled = true;
+			const { data: r, error } = await sb.functions.invoke('invitar', {
+				body: { accion: 'quitar-movil', promotora_id: promo.promotora_id, promocion_id: p.promocion_id, user_id: p.user_id },
+			});
+			b.disabled = false;
+			if (error) avisar(traducir(await errorDeFuncion(error), 'quitar el código del móvil'), true);
+			else avisar(r?.mensaje ?? `Hecho. ${p.nombre} vinculará el móvil de nuevo al entrar.`);
 		});
 		const form = fila.querySelector<HTMLFormElement>('[data-cambiar]');
 		if (form) {
