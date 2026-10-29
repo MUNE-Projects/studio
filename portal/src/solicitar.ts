@@ -1,4 +1,4 @@
-// «Solicitar información» en Ficha y datos (032_solicitar_informacion.sql). El
+// «Solicitar información» en Ficha y datos (033_solicitar_informacion.sql). El
 // mismo archivo está en MUNE Studio (app/src) y en MUNE Portal (portal/src): si
 // cambias uno, copia el otro.
 //

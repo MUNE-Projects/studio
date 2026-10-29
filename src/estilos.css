@@ -626,7 +626,7 @@ body.perfil-promotora:not([data-modo="plano"]) #foto, body.en-studio:not([data-m
 .plantas[hidden] { display: none; }
 .plantas button { min-width: 0; padding: 7px 14px; font-size: 12.5px; }
 
-/* «Solicitar información» con el formulario de la promotora (solicitar.ts, 032) */
+/* «Solicitar información» con el formulario de la promotora (solicitar.ts, 033) */
 .formulario-info { width: min(560px, calc(100vw - 32px)); height: min(760px, calc(100vh - 48px)); padding: 0; border: 0; border-radius: 14px; overflow: hidden; }
 .formulario-info[open] { display: flex; flex-direction: column; }
 .formulario-info .cabecera-formulario { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid rgb(0 0 0 / 0.08); }

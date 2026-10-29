@@ -1,7 +1,7 @@
 -- «Solicitar información» conectado con la promotora (29/10/2026, decidido por
 -- la administradora).
 --
--- Se ejecuta una vez en Supabase → SQL Editor, después de 031. Es repetible.
+-- Se ejecuta una vez en Supabase → SQL Editor, después de 032. Es repetible.
 --
 -- La promotora elige en MUNE Portal (Ficha y datos, con «datos») cómo funciona
 -- el botón «Solicitar información» de la experiencia pública:

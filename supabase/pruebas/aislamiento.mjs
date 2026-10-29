@@ -1589,7 +1589,7 @@ await caso( DEBE_FALLAR, '42. Experience pública: otra promotora, el robot, alg
 
 } );
 
-// ─── «Solicitar información» con el formulario de la promotora (032) ─────────
+// ─── «Solicitar información» con el formulario de la promotora (033) ─────────
 
 const FORMULARIO = '<form><input name="nombre"></form><script src="https://crm.example/formulario.js"></script>';
 const guardarSolicitar = ( sb, modo, enlace, formulario, promocion = 'prueba-a' ) =>
@@ -1606,7 +1606,7 @@ await caso( DEBE_FUNCIONAR, '«Solicitar información»: el equipo con «datos»
 
 } );
 
-await caso( DEBE_FALLAR, '45. «Solicitar información»: otra promotora, el robot, alguien sin «datos» o sin sesión ponen un formulario; un formulario vacío o un modo inventado', async () => {
+await caso( DEBE_FALLAR, '46. «Solicitar información»: otra promotora, el robot, alguien sin «datos» o sin sesión ponen un formulario; un formulario vacío o un modo inventado', async () => {
 
 	const r = {
 		otraPromotora: await guardarSolicitar( aprobB, 'formulario', null, FORMULARIO ),

@@ -1,4 +1,4 @@
-// «Solicitar información» de la experiencia pública (032_solicitar_informacion.sql).
+// «Solicitar información» de la experiencia pública (033_solicitar_informacion.sql).
 //
 // · Enlace: a la web o al formulario de la promotora, con las UTM (de dónde viene
 //   el interesado); un email, con la tipología en el asunto. Si la experiencia
