@@ -4,7 +4,8 @@
 // vista previa del escaparate, y se comparan. Publicar y volver atrás pasan por
 // el brazo ejecutor (función «ejecutar» de Supabase → GitHub Actions).
 
-import { alEnviar, anotar, esc, fallo, fecha, sb } from './comun';
+import { alEnviar, anotar, esc, fallo, fecha, sb, traducir } from './comun';
+import { pintarComparacion } from './comparacion';
 import { avisarPromotora } from './avisos';
 import { apuntarSinNadaNuevo, leerValidacion, listaParaPublicar, motivoNoPublicar, pintarValidacion, type Validacion } from './validacion';
 
@@ -134,6 +135,7 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 		${pendiente && p.publicacion !== 'manual' && !validacion?.igualQue ? `<p class="ayuda">Esta promoción se publica al aprobar la promotora: cuando valide todo lo enviado, la ${esc(rev!.version)} se publicará sola y te llegará un email.</p>` : ''}
 		<p class="aviso" data-progreso role="status" hidden></p>
 		<div data-validacion></div>
+		${pendiente ? '<section class="comparacion" data-comparacion hidden></section>' : ''}
 		${volver.length ? `<form class="peticion-form" data-volver hidden novalidate>
 			<label>Volver la experiencia publicada de ${esc(p.nombre)} a la
 				<select name="version">${volver.reverse().map((v) => `<option>${v}</option>`).join('')}</select>
@@ -152,6 +154,8 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 	const repintar = () => void pintarVersiones(destino, p);
 	anotarEnlaces(destino);
 	if (validacion) void pintarValidacion(destino.querySelector<HTMLElement>('[data-validacion]')!, REVISION, p, validacion, repintar);
+	// qué cambia respecto a la publicada (comparacion.ts)
+	if (pendiente) void pintarComparacion(destino.querySelector<HTMLElement>('[data-comparacion]')!, { sb, esc, traducir, base: REVISION, privado: true }, id, rev!.version);
 
 	destino.querySelector<HTMLButtonElement>('[data-publicar]')?.addEventListener('click', async (ev) => {
 		const b = ev.currentTarget as HTMLButtonElement;

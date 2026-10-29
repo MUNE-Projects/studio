@@ -11,6 +11,7 @@ import { pintarCompradores } from './compradores';
 import { pintarPersonalizacion } from './personalizacion';
 import { pintarCatalogo } from './catalogo';
 import { pintarMarca } from './marca';
+import { pintarComparacion } from './comparacion';
 import { conectarSolicitar, formSolicitar, type DatosSolicitar } from './solicitar';
 import { COLUMNAS_DOCUMENTO, COLUMNAS_REQUISITO, type Documento, type Requisito, leerCubre, pintarDocumentacion, resumenDocumentos } from './documentos';
 import { pintarEquipo } from './equipo';
@@ -446,6 +447,7 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 			<div class="promo-cabeza"><h2>Resumen</h2><span class="estado" data-estado-promo="${esc(id)}">…</span></div>
 			<p class="promo-versiones" data-publicada>Comprobando la versión publicada…</p>
 			${htmlValidacionEnCurso(id, enCurso, per.puede('planos') ? planosCurso : null, expCurso)}
+			${enCurso ? '<section class="comparacion" data-comparacion hidden></section>' : ''}
 			<div class="lista-promos separado">
 				${per.puede('documentacion') ? `<a class="promo-enlace" href="#/promocion/${esc(id)}/documentacion"><span><strong>Documentación</strong><br>
 					<span class="promo-lugar">${faltan ? `${faltan === 1 ? 'Falta 1 documento obligatorio' : `Faltan ${faltan} documentos obligatorios`}` : 'Todos los documentos obligatorios entregados'}${rechazados ? ` · ${rechazados} por corregir` : ''}</span></span>
@@ -457,6 +459,8 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 			</div>`;
 		pintarEstados(caja, sb, ESCAPARATE);
 		void pintarPublicada(p.id);
+		// qué cambia en la versión en curso respecto a la publicada (comparacion.ts)
+		if (enCurso) void pintarComparacion(caja.querySelector<HTMLElement>('[data-comparacion]')!, { sb, esc, traducir, base: REVISION, privado: per.puede('personalizacion') }, id, enCurso);
 	}
 
 	if (actual === 'documentacion') {
