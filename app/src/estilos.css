@@ -348,3 +348,30 @@ label.nombre-categoria input { padding: 6px 8px; font-size: 17px; font-weight: 6
 .comparar-imagenes img { display: block; width: 100%; border: 1px solid var(--linea); border-radius: 8px; background: #fff; }
 .comparar-imagenes figcaption { font-size: 12px; color: var(--tinta-2); margin-top: 4px; }
 .tabla .lista-cambios { margin: 0; padding-left: 16px; }
+
+/* Comentarios visuales (comentarios.ts) */
+.comentarios { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--linea); }
+.comentarios h2, .comentarios h3 { margin: 0 0 8px; }
+.comentarios-plegable { margin-top: 10px; }
+.comentarios-plegable > summary { cursor: pointer; font-weight: 600; color: var(--tinta-2); }
+.hilo { border: 1px solid var(--linea); border-radius: 10px; padding: 10px 12px; margin: 8px 0; background: var(--superficie); transition: box-shadow .3s; }
+.hilo.resuelto { opacity: .75; }
+.hilo.resaltado { box-shadow: 0 0 0 3px var(--acento-suave), 0 0 0 1px var(--acento); }
+.hilo-cabecera { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.hilo-cabecera .estado { margin-left: auto; }
+.comentario-autor { margin: 4px 0 0; font-size: 13px; color: var(--tinta-2); }
+.comentario-texto { margin: 2px 0 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.respuesta { margin-left: 14px; padding-left: 10px; border-left: 2px solid var(--linea); }
+.respuesta-form { margin-top: 8px; }
+.resueltos { margin: 8px 0; }
+.resueltos > summary { cursor: pointer; color: var(--tinta-2); font-size: 14px; }
+.comentar-form { margin-top: 10px; }
+.aviso-punto { margin: 0; font-size: 14px; color: var(--tinta-2); }
+.plano-marcas { position: relative; margin: 10px 0; }
+.plano-marcas img { display: block; width: 100%; margin: 0; border: 1px solid var(--linea); border-radius: 10px; background: #fff; }
+.plano-marcas.se-puede-marcar img { cursor: crosshair; }
+.marca-plano, .marca-numero { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 999px;
+	background: #c2410c; color: #fff; font: 600 12px/1 var(--fuente); border: 2px solid #fff; box-shadow: 0 1px 4px rgb(0 0 0 / .3); }
+.marca-plano { position: absolute; transform: translate(-50%, -50%); cursor: pointer; }
+.marca-plano.nueva { background: var(--acento); cursor: default; }
+.marca-plano.en-linea { position: static; transform: none; vertical-align: middle; }

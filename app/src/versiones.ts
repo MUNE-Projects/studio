@@ -6,6 +6,7 @@
 
 import { alEnviar, anotar, esc, fallo, fecha, sb, traducir } from './comun';
 import { pintarComparacion } from './comparacion';
+import { type Hilo, pintarComentarios } from './comentarios';
 import { avisarPromotora } from './avisos';
 import { apuntarSinNadaNuevo, leerValidacion, listaParaPublicar, motivoNoPublicar, pintarValidacion, type Validacion } from './validacion';
 
@@ -136,6 +137,11 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 		<p class="aviso" data-progreso role="status" hidden></p>
 		<div data-validacion></div>
 		${pendiente ? '<section class="comparacion" data-comparacion hidden></section>' : ''}
+		${pub || rev ? `<section class="comentarios">
+			<h3>Comentarios de la promotora</h3>
+			<p class="ayuda">Lo que comenta el equipo de la promotora en los planos, en el 3D y en la versión. Respóndeles aquí y márcalos como resueltos cuando la versión nueva lo arregle: lo verán en MUNE Portal.</p>
+			<div data-comentarios></div>
+		</section>` : ''}
 		${volver.length ? `<form class="peticion-form" data-volver hidden novalidate>
 			<label>Volver la experiencia publicada de ${esc(p.nombre)} a la
 				<select name="version">${volver.reverse().map((v) => `<option>${v}</option>`).join('')}</select>
@@ -156,6 +162,10 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 	if (validacion) void pintarValidacion(destino.querySelector<HTMLElement>('[data-validacion]')!, REVISION, p, validacion, repintar);
 	// qué cambia respecto a la publicada (comparacion.ts)
 	if (pendiente) void pintarComparacion(destino.querySelector<HTMLElement>('[data-comparacion]')!, { sb, esc, traducir, base: REVISION, privado: true }, id, rev!.version);
+	// comentarios de la promotora (comentarios.ts): todos, los abiertos primero
+	const ultima = (pendiente ? rev : pub) ?? rev;
+	const zonaComentarios = destino.querySelector<HTMLElement>('[data-comentarios]');
+	if (zonaComentarios && ultima) void pintarComentariosStudio(zonaComentarios, id, ultima.version, pendiente ? REVISION : ESCAPARATE);
 
 	destino.querySelector<HTMLButtonElement>('[data-publicar]')?.addEventListener('click', async (ev) => {
 		const b = ev.currentTarget as HTMLButtonElement;
@@ -201,4 +211,44 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 			if (ok) cerrar(); else throw new Error('No se ha podido poner en marcha. Mira el aviso de arriba.');
 		});
 	}
+}
+
+/** Los comentarios de la promotora en MUNE Studio: responder, resolver y verlos en su sitio. */
+async function pintarComentariosStudio(caja: HTMLElement, id: string, version: string, base: string): Promise<void> {
+	const { data } = await sb.from('entregables').select('tipo, clave, titulo, nombre').eq('promocion_id', id).in('tipo', ['plano', 'experiencia'])
+		.order('creado_en', { ascending: false });
+	const titulos = new Map<string, string>();
+	for (const x of (data ?? []) as { tipo: string; clave: string | null; titulo: string | null; nombre: string }[]) {
+		const k = `${x.tipo}:${x.clave}`;
+		if (!titulos.has(k)) titulos.set(k, x.titulo ?? x.nombre);
+	}
+	const lugar = (h: Hilo) => h.tipo === 'version' ? 'Toda la versión'
+		: h.tipo === 'plano' ? `Plano · ${titulos.get(`plano:${h.clave}`) ?? h.clave}`
+			: `3D · ${h.clave === 'entorno' ? 'Entorno y elementos generales' : titulos.get(`experiencia:${h.clave}`) ?? h.clave}`;
+	await pintarComentarios(caja, null, {
+		sb, esc, traducir, admin: true,
+		abrir3D: (clave, h) => void abrirConPase(id, `${base}/${id}/?${new URLSearchParams(h ? { ver: clave, comentario: String(h.id) } : { ver: clave })}`),
+		imagenPlano: async (clave, v) => {
+			const { data: e } = await sb.from('entregables').select('miniatura').eq('promocion_id', id).eq('tipo', 'plano')
+				.eq('version', v).eq('clave', clave).maybeSingle();
+			if (!e?.miniatura) return null;
+			const { data: u } = await sb.storage.from('entregables').createSignedUrl(e.miniatura as string, 600);
+			return u?.signedUrl ?? null;
+		},
+	}, { promocion: id, version, tipo: 'version', clave: null, comentar: true, versionActual: version, lugar });
+}
+
+/** Abre el 3D con un pase (como el modo profesional del Portal) para ver los comentarios en su sitio. */
+async function abrirConPase(id: string, url: string): Promise<void> {
+	const ventana = window.open('', '_blank');
+	if (ventana) ventana.opener = null;
+	const { data, error } = await sb.rpc('abrir_experiencia_profesional', { p_promocion: id });
+	if (error || typeof data !== 'string') {
+		ventana?.close();
+		alert(traducir(error));
+		return;
+	}
+	const destino = `${url}#p-${data}`;
+	if (ventana) ventana.location.href = destino;
+	else location.href = destino;
 }

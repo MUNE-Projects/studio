@@ -21,6 +21,11 @@
    - **Nada nuevo que validar** (los planos y la Experiencia 3D, iguales que en la versión publicada, ya aprobada; por ejemplo, cuando la versión solo trae una mejora de MUNE): MUNE Studio no ofrece *Enviar a validar* y dice «Nada nuevo que validar». La publicas tú con *Publicar vN*, en cualquiera de los dos modos. Al publicar, el Panel apunta los elementos para la promotora sin avisarla (conservan su aprobación) y la función `ejecutar` lo comprueba igual; la promotora no recibe ningún email (ni el de «versión publicada»), para no preguntarse qué ha cambiado. Si aun así quedara algo por validar (por ejemplo, porque la promotora ha añadido aprobadores), se le envía a validar como siempre y no se publica.
 5. **Publicar:** el botón *Publicar vN* del Panel solo se activa con **todos** los planos aprobados (lo comprueba también la función `ejecutar`). Lo pulsas tú, o me pides que lo haga. Al terminar, el equipo de la promotora recibe el email «versión publicada».
 
+## Comentarios de la promotora
+- La promotora comenta en MUNE Portal pulsando en el plano, en el 3D (*Comentar*) o en el Resumen (toda la versión). Te llega un email agrupado y aparecen en Inicio y en *Resumen y versiones*.
+- Antes de preparar la versión siguiente, pídeme «mira los comentarios de X»: los leo con `node herramientas/documentos.mjs comentarios <id>` y te propongo qué cambiar.
+- Respóndelos en MUNE Studio y márcalos como **resueltos en la vN** cuando la versión nueva lo arregle: la promotora lo ve en su Portal.
+
 ## Garantías
 - Queda registrado quién aprobó cada plano, cuándo y la huella del archivo exacto. Una validación no se puede cambiar ni repetir, y solo se validan los planos de la última versión enviada.
 - Las versiones preparadas antes de existir los planos (sin `planos.json`) se publican como antes.

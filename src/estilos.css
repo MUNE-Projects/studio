@@ -653,3 +653,35 @@ body.perfil-promotora:not([data-modo="plano"]) #foto, body.en-studio:not([data-m
 .formulario-info .marco-formulario { flex: 1; min-height: 0; }
 .formulario-info iframe { width: 100%; height: 100%; border: 0; display: block; }
 @media (max-width: 600px) { .formulario-info { width: 100vw; height: 100dvh; max-width: none; max-height: none; border-radius: 0; } }
+
+/* Comentarios visuales en el 3D (comentarios3d.ts), solo en modo profesional */
+.vistas #comentar-3d[aria-pressed="true"] { background: var(--acento); color: #fff; }
+body.marcando-comentario #lienzo canvas { cursor: crosshair; }
+.marca-comentario {
+	display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding: 0 7px;
+	border: 2px solid #fff; border-radius: 999px; background: #c2410c; color: #fff;
+	font: 600 12px/1 var(--fuente); box-shadow: 0 1px 6px rgb(0 0 0 / 0.35);
+	pointer-events: auto; cursor: pointer;
+}
+.marca-comentario.nueva { background: var(--acento); cursor: default; }
+.panel-comentario {
+	position: fixed; top: 76px; right: 16px; z-index: 7; width: min(340px, calc(100% - 32px));
+	max-height: calc(100% - 220px); overflow: auto; padding: 14px 16px;
+	background: var(--superficie); backdrop-filter: blur(14px); border: 1px solid var(--linea);
+	border-radius: 14px; box-shadow: var(--sombra); font-size: 13px;
+}
+.panel-comentario[hidden] { display: none; }
+.panel-comentario header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.panel-comentario h2 { margin: 0; font-size: 14px; }
+.panel-comentario .cerrar { border: 0; background: none; font-size: 14px; cursor: pointer; color: var(--tinta-2); }
+.panel-comentario .ayuda { margin: 0 0 8px; color: var(--tinta-2); }
+.panel-comentario .mensaje { margin: 0 0 8px; }
+.panel-comentario .mensaje.respuesta { margin-left: 10px; padding-left: 8px; border-left: 2px solid var(--linea); }
+.panel-comentario .autor { margin: 0; font-size: 12px; color: var(--tinta-2); }
+.panel-comentario .texto { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.panel-comentario label { display: grid; gap: 4px; font-weight: 600; }
+.panel-comentario textarea { width: 100%; box-sizing: border-box; font: inherit; font-weight: 400; padding: 7px 8px; border: 1px solid var(--linea); border-radius: 8px; resize: vertical; }
+.panel-comentario .error { margin: 4px 0 0; color: #9b2c2c; min-height: 0; }
+.panel-comentario .acciones { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.panel-comentario .cancelar { border: 0; background: none; color: var(--tinta-2); text-decoration: underline; cursor: pointer; font: inherit; }
+@media (max-width: 640px) { .panel-comentario { top: auto; bottom: 150px; right: 12px; left: 12px; width: auto; max-height: 45%; } }

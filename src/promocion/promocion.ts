@@ -312,6 +312,41 @@ export async function resolverProfesional( pase: string ): Promise<Profesional |
 
 }
 
+/**
+ * Llama a una función de Supabase con el pase profesional (comentarios visuales,
+ * 038_comentarios.sql). Si falla, lanza un Error con un texto para personas.
+ */
+export async function conPase<T>( rpc: string, cuerpo: Record<string, unknown> ): Promise<T> {
+
+	if ( ! paseProfesional ) throw new Error( 'Abre el 3D desde MUNE Portal para comentar.' );
+	let r: Response;
+	try {
+
+		r = await fetch( `${ SUPABASE_URL }/rest/v1/rpc/${ rpc }`, {
+			method: 'POST',
+			headers: { apikey: SUPABASE_CLAVE, 'Content-Type': 'application/json' },
+			body: JSON.stringify( { p_promocion: PROMOCION.id, p_pase: paseProfesional, ...cuerpo } ),
+		} );
+
+	} catch {
+
+		throw new Error( 'No se ha podido conectar. Revisa tu conexión y vuelve a probar.' );
+
+	}
+	if ( ! r.ok ) {
+
+		const t = await r.text();
+		console.error( rpc, t );
+		throw new Error( /caducado/.test( t ) ? 'Tu acceso al 3D ha caducado. Vuelve a abrirlo desde MUNE Portal.'
+			: /No tienes acceso/.test( t ) ? 'Desde aquí no puedes comentar. Los comentarios los escribe el equipo de la promotora.'
+			: /Demasiados/.test( t ) ? 'Demasiados comentarios seguidos. Espera un poco y vuelve a probar.'
+				: 'No se ha podido guardar ahora mismo. Vuelve a probar en unos minutos.' );
+
+	}
+	return await r.json() as T;
+
+}
+
 /** Lo que queda guardado de un pack; o un texto con el motivo si no se ha podido guardar. */
 export type SeleccionGuardada = { estado: 'seleccionada' | 'cerrada'; importe: number; fecha: string; opciones: Record<string, string>; hasta: string | null };
 

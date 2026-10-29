@@ -1,8 +1,8 @@
 // Inicio de MUNE Studio: lo que necesita tu atención, con enlace a cada sitio.
 // Arriba, los avisos del sistema (015_sistema.sql); después, las versiones
 // pendientes con el estado de su validación (planos comerciales y Experiencia
-// 3D), la documentación por revisar, las opciones nuevas pedidas y las
-// peticiones abiertas.
+// 3D), la documentación por revisar, los comentarios de las promotoras, las
+// opciones nuevas pedidas y las peticiones abiertas.
 
 import { esc, fecha, sb, traducir } from './comun';
 import { ESTADOS_PETICION, peticionesAbiertas } from './peticiones';
@@ -23,6 +23,11 @@ export async function pantallaInicio(destino: HTMLElement): Promise<void> {
 		<section class="tarjeta">
 			<h2>Documentación por revisar</h2>
 			<div data-documentos><p class="vacio">Cargando…</p></div>
+		</section>
+		<section class="tarjeta" data-comentarios hidden>
+			<h2>Comentarios de las promotoras</h2>
+			<p class="ayuda">Comentarios abiertos en los planos, el 3D o la versión. Respóndelos y márcalos como resueltos en «Resumen y versiones» de cada promoción. Claude también los lee con el robot al preparar la versión siguiente.</p>
+			<div data-lista-comentarios></div>
 		</section>
 		<section class="tarjeta" data-opciones-pedidas hidden>
 			<h2>Opciones por preparar</h2>
@@ -96,6 +101,20 @@ export async function pantallaInicio(destino: HTMLElement): Promise<void> {
 					<span class="estado pendiente">${g.n} por revisar</span>
 				</a>`).join('')}</div>` : '<p class="vacio">No hay documentación por revisar.</p>';
 		});
+
+	void sb.rpc('comentarios_abiertos').then(({ data: filas }) => {
+		const caja = destino.querySelector<HTMLElement>('[data-comentarios]');
+		const lista = (filas ?? []) as { promocion_id: string; abiertos: number; sin_respuesta: number }[];
+		if (!caja || !lista.length) return;
+		const nombre = new Map(promociones.map((p) => [p.id, p.nombre]));
+		caja.hidden = false;
+		caja.querySelector<HTMLElement>('[data-lista-comentarios]')!.innerHTML = `<div class="lista-enlaces">${lista
+			.sort((a, b) => b.sin_respuesta - a.sin_respuesta).map((x) => `
+			<a class="fila-enlace" href="#/promocion/${esc(x.promocion_id)}/resumen">
+				<span><strong>${esc(nombre.get(x.promocion_id) ?? x.promocion_id)}</strong><br><span class="promo-lugar">${x.abiertos === 1 ? '1 comentario abierto' : `${x.abiertos} comentarios abiertos`}</span></span>
+				<span class="estado ${x.sin_respuesta ? 'pendiente' : ''}">${x.sin_respuesta ? `${x.sin_respuesta} sin responder` : 'Respondidos'}</span>
+			</a>`).join('')}</div>`;
+	});
 
 	void sb.rpc('opciones_pedidas_pendientes').then(({ data: pedidas }) => {
 		const caja = destino.querySelector<HTMLElement>('[data-opciones-pedidas]');

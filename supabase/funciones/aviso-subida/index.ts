@@ -18,6 +18,13 @@
 //    vuelve a comprobar que es la versión revisada, y al terminar avisa por
 //    email al equipo de la promotora y a MUNE.
 //
+// 5. Comentarios visuales (038): con { comentarios: <promoción> }, un solo email
+//    con todo lo nuevo que ha comentado la promotora en esa promoción y aún no
+//    se había avisado (marcar_aviso_comentarios). MUNE Portal lo pide dos
+//    minutos después del último comentario o al cerrar la página, así que los
+//    comentarios seguidos llegan juntos. Un «Pedir cambios» lleva también los
+//    comentarios nuevos en su email.
+//
 // Las funciones de Supabase no pueden enviar email por SMTP (Gmail), por eso
 // el email lo manda GitHub. No usa la clave de servicio.
 //
@@ -64,10 +71,12 @@ Deno.serve(async (req) => {
 
 	let documento: number;
 	let validacion: number;
+	let comentarios: string;
 	try {
 		const cuerpo = await req.json();
 		documento = Number(cuerpo.documento_id);
 		validacion = Number(cuerpo.validacion_id);
+		comentarios = typeof cuerpo.comentarios === 'string' ? cuerpo.comentarios : '';
 	} catch {
 		return responder(400, { error: 'Orden no válida' });
 	}
@@ -86,13 +95,39 @@ Deno.serve(async (req) => {
 		});
 	};
 
+	// Comentarios nuevos de la promotora (lo nuevo, todavía sin avisar), como líneas del email.
+	type Nuevo = { version: string; tipo: string; clave: string | null; con_punto: boolean; texto: string; autor: string; respuesta: boolean; titulo: string | null };
+	const lineasComentarios = (lista: Nuevo[]) => lista.map((c) => {
+		const lugar = c.tipo === 'version' ? `la ${c.version}` : c.tipo === 'plano' ? `el plano «${corto(c.titulo ?? c.clave, 120)}»`
+			: `el 3D de «${corto(c.clave === 'entorno' ? 'Entorno y elementos generales' : c.titulo ?? c.clave, 120)}»`;
+		return `${corto(c.autor, 80)} ${c.respuesta ? 'responde' : 'comenta'} en ${lugar}${c.con_punto ? ' (en un punto marcado)' : ''}${c.tipo === 'version' ? '' : ` · ${c.version}`}:\n«${corto(c.texto, 400)}»`;
+	});
+
+	if (/^[a-z0-9][a-z0-9-]{0,79}$/.test(comentarios)) {
+		const { data, error } = await sb.rpc('marcar_aviso_comentarios', { p_promocion: comentarios });
+		if (error) return responder(403, { error: 'Sin permiso' });
+		const lista = (data ?? []) as Nuevo[];
+		if (!lista.length) return responder(200, { ok: true, avisado: false });
+		const { data: promo } = await sb.from('promociones').select('nombre').eq('id', comentarios).maybeSingle();
+		const nombre = corto(promo?.nombre, 120) || comentarios;
+		const r = await llamarGitHub(PROCESO, {
+			asunto: `${nombre} · ${lista.length === 1 ? '1 comentario nuevo' : `${lista.length} comentarios nuevos`}`,
+			texto: [...lineasComentarios(lista).slice(0, 12), ...(lista.length > 12 ? [`Y ${lista.length - 12} más.`] : []),
+				'Respóndelos y márcalos como resueltos en MUNE Studio, en «Resumen y versiones» de la promoción.'].join('\n\n'),
+			enlace: `${STUDIO}#/promocion/${comentarios}/resumen`,
+		});
+		if (!r) return responder(500, { error: 'Falta la llave A (GITHUB_EJECUTOR) en los secretos de Supabase' });
+		if (!r.ok) return responder(502, { error: `GitHub no ha aceptado el aviso (${r.status})` });
+		return responder(200, { ok: true, avisado: true });
+	}
+
 	// Validación de un plano comercial o de la Experiencia 3D (aprobado o cambios pedidos)
 	if (Number.isInteger(validacion) && validacion > 0) {
 		const { data: toca, error: eMarca } = await sb.rpc('marcar_aviso_validacion', { p_validacion: validacion });
 		if (eMarca) return responder(403, { error: 'Sin permiso' });
 		if (toca !== true) return responder(200, { ok: true, avisado: false });
 		const { data: v } = await sb.from('validaciones')
-			.select('entregable_id, promocion_id, version, decision, comentario, zona, entregables(tipo, titulo, nombre), promociones(nombre)')
+			.select('entregable_id, promocion_id, version, decision, comentario, zona, entregables(tipo, titulo, nombre, clave), promociones(nombre)')
 			.eq('id', validacion).maybeSingle();
 		if (!v) return responder(404, { error: 'No se encuentra la validación' });
 		const fv = v as unknown as {
@@ -152,6 +187,13 @@ Deno.serve(async (req) => {
 		const lineas = [fv.decision === 'aprobado'
 			? `${quien} ha aprobado «${elemento}» de la ${fv.version}${avance ? ` (${avance})` : ''}.${fila?.estado === 'aprobado' ? ' Queda validado.' : ''}`
 			: `${quien} pide cambios en «${elemento}» de la ${fv.version}${fv.zona ? ` · ${corto(fv.zona, 120)}` : ''}:\n«${corto(fv.comentario, 500)}»`];
+		// los comentarios nuevos van en este mismo email (los de este elemento ya van en la petición)
+		if (fv.decision === 'rechazado') {
+			const { data: nuevos } = await sb.rpc('marcar_aviso_comentarios', { p_promocion: fv.promocion_id });
+			const clave = (fv.entregables as unknown as { clave?: string } | null)?.clave;
+			const otros = ((nuevos ?? []) as Nuevo[]).filter((c) => !(c.tipo === (tipo === 'planos' ? 'plano' : 'experiencia') && c.clave === clave));
+			if (otros.length) lineas.push(`Además, comentarios nuevos:\n\n${lineasComentarios(otros).slice(0, 8).join('\n\n')}`);
+		}
 		if (parteLista && !todos) lineas.push(tipo === 'experiencia' ? `Todas las tipologías de la Experiencia 3D de la ${fv.version} están aprobadas.` : `Todos los planos comerciales de la ${fv.version} están aprobados.`);
 		if (todos) lineas.push(publicando
 			? `Está todo validado: la ${fv.version} se está publicando sola. Te llegará otro email cuando esté en la web.`

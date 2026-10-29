@@ -31,7 +31,8 @@ import { Configurador, fmtEuros, fmtPrecio, type Seleccion } from './configurado
 import { conectarSolicitar } from './promocion/solicitar';
 import { Panel } from './configurador/panel';
 import { fmtFecha, packsDeVivienda } from './configurador/packs';
-import { CATALOGO, CONJUNTO, PROMOCION, accesoProfesional, cargarModelo, catalogoPara, estadoPublico, extraerCodigo, guardarSeleccion as guardarEnSupabase, paseInicial, resolverAcceso, resolverProfesional, salirProfesional, viviendaDeUnidad, viviendaPublica, type Modelo } from './promocion/promocion';
+import { conectarComentarios3D } from './promocion/comentarios3d';
+import { CATALOGO, CONJUNTO, PROMOCION, accesoProfesional, cargarModelo, claveUnidad, catalogoPara, estadoPublico, extraerCodigo, guardarSeleccion as guardarEnSupabase, paseInicial, resolverAcceso, resolverProfesional, salirProfesional, viviendaDeUnidad, viviendaPublica, type Modelo } from './promocion/promocion';
 import { aplicarMarca } from './promocion/marca';
 import { dePlanta, esMultiplanta, plantaCalle, plantasDe } from './modelo/plantas';
 import { esCerrada, esGaraje, esUtil } from './modelo/estancias';
@@ -1173,6 +1174,8 @@ async function iniciar() {
 	// ---------------------------------------------------------------- modo profesional: elegir vivienda
 	// Solo el equipo de la promotora pasa de una vivienda a otra. El público ve
 	// únicamente la tipología de su enlace (…/?ver=<tipología>, decisión 47).
+	// Comentarios visuales (038_comentarios.sql): marcar un sitio y escribir.
+	let comentarios3D: ReturnType<typeof conectarComentarios3D> | null = null;
 	if ( profesional ) {
 
 		$( '#salir-comprador' ).textContent = 'Salir del modo profesional';
@@ -1185,7 +1188,29 @@ async function iniciar() {
 			comprador = v;
 			cargarVivienda( v );
 			actualizarFicha();
+			comentarios3D?.alCambiarUnidad();
 
+		} );
+		comentarios3D = conectarComentarios3D( {
+			escena, camara, ctrl, lienzo: renderer.domElement,
+			clave: () => claveUnidad( fichaVivienda ),
+			planta: () => plantaActiva,
+			vista: () => ( modo === 'plano' ? 'Plano' : cam.vistas[ cam.actual ]?.nombre ?? '' ),
+			lista: () => viviendaLista,
+			irA: ( p ) => {
+
+				// marcado en el modo Plano: se vuelve al plano de su planta
+				const enPlano = p.vista === 'Plano';
+				if ( modo !== ( enPlano ? 'plano' : 'vivienda' ) ) irModo( enPlano ? 'plano' : 'vivienda' );
+				if ( p.planta !== undefined && p.planta !== plantaActiva && p.planta < plantasDe( vivienda ).length ) cambiarPlanta( p.planta, enPlano );
+				if ( enPlano ) return;
+				const interior = interioresPlanta.some( ( e ) => puntoEnPoligono( p.cam[ 0 ], - p.cam[ 2 ], e.poligono ) );
+				cam.ir( { nombre: p.vista ?? 'Comentario', pos: p.cam as Vista[ 'pos' ], obj: p.obj as Vista[ 'obj' ], fov: interior ? 62 : 45, interior } );
+				marcarVista( '' );
+
+			},
+			despertar: () => despertar(),
+			avisar: ( t ) => avisar( t ),
 		} );
 
 	}
@@ -1802,6 +1827,7 @@ async function iniciar() {
 			modoPendiente = null;
 			document.body.classList.remove( 'cargando-3d' );
 			if ( destino && ( modo as Modo ) === 'plano' ) irModo( destino );
+			void comentarios3D?.alEstarLista();
 
 			// 3. luces de ventana y plano completo, solo en los momentos sin interacción
 			await esperarInactividad();
@@ -1820,6 +1846,7 @@ async function iniciar() {
 			const pendiente = modoPendiente;
 			modoPendiente = null;
 			if ( pendiente ) irModo( pendiente );
+			void comentarios3D?.alEstarLista();
 
 		} finally {
 

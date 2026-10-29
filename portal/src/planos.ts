@@ -9,8 +9,9 @@
 // de una versión a otra, sus aprobaciones siguen valiendo.
 
 import { alEnviar, esc, sb, traducir } from './comun';
+import { type Hilo, abiertos, hilosDe, htmlPlanoConMarcas, leerHilos, pintarComentarios, textoPedirCambios } from './comentarios';
 import {
-	type Contexto, type Elemento, baseVisita, avance, chipEstado, faltanTrasAprobar, guardarDecision, htmlPersonas,
+	type Contexto, type Elemento, baseVisita, avance, chipEstado, depsComentarios, faltanTrasAprobar, guardarDecision, htmlPersonas,
 	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, textoPublicando, versionesCon,
 } from './validacion';
 
@@ -90,8 +91,9 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
 		caja.innerHTML = `<a class="enlace volver" href="#/promocion/${esc(id)}/planos">← Todos los planos</a><p class="vacio">No encontramos este plano. Vuelve a la lista y ábrelo desde allí.</p>`;
 		return;
 	}
-	const urls = await miniaturas([p]);
+	const [urls, hilos] = await Promise.all([miniaturas([p]), leerHilos(sb, id).catch(() => [] as Hilo[])]);
 	const actual = e.version === versiones[0];
+	const aqui = hilosDe(hilos, 'plano', p.clave, e.version);
 	const voto = miVoto(p, ctx);
 	const puede = actual && p.estado !== 'aprobado' && !!voto;
 	// la visita 3D de esta versión: la publicada, o la vista previa si aún no se ha publicado
@@ -104,12 +106,16 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
 		${avance(p, 'planos') ? `<p class="avance">${avance(p, 'planos')}</p>` : ''}
 		${htmlPersonas(p, e.version)}
 		${actual && p.estado === 'sin_aprobadores' ? htmlSinAprobadores(id, 'planos', ctx) : ''}
-		${urls.get(p.miniatura ?? '') ? `<img class="plano-grande" src="${esc(urls.get(p.miniatura!)!)}" alt="Plano ${esc(p.titulo)}">` : ''}
+		${urls.get(p.miniatura ?? '') ? htmlPlanoConMarcas(esc, urls.get(p.miniatura!)!, `Plano ${p.titulo}`, abiertos(aqui), actual) : ''}
 		<div class="acciones">
 			<button class="boton secundario pequeno" type="button" data-pantalla>Ver a pantalla completa</button>
 			${pdfBoton(p)}
 			<a class="boton secundario pequeno" href="${esc(visita)}" target="_blank" rel="noopener noreferrer">Ver esta versión en 3D</a>
 		</div>
+		<section class="comentarios">
+			<h2>Comentarios</h2>
+			<div data-comentarios></div>
+		</section>
 		${puede ? `<div class="validar">
 			${voto!.decision === 'aprobado' ? '<p class="aviso">Ya has aprobado este plano. Falta que lo aprueben las demás personas. Si ves algo que corregir, todavía puedes pedir cambios.</p>' : ''}
 			${voto!.decision === 'rechazado' ? '<p class="aviso">Has pedido cambios en este plano. Si ya está bien, puedes aprobarlo.</p>' : ''}
@@ -122,13 +128,32 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
 			</form>` : ''}
 			<form class="peticion-form" data-rechazar novalidate>
 				<h2>Pedir cambios</h2>
-				<label>Qué hay que corregir
+				<p class="ayuda" data-recoge hidden></p>
+				<label><span data-etiqueta-pedir>Qué hay que corregir</span>
 					<textarea name="comentario" rows="3" maxlength="4000" placeholder="Por ejemplo: el dormitorio 2 mide 3,10 m de ancho, no 2,90."></textarea></label>
 				<p class="error" role="alert"></p>
 				<div class="acciones"><button class="boton secundario" type="submit">Pedir cambios</button></div>
 			</form>
 			<p class="ayuda">Quedará registrado quién lo aprueba, cuándo y qué archivo exacto. Si el plano cambia después, habrá que validarlo de nuevo.</p>
 		</div>` : !actual ? '<p class="ayuda">Este plano es de una versión anterior y solo se puede consultar.</p>' : ''}`;
+
+	// los comentarios del plano; «Pedir cambios» recoge los abiertos
+	let hilosPlano = aqui;
+	const recoge = caja.querySelector<HTMLElement>('[data-recoge]');
+	const pintarRecoge = () => {
+		if (!recoge) return;
+		const n = abiertos(hilosPlano).length;
+		recoge.hidden = !n;
+		recoge.textContent = n === 1 ? 'Se enviará el comentario abierto de este plano. Si quieres, añade algo más.'
+			: `Se enviarán los ${n} comentarios abiertos de este plano. Si quieres, añade algo más.`;
+		caja.querySelector<HTMLElement>('[data-etiqueta-pedir]')!.textContent = n ? 'Algo más (opcional)' : 'Qué hay que corregir';
+	};
+	pintarRecoge();
+	const zonaComentarios = caja.querySelector<HTMLElement>('[data-comentarios]')!;
+	hilosPlano = await pintarComentarios(zonaComentarios, caja.querySelector<HTMLElement>('[data-plano-marcas]'), { ...depsComentarios(id), imagenPlano: undefined }, {
+		promocion: id, version: e.version, tipo: 'plano', clave: p.clave, comentar: actual,
+		alCambiar: (hs) => { hilosPlano = hs; pintarRecoge(); },
+	}, hilos);
 
 	caja.querySelector('[data-pantalla]')!.addEventListener('click', async () => {
 		const ventana = window.open('about:blank', '_blank');
@@ -154,8 +179,9 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
 	});
 	const rechazar = caja.querySelector<HTMLFormElement>('[data-rechazar]');
 	if (rechazar) alEnviar(rechazar, async (d) => {
-		const comentario = String(d.get('comentario') ?? '').trim();
-		if (comentario.length < 3) throw new Error('Explica qué hay que corregir.');
+		const escrito = String(d.get('comentario') ?? '').trim();
+		if (!abiertos(hilosPlano).length && escrito.length < 3) throw new Error('Explica qué hay que corregir, o marca en el plano lo que hay que cambiar.');
+		const comentario = textoPedirCambios(hilosPlano, escrito);
 		await guardarDecision(id, e.version, 'planos', p.id, { decision: 'rechazado', comentario });
 		alValidar(`Hemos recibido tu petición de cambios en «${p.titulo}». El equipo de MUNE preparará el plano corregido.`);
 	});
