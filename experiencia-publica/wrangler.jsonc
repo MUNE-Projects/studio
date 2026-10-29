@@ -1,0 +1,15 @@
+// Cloudflare (Workers con archivos estáticos): la web pública de las promociones
+// (Worker «experience»). Solo archivos estáticos, sin código de servidor ni coste
+// por visita. No se construye desde GitHub: herramientas/desplegar.mjs monta la
+// carpeta publico/ con estas páginas fijas y la web de cada promoción (de
+// Supabase, 036_publicacion.sql) y la envía a Cloudflare (decisión 60).
+{
+  "name": "experience",
+  "compatibility_date": "2026-10-01",
+  // la vista previa es la dirección revision-experience.… (alias «revision»)
+  "previews": {},
+  "assets": {
+    "directory": "./publico",
+    "not_found_handling": "404-page"
+  }
+}

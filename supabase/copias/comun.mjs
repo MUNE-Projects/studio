@@ -12,7 +12,7 @@ import { join } from 'node:path';
 
 export const IMAGEN = process.env.PG_IMAGEN || 'postgres:17-alpine';
 export const PRODUCCION = 'iowtdenlkxjqzlpwizgb';
-export const ALMACENES = [ 'documentos', 'entregables', 'referencias' ];
+export const ALMACENES = [ 'documentos', 'entregables', 'referencias', 'versiones' ];
 export const TABLAS_AUTH = [ [ 'usuarios', 'auth.users' ], [ 'identidades', 'auth.identities' ], [ 'factores', 'auth.mfa_factors' ] ];
 
 export function falta( ...nombres ) {

@@ -94,7 +94,7 @@ Muebles, materiales y texturas disponibles, con la **licencia registrada** de ca
 ## Brazo ejecutor (Publicar y Volver)
 
 ```
-Panel (botón) → función «ejecutar» de Supabase → GitHub Actions «publicar.yml» del taller → escaparate (main) → Cloudflare
+Panel (botón) → función «ejecutar» de Supabase → GitHub Actions «publicar.yml» del taller → registro de versiones (Supabase) → Cloudflare (decisión 60)
 ```
 
 | Pieza | Dónde | Qué comprueba o permite |
@@ -102,16 +102,16 @@ Panel (botón) → función «ejecutar» de Supabase → GitHub Actions «public
 | Función `ejecutar` | `supabase/funciones/ejecutar/index.ts`, en Supabase → Edge Functions | Que quien pulsa es administradora con doble verificación (`es_admin()`); valida la orden; para publicar exige `validacion_lista` = `listos` en planos comerciales y Experiencia 3D (salvo versiones sin esa parte en la vista previa); anota en el registro |
 | Llave A `GITHUB_EJECUTOR` | Secreto de Supabase (Edge Functions → Secrets) | Solo arrancar procesos del almacén `taller` (Actions: lectura y escritura). Caduca el 7/10/2027: aviso en Inicio y por email un mes antes (receta 19) |
 | Proceso `publicar.yml` | `.github/workflows/publicar.yml` | Ejecuta `herramientas/publicacion.mjs aprobar` o `volver`; uno detrás de otro, nunca dos a la vez |
-| Llave B `ESCAPARATE_TOKEN` | Secreto del almacén `taller` (Settings → Secrets → Actions) | Solo escribir en `escaparate` (Contents: lectura y escritura). Caduca el 7/10/2027: aviso en Inicio y por email un mes antes (receta 19) |
-| `GITHUB_TOKEN` | Automática de GitHub | Guardar el registro de versiones en el taller; solo dura ese proceso |
+| Cuenta «ejecutor» `EJECUTOR_CLAVE` | Secreto del almacén `studio` (Settings → Secrets → Actions) | Cuenta de MUNE en Supabase que solo lee las versiones y las publica o vuelve atrás (`036_publicacion.sql`) |
+| Llave C `CLOUDFLARE_API_TOKEN` | Secreto del almacén `studio` | Solo enviar la web al Worker `experience` de Cloudflare (plantilla «Edit Cloudflare Workers») |
 
 Flujo de versiones:
 
-1. Claude **prepara** una versión (`publicacion.mjs preparar`) en la rama `revision` del escaparate, que es la vista previa.
-2. Claude lanza el proceso `avisar.yml`. GitHub abre un aviso «<promoción> vN · lista para revisar» con los enlaces a la vista previa y al Panel, y **envía el email**. Lo crea github-actions, no la propia cuenta, porque GitHub no avisa de lo que hace uno mismo.
+1. Claude **prepara** una versión (`publicacion.mjs preparar`): su web queda en Supabase, «en revisión».
+2. Claude lanza el proceso `avisar.yml`, que envía la vista previa a Cloudflare. GitHub abre un aviso «<promoción> vN · lista para revisar» con los enlaces a la vista previa y al Panel, y **envía el email**. Lo crea github-actions, no la propia cuenta, porque GitHub no avisa de lo que hace uno mismo.
 3. La administradora revisa la vista previa y pulsa **Publicar vN** en el Panel. **Solo se publica la versión revisada:** si la vista previa ha cambiado entretanto, el ejecutor se niega.
-4. El ejecutor pasa la versión a `main`, guarda el registro y cierra el aviso.
+4. El ejecutor la apunta como publicada en Supabase, envía la web a Cloudflare y cierra el aviso.
 
-El registro `promociones/<id>/publicaciones.json` solo lo escribe el ejecutor, en `main`.
+El registro de versiones (`versiones_promocion`) solo lo cambian la administradora y el ejecutor; el robot solo deja versiones en revisión.
 
 Para recibir los emails, la cuenta de la administradora debe **vigilar** el almacén `taller` (botón *Watch* → *All Activity*, o al menos *Issues*), con el email activado en las notificaciones de GitHub.

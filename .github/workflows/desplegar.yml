@@ -1,0 +1,46 @@
+# Enviar la web pública a Cloudflare a mano (decisión 60; herramientas/desplegar.mjs).
+#
+# Normalmente no hace falta: avisar.yml envía la vista previa al preparar una
+# versión y publicar.yml las dos al publicar o volver atrás. Sirve para la
+# primera vez, o para volver a enviar exactamente lo que dice el registro de
+# versiones de Supabase si algo ha fallado: Actions → «Enviar la web a
+# Cloudflare» → Run workflow. No publica ni cambia ninguna versión.
+
+name: Enviar la web a Cloudflare
+run-name: enviar ${{ inputs.destino }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      destino:
+        description: a qué web
+        required: true
+        type: choice
+        options: [ambas, produccion, vista-previa]
+        default: ambas
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publicacion
+  cancel-in-progress: false
+
+jobs:
+  desplegar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enviar a Cloudflare
+        env:
+          EJECUTOR_CLAVE: ${{ secrets.EJECUTOR_CLAVE }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 2706295406853446349339961bd45902
+          DESTINO: ${{ inputs.destino }}
+        run: node herramientas/desplegar.mjs "$DESTINO"
