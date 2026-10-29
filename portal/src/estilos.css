@@ -336,3 +336,15 @@ label.nombre-categoria input { padding: 6px 8px; font-size: 17px; font-weight: 6
 .solicitar-modo label { display: flex; gap: 8px; align-items: center; justify-content: flex-start; }
 .solicitar-modo input { width: auto; flex: none; }
 .solicitar-form textarea[name=formulario] { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+
+/* Comparar versiones (comparacion.ts) */
+.comparacion { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--linea); }
+.comparacion h3 { margin: 0 0 8px; }
+.comparacion h4 { margin: 14px 0 6px; }
+.lista-cambios { margin: 4px 0 8px; padding-left: 20px; display: grid; gap: 3px; }
+.comparar-plano { margin: 10px 0 16px; }
+.comparar-imagenes { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.comparar-imagenes figure { margin: 0; }
+.comparar-imagenes img { display: block; width: 100%; border: 1px solid var(--linea); border-radius: 8px; background: #fff; }
+.comparar-imagenes figcaption { font-size: 12px; color: var(--tinta-2); margin-top: 4px; }
+.tabla .lista-cambios { margin: 0; padding-left: 16px; }

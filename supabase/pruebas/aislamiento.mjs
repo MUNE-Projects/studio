@@ -1824,6 +1824,38 @@ await caso( DEBE_FUNCIONAR, 'Marca: la administradora de la promotora pone la ge
 
 } );
 
+// ─── Comparar versiones: lo privado (034_comparar_versiones.sql) ─────────────
+
+const compararVersion = ( sb ) => sb.rpc( 'comparar_version', { p_promocion: 'prueba-a', p_version: 'v95', p_anterior: 'v92' } );
+
+await caso( DEBE_FALLAR, '47. Comparar versiones: otra promotora, el robot, alguien sin «personalización» o sin sesión ven el catálogo, los precios o los compradores afectados de otra versión', async () => {
+
+	const r = {
+		otraPromotora: await compararVersion( aprobB ),
+		robot: await compararVersion( robot ),
+		sinPersonalizacion: await compararVersion( soloCompradores.sb ),
+		anonimo: await compararVersion( anonimo ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Comparar versiones: quien tiene «personalización» y MUNE Studio ven qué cambia en el catálogo y qué compradores se ven afectados', async () => {
+
+	const equipo = await exigir( compararVersion( soloPersonalizacion.sb ), 'equipo' );
+	const mune = await exigir( compararVersion( admin ), 'MUNE' );
+	const mal = Object.entries( {
+		catalogo: equipo.catalogo?.some( ( x ) => x.includes( 'Exterior' ) ),
+		afectados: Array.isArray( equipo.afectados ) && equipo.afectados.some( ( a ) => a.vivienda === 'Bajo A' ),
+		mune: JSON.stringify( mune.catalogo ) === JSON.stringify( equipo.catalogo ),
+	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
+	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) } (${ JSON.stringify( equipo ) })` );
+	return true;
+
+} );
+
 // ─── Resumen ────────────────────────────────────────────────────────────────
 
 const fallidos = resultados.filter( ( r ) => ! r.ok );
