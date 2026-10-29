@@ -1,0 +1,21 @@
+# Versión de cada promoción: la lee el Panel de administración (desde otra
+# dirección) para saber qué está publicado; siempre fresca. No hay ningún
+# índice público de promociones: la lista vive en la base de datos privada.
+/*/version.json
+  Access-Control-Allow-Origin: *
+  Cache-Control: no-cache
+
+# Planos comerciales de cada versión: el Panel los copia para enviarlos a la promotora.
+/:promocion/planos/*
+  Access-Control-Allow-Origin: *
+  Cache-Control: no-cache
+
+# Unidades de la Experiencia 3D de cada versión: el Panel y el portal las usan para validarla.
+/:promocion/experiencia/*
+  Access-Control-Allow-Origin: *
+  Cache-Control: no-cache
+
+# Lista de viviendas (sin datos privados): la usan el Panel y el portal para los códigos de comprador.
+/*/viviendas.json
+  Access-Control-Allow-Origin: *
+  Cache-Control: no-cache

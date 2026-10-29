@@ -25,7 +25,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { PRODUCCION, TABLAS_AUTH, carpetaTemporal, codificar, conexion, consulta, descifrar, falta, pg, rutaSegura, sha256 } from './comun.mjs';
+import { ALMACENES, PRODUCCION, TABLAS_AUTH, carpetaTemporal, codificar, conexion, consulta, descifrar, falta, pg, rutaSegura, sha256 } from './comun.mjs';
 
 const { values: op } = parseArgs( { options: {
 	bd: { type: 'string' }, copia: { type: 'string' }, archivos: { type: 'boolean' }, comprobar: { type: 'boolean' }, forzar: { type: 'boolean' },
@@ -160,7 +160,7 @@ if ( op.comprobar ) {
 	}
 	if ( op.archivos ) {
 
-		const real = Number( consulta( `select count(*) from storage.objects where bucket_id in ('documentos', 'entregables', 'referencias')`, con, datos ) );
+		const real = Number( consulta( `select count(*) from storage.objects where bucket_id in (${ ALMACENES.map( ( a ) => `'${ a }'` ).join( ', ' ) })`, con, datos ) );
 		if ( real !== objetos.length ) problemas.push( `Archivos: la copia tiene ${ objetos.length } y hay ${ real }` );
 
 	}

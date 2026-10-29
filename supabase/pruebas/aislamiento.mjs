@@ -71,7 +71,7 @@ async function entrarSoloClave( email ) {
 // (032_movil_promotoras.sql): la primera vez lo vinculan y después lo usan.
 // Las cuentas internas (administradora, robot y copias) entran solo con la
 // contraseña; la administradora vincula su móvil aparte, como en MUNE Studio.
-const INTERNAS = [ 'admin@prueba.local', 'robot@prueba.local', 'hello.muneprojects+copias@gmail.com' ];
+const INTERNAS = [ 'admin@prueba.local', 'robot@prueba.local', 'hello.muneprojects+copias@gmail.com', 'hello.muneprojects+ejecutor@gmail.com' ];
 const secretoMovil = {};
 async function entrar( email ) {
 
@@ -1924,6 +1924,105 @@ await caso( DEBE_FUNCIONAR, 'Modelo de la promoción: el robot guarda la versió
 	return filas.length === 2 && filas[ 0 ].huella === h1 && filas[ 1 ].huella === h2 && filas[ 0 ].nota === 'primera'
 		&& filas[ 1 ].archivos[ 'catalogo.json' ] === '{ "categorias": [ 1 ] }' && robotLee.length === 3
 		&& apunte.length >= 1 && quedan?.length === 0;
+
+} );
+
+// ─── Publicar sin GitHub (036_publicacion.sql) ──────────────────────────────
+
+const ejecutorId = await crearUsuario( 'hello.muneprojects+ejecutor@gmail.com' );
+execFileSync( 'psql', [ DB_URL, '-q', '-c', `insert into public.cuentas_ejecutor (user_id) values ('${ ejecutorId }') on conflict do nothing` ] );
+const ejecutor = await entrar( 'hello.muneprojects+ejecutor@gmail.com' );
+const SITIO = Buffer.from( 'web de prueba (tar.gz)' );
+const subirSitio = ( sb, ruta, datos = SITIO ) => sb.storage.from( 'versiones' ).upload( ruta, datos, { contentType: 'application/gzip' } );
+const prepararV = ( sb, version, promocion = 'prueba-a' ) => sb.rpc( 'preparar_version', {
+	p_promocion: promocion, p_version: version, p_cambios: `Cambios de la ${ version }`, p_preparada_por: 'Claude', p_taller: 'b'.repeat( 40 ), p_huella: huella( SITIO ),
+} );
+const aprobarV = ( sb, version ) => sb.rpc( 'aprobar_version', { p_promocion: 'prueba-a', p_version: version, p_por: 'Prueba' } );
+const volverV = ( sb, version ) => sb.rpc( 'volver_version', { p_promocion: 'prueba-a', p_version: version, p_motivo: 'Prueba', p_por: 'Prueba' } );
+const estados = async () => Object.fromEntries( ( await servicio.from( 'versiones_promocion' ).select( 'version, estado' ).eq( 'promocion_id', 'prueba-a' ) ).data.map( ( v ) => [ v.version, v.estado ] ) );
+
+await caso( DEBE_FUNCIONAR, 'Publicar sin GitHub: el robot sube la web de cada versión y la deja en revisión; el ejecutor la publica, vuelve atrás y sabe qué va a cada web', async () => {
+
+	await exigir( subirSitio( robot, 'prueba-a/v1/sitio.tar.gz' ), 'subir v1' );
+	await exigir( prepararV( robot, 'v1' ), 'preparar v1' );
+	const tras1 = await estados();
+	await exigir( aprobarV( ejecutor, 'v1' ), 'publicar v1' );
+	await exigir( subirSitio( robot, 'prueba-a/v2/sitio.tar.gz' ), 'subir v2' );
+	await exigir( prepararV( robot, 'v2' ), 'preparar v2' );
+	const desplegar = await exigir( ejecutor.rpc( 'versiones_para_desplegar' ), 'qué va a cada web' );
+	const fila = desplegar.find( ( d ) => d.promocion_id === 'prueba-a' );
+	const bajada = await ejecutor.storage.from( 'versiones' ).download( 'prueba-a/v2/sitio.tar.gz' );
+	await exigir( aprobarV( admin, 'v2' ), 'publicar v2 desde MUNE Studio' );
+	const tras2 = await estados();
+	await exigir( volverV( ejecutor, 'v1' ), 'volver a v1' );
+	const tras3 = await estados();
+	const leeAdmin = await exigir( admin.from( 'versiones_promocion' ).select( 'version' ).eq( 'promocion_id', 'prueba-a' ), 'admin lee' );
+	const leeRobot = await exigir( robot.from( 'versiones_promocion' ).select( 'version' ).eq( 'promocion_id', 'prueba-a' ), 'robot lee' );
+	const apuntes = await exigir( admin.from( 'registro' ).select( 'accion' ).in( 'accion', [ 'prepara una versión', 'publica una versión', 'vuelve a una versión' ] ), 'registro' );
+	const mal = Object.entries( {
+		enRevision: tras1.v1 === 'en_revision',
+		desplegar: fila?.publicada === 'v1' && fila?.vista_previa === 'v2',
+		bajada: ! bajada.error && Buffer.from( await bajada.data.arrayBuffer() ).equals( SITIO ),
+		publicadaV2: tras2.v1 === 'sustituida' && tras2.v2 === 'publicada',
+		vueltaV1: tras3.v1 === 'publicada' && tras3.v2 === 'retirada',
+		lecturas: leeAdmin.length === 2 && leeRobot.length === 2,
+		registro: apuntes.length >= 5,
+	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
+	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) } (${ JSON.stringify( { tras1, fila, tras2, tras3 } ) })` );
+	return true;
+
+} );
+
+await caso( DEBE_FALLAR, '49. Publicar sin GitHub: la promotora, alguien sin sesión, el robot o el ejecutor hacen lo que no les toca; se sustituye la web de una versión; se publica una versión que no es la revisada', async () => {
+
+	await exigir( subirSitio( robot, 'prueba-a/v3/sitio.tar.gz' ), 'subir v3' );
+	const r = {
+		promotoraSube: await subirSitio( aprobA, 'prueba-a/v4/sitio.tar.gz' ),
+		anonimoSube: await subirSitio( anonimo, 'prueba-a/v4/sitio.tar.gz' ),
+		ejecutorSube: await subirSitio( ejecutor, 'prueba-a/v4/sitio.tar.gz' ),
+		robotSustituye: await subirSitio( robot, 'prueba-a/v1/sitio.tar.gz', Buffer.from( 'otra web' ) ),
+		robotSustituyeConUpsert: await robot.storage.from( 'versiones' ).upload( 'prueba-a/v1/sitio.tar.gz', Buffer.from( 'otra web' ), { contentType: 'application/gzip', upsert: true } ),
+		robotBorra: await robot.storage.from( 'versiones' ).remove( [ 'prueba-a/v1/sitio.tar.gz' ] ),
+		rutaMala: await subirSitio( robot, 'prueba-a/v4/otra-cosa.tar.gz' ),
+		promocionInventada: await subirSitio( robot, 'no-existe/v1/sitio.tar.gz' ),
+		promotoraPrepara: await prepararV( aprobA, 'v3' ),
+		ejecutorPrepara: await prepararV( ejecutor, 'v3' ),
+		prepararSinWeb: await prepararV( robot, 'v8' ),
+		prepararAnterior: await prepararV( robot, 'v2' ),
+		robotPublica: await aprobarV( robot, 'v3' ),
+		promotoraPublica: await aprobarV( aprobA, 'v3' ),
+		anonimoPublica: await aprobarV( anonimo, 'v3' ),
+		adminSinMovilPublica: await aprobarV( adminSinMovil, 'v3' ),
+		robotVuelve: await volverV( robot, 'v2' ),
+		promotoraVuelve: await volverV( aprobA, 'v2' ),
+		promotoraDespliega: await aprobA.rpc( 'versiones_para_desplegar' ),
+	};
+	await exigir( prepararV( robot, 'v3' ), 'preparar v3' );
+	r.publicarOtraVersion = await aprobarV( ejecutor, 'v2' );
+	r.volverANuncaPublicada = await volverV( ejecutor, 'v3' );
+	const lecturas = {
+		promotoraLee: await aprobA.from( 'versiones_promocion' ).select( 'version' ),
+		anonimoLee: await anonimo.from( 'versiones_promocion' ).select( 'version' ),
+		promotoraBaja: await aprobA.storage.from( 'versiones' ).download( 'prueba-a/v1/sitio.tar.gz' ),
+		anonimoBaja: await anonimo.storage.from( 'versiones' ).download( 'prueba-a/v1/sitio.tar.gz' ),
+		ejecutorLeeDocumentos: await ejecutor.from( 'documentos' ).select( 'id' ),
+		ejecutorLeeModelo: await ejecutor.from( 'modelo_promocion' ).select( 'id' ),
+		ejecutorLeePromociones: await ejecutor.from( 'promociones' ).select( 'id' ),
+		ejecutorBajaDocumento: await ejecutor.storage.from( 'documentos' ).download( docB.ruta ),
+		promotoraCambia: await aprobA.from( 'versiones_promocion' ).update( { estado: 'publicada' } ).eq( 'promocion_id', 'prueba-a' ).select( 'version' ),
+		ejecutorCambia: await ejecutor.from( 'versiones_promocion' ).update( { estado: 'publicada' } ).eq( 'promocion_id', 'prueba-a' ).select( 'version' ),
+	};
+	const v1 = await servicio.storage.from( 'versiones' ).download( 'prueba-a/v1/sitio.tar.gz' );
+	const noFallan = [
+		// borrar o leer sin permiso no da error: no borra ni devuelve nada (lo de la v1 se comprueba abajo)
+		...Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) ),
+		...Object.keys( lecturas ).filter( ( k ) => ! ( falla( lecturas[ k ] ) || vacio( lecturas[ k ] ) ) ),
+	];
+	if ( v1.error || ! Buffer.from( await v1.data.arrayBuffer() ).equals( SITIO ) ) noFallan.push( 'la web de la v1 ha cambiado' );
+	const e = await estados();
+	if ( e.v1 !== 'publicada' || e.v3 !== 'en_revision' ) noFallan.push( `estados ${ JSON.stringify( e ) }` );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
 
 } );
 

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Accede a tu vivienda</title>
+<!--
+	Puerta general del comprador (lista maestra, paso 5c; 026_puerta_comprador.sql).
+	Una sola dirección para todos los compradores: con su código, MUNE sabe de qué
+	promoción es y lo lleva a su vivienda (…/<promoción>/#<código>), donde entra
+	como siempre. En el navegador solo van la dirección de Supabase y la clave
+	pública («publishable»), que por sí solas no abren nada.
+-->
+<style>
+	:root { --fondo: #f5f3ef; --tinta: #1c1c1a; --gris: #6e6a63; --linea: #dedbd5; --acento: #2f5d50; --error: #9b2c2c; }
+	* { box-sizing: border-box; }
+	body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: var(--fondo); color: var(--tinta); font: 400 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+	main { width: 100%; max-width: 420px; background: #fffdf9; border: 1px solid var(--linea); border-radius: 16px; padding: 32px 28px; box-shadow: 0 10px 30px rgb(0 0 0 / 0.05); }
+	h1 { margin: 0 0 6px; font-size: 24px; font-weight: 600; letter-spacing: -0.01em; }
+	p { margin: 0 0 20px; color: var(--gris); }
+	label { display: block; font-weight: 500; margin-bottom: 6px; }
+	input { width: 100%; padding: 12px 14px; font: inherit; font-size: 18px; letter-spacing: 0.04em; border: 1px solid var(--linea); border-radius: 10px; background: #fff; color: var(--tinta); }
+	input:focus { outline: 2px solid var(--acento); outline-offset: 1px; border-color: transparent; }
+	button { width: 100%; margin-top: 14px; padding: 13px; font: inherit; font-weight: 600; color: #fff; background: var(--acento); border: 0; border-radius: 10px; cursor: pointer; }
+	button:disabled { opacity: 0.6; cursor: wait; }
+	.error { min-height: 1.5em; margin: 12px 0 0; color: var(--error); font-size: 14px; }
+	.nota { margin: 20px 0 0; font-size: 13px; }
+	.marca { margin-top: 18px; text-align: center; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gris); }
+</style>
+</head>
+<body>
+<main>
+	<h1>Accede a tu vivienda</h1>
+	<p>Escribe el código que te ha dado tu promotora para ver tu vivienda y personalizarla.</p>
+	<form novalidate>
+		<label for="codigo">Tu código</label>
+		<input id="codigo" name="codigo" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="c-0000 0000 0000" required>
+		<button type="submit">Entrar</button>
+		<p class="error" role="alert"></p>
+	</form>
+	<p class="nota">¿No tienes código o lo has perdido? Pídeselo a tu comercial: te dará uno nuevo y conservarás lo que ya habías elegido.</p>
+	<div class="marca">MUNE</div>
+</main>
+<script type="module">
+	const SUPABASE_URL = 'https://iowtdenlkxjqzlpwizgb.supabase.co';
+	const CLAVE_PUBLICA = 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR';
+	const form = document.querySelector( 'form' );
+	const campo = document.querySelector( '#codigo' );
+	const boton = form.querySelector( 'button' );
+	const error = form.querySelector( '.error' );
+
+	// Normaliza lo que pega el comprador: el código o el enlace completo; «c» y 12 cifras.
+	const normalizar = ( t ) => {
+
+		const m = t.trim().match( /c-?[0-9a-f -]{12,20}$/i ) ?? t.trim().match( /#c-?[0-9a-f]{12}/i );
+		const limpio = ( m ? m[ 0 ] : t ).toLowerCase().replace( /[^0-9a-z]/g, '' ).replace( /^c(?=[0-9a-f]{12}$)/, '' );
+		return /^[0-9a-f]{12}$/.test( limpio ) ? limpio : null;
+
+	};
+
+	// ?c=… o #c-… en la dirección: se rellena solo
+	const inicial = new URLSearchParams( location.search ).get( 'c' ) ?? location.hash.slice( 1 );
+	if ( inicial ) campo.value = inicial;
+
+	form.addEventListener( 'submit', async ( ev ) => {
+
+		ev.preventDefault();
+		error.textContent = '';
+		const codigo = normalizar( campo.value );
+		if ( ! codigo ) {
+
+			error.textContent = 'El código empieza por «c-» y lleva 12 letras y números. Compruébalo y vuelve a probar.';
+			campo.focus();
+			return;
+
+		}
+		boton.disabled = true;
+		boton.textContent = 'Comprobando…';
+		try {
+
+			const r = await fetch( `${ SUPABASE_URL }/rest/v1/rpc/buscar_vivienda_comprador`, {
+				method: 'POST',
+				headers: { apikey: CLAVE_PUBLICA, 'Content-Type': 'application/json' },
+				body: JSON.stringify( { p_codigo: codigo } ),
+			} );
+			const texto = await r.text();
+			if ( ! r.ok ) throw new Error( /Demasiados intentos/.test( texto ) ? 'bloqueado' : 'sin-conexion' );
+			const d = JSON.parse( texto );
+			if ( ! d?.promocion || ! /^[a-z0-9-]{1,60}$/.test( d.promocion ) ) {
+
+				error.textContent = 'Ese código no corresponde a ninguna vivienda. Comprueba que esté completo.';
+				return;
+
+			}
+			location.assign( `../${ d.promocion }/#c-${ codigo }` );
+
+		} catch ( e ) {
+
+			error.textContent = e.message === 'bloqueado'
+				? 'Demasiados intentos. Espera unos minutos y vuelve a probar.'
+				: 'No se ha podido comprobar el código ahora mismo. Revisa tu conexión y vuelve a probar en unos minutos.';
+
+		} finally {
+
+			boton.disabled = false;
+			boton.textContent = 'Entrar';
+
+		}
+
+	} );
+</script>
+</body>
+</html>
