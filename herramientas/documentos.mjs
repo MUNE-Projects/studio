@@ -5,6 +5,7 @@
 //   node herramientas/documentos.mjs pendientes [promoción]           (documentos por revisar)
 //   node herramientas/documentos.mjs bajar <id>                       (descarga a salida/documentos/ y comprueba la huella)
 //   node herramientas/documentos.mjs estado <id> vigente|rechazado [--nota "Texto"]
+//   node herramientas/documentos.mjs comentarios <promoción>          (comentarios visuales abiertos, 038)
 //
 // Receta 2 («revisa lo nuevo de X»): pendientes → bajar cada uno → leerlo y
 // comprobarlo → proponer a la administradora qué marcar como vigente y qué
@@ -172,6 +173,30 @@ async function novedades( token ) {
 
 }
 
+// Comentarios visuales abiertos de una promoción (038_comentarios.sql): lo que
+// pide la promotora en los planos, en el 3D o en la versión, para tenerlo en
+// cuenta al preparar la siguiente. El robot solo los lee: responde y resuelve
+// la administradora en MUNE Studio.
+async function comentarios( token, promocion ) {
+
+	if ( ! /^[a-z0-9-]{1,60}$/.test( promocion ?? '' ) ) fallo( 'Indica la promoción, por ejemplo: residencial-demo' );
+	const hilos = await pedir( '/rest/v1/rpc/comentarios_de', { metodo: 'POST', token, cuerpo: { p_promocion: promocion } } );
+	const abiertos = hilos.filter( ( h ) => ! h.resuelto_en ).sort( ( x, y ) => x.creado_en.localeCompare( y.creado_en ) );
+	if ( ! abiertos.length ) return console.log( `No hay comentarios abiertos en ${ promocion }.` );
+	const lugar = ( h ) => h.tipo === 'version' ? 'toda la versión' : `${ h.tipo === 'plano' ? 'plano' : '3D' } ${ h.clave }`;
+	const punto = ( h ) => ! h.punto ? 'general' : h.tipo === 'plano'
+		? `punto (${ Math.round( h.punto.x * 100 ) } %, ${ Math.round( h.punto.y * 100 ) } %) de la imagen`
+		: `punto [${ h.punto.p.join( ', ' ) }]${ h.punto.vista ? ` · vista ${ h.punto.vista }` : '' }${ h.punto.planta ? ` · planta ${ h.punto.planta }` : '' }`;
+	for ( const h of abiertos ) {
+
+		console.log( `\n#${ h.id } · ${ lugar( h ) } · ${ punto( h ) } · ${ h.version } · ${ h.autor } · ${ fecha( h.creado_en ) }\n  «${ h.texto }»` );
+		for ( const r of h.respuestas ) console.log( `    ↳ ${ r.de_mune ? 'Equipo de MUNE' : r.autor }: «${ r.texto }»` );
+
+	}
+	console.log( `\n${ abiertos.length } abierto(s). Se responden y resuelven en MUNE Studio → Resumen y versiones.` );
+
+}
+
 const [ orden, a, b ] = posicionales;
 const token = await entrar();
 switch ( orden ) {
@@ -180,6 +205,7 @@ switch ( orden ) {
 	case 'pendientes': await pendientes( token, a ); break;
 	case 'bajar': await bajar( token, a ); break;
 	case 'estado': await cambiarEstado( token, a, b ); break;
-	default: fallo( 'Orden desconocida. Usa: novedades | pendientes | bajar | estado' );
+	case 'comentarios': await comentarios( token, a ); break;
+	default: fallo( 'Orden desconocida. Usa: novedades | pendientes | bajar | estado | comentarios' );
 
 }
