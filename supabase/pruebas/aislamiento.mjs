@@ -1589,6 +1589,42 @@ await caso( DEBE_FALLAR, '42. Experience pública: otra promotora, el robot, alg
 
 } );
 
+// ─── «Solicitar información» con el formulario de la promotora (032) ─────────
+
+const FORMULARIO = '<form><input name="nombre"></form><script src="https://crm.example/formulario.js"></script>';
+const guardarSolicitar = ( sb, modo, enlace, formulario, promocion = 'prueba-a' ) =>
+	sb.rpc( 'guardar_solicitar_informacion', { p_promocion: promocion, p_modo: modo, p_enlace: enlace, p_formulario: formulario } );
+
+await caso( DEBE_FUNCIONAR, '«Solicitar información»: el equipo con «datos» pone el formulario de su CRM y la web pública lo recibe; al volver a «enlace», la web pública ya no lo recibe', async () => {
+
+	await exigir( guardarSolicitar( gestorA, 'formulario', 'https://promotora-a.es/contacto', FORMULARIO ), 'formulario' );
+	const conFormulario = await exigir( infoPublica(), 'leer formulario' );
+	await exigir( guardarSolicitar( gestorA, 'enlace', 'https://promotora-a.es/contacto', FORMULARIO ), 'enlace' );
+	const conEnlace = await exigir( infoPublica(), 'leer enlace' );
+	return conFormulario.solicitar_modo === 'formulario' && conFormulario.solicitar_formulario === FORMULARIO
+		&& conEnlace.solicitar_modo === 'enlace' && conEnlace.solicitar_formulario === null && conEnlace.solicitar_info === 'https://promotora-a.es/contacto';
+
+} );
+
+await caso( DEBE_FALLAR, '45. «Solicitar información»: otra promotora, el robot, alguien sin «datos» o sin sesión ponen un formulario; un formulario vacío o un modo inventado', async () => {
+
+	const r = {
+		otraPromotora: await guardarSolicitar( aprobB, 'formulario', null, FORMULARIO ),
+		robot: await guardarSolicitar( robot, 'formulario', null, FORMULARIO ),
+		sinDatos: await guardarSolicitar( soloCompradores.sb, 'formulario', null, FORMULARIO ),
+		anonimo: await guardarSolicitar( anonimo, 'formulario', null, FORMULARIO ),
+		vacio: await guardarSolicitar( gestorA, 'formulario', null, '' ),
+		sinHtml: await guardarSolicitar( gestorA, 'formulario', null, 'hola' ),
+		modoInventado: await guardarSolicitar( gestorA, 'ventana', null, FORMULARIO ),
+		enlaceMalo: await guardarSolicitar( gestorA, 'enlace', 'javascript:alert(1)', null ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	if ( ( await exigir( infoPublica(), 'leer' ) ).solicitar_modo !== 'enlace' ) noFallan.push( 'cambiado' );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
 // ─── Catálogo y precios de la promotora (029_catalogo_promotora.sql, paso 8a) ─
 // Una versión nueva con un pack que aún no se ha abierto (exterior) además del
 // de acabados (abierto desde 2026). Va al final: cambia los últimos datos privados.

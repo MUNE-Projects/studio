@@ -28,6 +28,7 @@ import { Navegacion } from './escena/navegacion';
 import { construirPiscina, validarPiscina } from './escena/piscina';
 import { aplicarAlternativa, fmtM2 } from './configurador/alternativas';
 import { Configurador, fmtEuros, fmtPrecio, type Seleccion } from './configurador/configurador';
+import { conectarSolicitar } from './promocion/solicitar';
 import { Panel } from './configurador/panel';
 import { fmtFecha, packsDeVivienda } from './configurador/packs';
 import { CATALOGO, PROMOCION, accesoProfesional, cargarModelo, catalogoPara, estadoPublico, extraerCodigo, guardarSeleccion as guardarEnSupabase, paseInicial, resolverAcceso, resolverProfesional, salirProfesional, viviendaDeUnidad, viviendaPublica, type Modelo } from './promocion/promocion';
@@ -1713,7 +1714,9 @@ async function iniciar() {
 		if ( ! e ) return;
 		if ( e.solicitarInfo ) {
 
-			$<HTMLAnchorElement>( '#solicitar-info' ).href = e.solicitarInfo;
+			conectarSolicitar( $<HTMLAnchorElement>( '#solicitar-info' ), $<HTMLDialogElement>( '#formulario-info' ), e.solicitarInfo,
+				{ id: PROMOCION.id, nombre: PROMOCION.promocion.nombre },
+				() => ( { id: fichaVivienda.tipologia, nombre: modelo.tipologia.nombre } ) );
 			$( '.solicitar-info' ).hidden = false;
 
 		}
