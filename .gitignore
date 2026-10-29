@@ -7,3 +7,5 @@ dist-artefacto/
 salida/
 deno.lock
 supabase/pruebas/supabase/functions/
+# datos de cada promoción: viven en Supabase (herramientas/promociones.mjs), nunca en GitHub
+trabajo/

@@ -4,7 +4,7 @@
 // demanda (chunk propio) tras un código de acceso. Edita los DATOS de la
 // promoción —ambientación, cámaras, acabados y precios, marca, biblioteca—
 // sobre la escena en vivo, y exporta un paquete JSON que se integra en
-// promociones/<id>/ antes de publicar. La web publicada solo lee esos datos: la IA
+// trabajo/<id>/ (y se sube a Supabase) antes de publicar. La web publicada solo lee esos datos: la IA
 // (si se usa) actúa aquí, durante la producción, nunca por visitante.
 
 import * as THREE from 'three/webgpu';
@@ -1046,7 +1046,7 @@ Es una aproximación ligera; no reproduzcas un producto concreto. Responde SOLO 
 		} catch { /* sin almacenamiento */ }
 
 		return [
-			h( 'p', { class: 'st-ayuda' }, 'La web publicada no ejecuta IA ni edita nada: carga datos preparados. Exporta el paquete, sustituye los ficheros en promociones/<id>/ (y promociones/<id>/tipologias/<tipología>/) y vuelve a publicar.' ),
+			h( 'p', { class: 'st-ayuda' }, 'La web publicada no ejecuta IA ni edita nada: carga datos preparados. Exporta el paquete, sustituye los ficheros en trabajo/<id>/ (y trabajo/<id>/tipologias/<tipología>/), súbelos a Supabase (herramientas/promociones.mjs subir) y vuelve a publicar.' ),
 			h( 'h3', {}, 'Revisión' ),
 			avisos.length ? h( 'ul', { class: 'st-avisos' }, ...avisos.map( ( a ) => h( 'li', {}, a ) ) ) : h( 'p', { class: 'st-ok' }, 'Sin incidencias.' ),
 			h( 'div', { class: 'st-acciones' },

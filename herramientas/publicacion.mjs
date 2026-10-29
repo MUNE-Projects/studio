@@ -26,7 +26,7 @@
 //  - la web pública se construye SIN Studio y se comprueba que no lo contiene;
 //  - ningún archivo con forma de secreto llega al escaparate;
 //  - cada publicación es una versión numerada (v1, v2…) que fija el commit exacto
-//    del taller (producto maestro + datos) con una etiqueta inmutable;
+//    del código (producto maestro) y guarda la copia exacta de sus datos en Supabase;
 //  - nunca se borra una versión: volver atrás restaura una anterior y marca la
 //    vigente como «retirada»;
 //  - publicar exige el taller sin cambios pendientes (lo publicado = lo guardado);
@@ -48,6 +48,12 @@
 // la pone en lugar de la de promocion.json (vite.config.ts, variable MARCA). Sin
 // marca guardada, o sin esas variables, se usa la de promocion.json.
 //
+// Datos de la promoción (035_modelo_promocion.sql): viven en Supabase, nunca en
+// GitHub. Claude los baja a trabajo/<id>/ (herramientas/promociones.mjs) y los
+// sube al terminar. «preparar» exige que trabajo/<id>/ coincida exactamente con lo
+// guardado en Supabase y, al confirmar, guarda allí la copia exacta de la versión
+// con el commit del código usado (en lugar de la etiqueta de git de antes).
+//
 // Tipografía: va dentro de cada versión (fuentes/marca.css), para que la web no pida
 // nada a Google Fonts al visitarla. «preparar» la descarga de Google Fonts (por su
 // nombre) o, si la promotora ha subido la suya, de Supabase con el robot de Claude,
@@ -58,7 +64,8 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statS
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generarPlanos } from './planos.mjs';
-import { compararDatos, escribirCambios, leerAhora, leerEnCommit, planosCambiados } from './cambios.mjs';
+import { compararDatos, escribirCambios, leerAhora, leerDeArchivos, leerEnCommit, planosCambiados } from './cambios.mjs';
+import { TRABAJO, archivosLocales, cabecerasRobot, diferencias, guardarModelo, leerModelo } from './promociones.mjs';
 
 const RAIZ = resolve( dirname( fileURLToPath( import.meta.url ) ), '..' );
 const SALIDA = join( RAIZ, 'salida' );
@@ -110,13 +117,25 @@ const git = ( cwd, ...a ) => execFileSync( 'git', a, { cwd, encoding: 'utf8' } )
 const hoy = () => new Date().toISOString().slice( 0, 19 ) + 'Z';
 
 const leerJSON = ( ruta, defecto ) => ( existsSync( ruta ) ? JSON.parse( readFileSync( ruta, 'utf8' ) ) : defecto );
-const escribirJSON = ( ruta, datos ) => writeFileSync( ruta, JSON.stringify( datos, null, 2 ) + '\n' );
+const escribirJSON = ( ruta, datos ) => {
 
-function comprobarPromocion( id ) {
+	mkdirSync( dirname( ruta ), { recursive: true } );
+	writeFileSync( ruta, JSON.stringify( datos, null, 2 ) + '\n' );
+
+};
+
+function comprobarId( id ) {
 
 	if ( ! id ) fallo( 'Falta la promoción. Ejemplo: residencial-demo' );
 	if ( ! /^[a-z0-9-]+$/.test( id ) ) fallo( `Identificador de promoción no válido: «${ id }»` );
-	if ( ! existsSync( join( RAIZ, 'promociones', id, 'promocion.json' ) ) ) fallo( `No existe promociones/${ id }/promocion.json` );
+
+}
+
+/** La promoción, con sus datos bajados de Supabase a trabajo/<id>/. */
+function comprobarPromocion( id ) {
+
+	comprobarId( id );
+	if ( ! existsSync( join( TRABAJO, id, 'promocion.json' ) ) ) fallo( `No hay datos de «${ id }» en ${ relative( RAIZ, join( TRABAJO, id ) ) }/. Bájalos de Supabase: node herramientas/promociones.mjs bajar ${ id }` );
 
 }
 
@@ -129,7 +148,7 @@ const MARGEN_SUPERFICIE = 0.5;
 
 function comprobarSuperficies( id ) {
 
-	const carpeta = join( RAIZ, 'promociones', id, 'tipologias' );
+	const carpeta = join( TRABAJO, id, 'tipologias' );
 	const problemas = [];
 	for ( const t of existsSync( carpeta ) ? readdirSync( carpeta ) : [] ) {
 
@@ -222,7 +241,7 @@ function construir( id ) {
 	rmSync( destino, { recursive: true, force: true } );
 	console.log( `Construyendo «${ id }» (web pública, sin Studio)…` );
 	execFileSync( 'npx', [ 'tsc', '--noEmit' ], { cwd: RAIZ, stdio: 'inherit' } );
-	execFileSync( 'npx', [ 'vite', 'build', '--logLevel', 'warn' ], { cwd: RAIZ, stdio: 'inherit', env: { ...process.env, PROMOCION: id, SALIDA: destino } } );
+	execFileSync( 'npx', [ 'vite', 'build', '--logLevel', 'warn' ], { cwd: RAIZ, stdio: 'inherit', env: { ...process.env, PROMOCION: id, PROMOCIONES: TRABAJO, SALIDA: destino } } );
 	ok( 'Comprobación de tipos y construcción' );
 
 	const archivos = listar( destino );
@@ -454,11 +473,15 @@ async function compararConPublicada( id, version, destino, esc, registro ) {
 
 	const anterior = versionEn( esc, 'origin/main', id );
 	const taller = registro.versiones.find( ( v ) => v.version === anterior )?.taller;
-	if ( ! anterior || ! taller ) return escribirCambios( destino, { promocion: id, version, anterior: null, grupos: [] } );
+	if ( ! anterior ) return escribirCambios( destino, { promocion: id, version, anterior: null, grupos: [] } );
 	let grupos;
 	try {
 
-		grupos = compararDatos( leerEnCommit( id, taller ), leerAhora( id ) );
+		// los datos de la publicada: su copia en Supabase (decisión 59) o, en las
+		// versiones de antes, el historial del taller
+		const guardada = await leerModelo( await cabecerasRobot(), id, anterior );
+		if ( ! guardada && ! taller ) return escribirCambios( destino, { promocion: id, version, anterior: null, grupos: [] } );
+		grupos = compararDatos( guardada ? leerDeArchivos( guardada.archivos ) : leerEnCommit( id, taller ), leerAhora( id ) );
 
 	} catch ( e ) {
 
@@ -493,7 +516,7 @@ async function compararConPublicada( id, version, destino, esc, registro ) {
  */
 function datosPrivados( id ) {
 
-	const leer = ( f ) => JSON.parse( readFileSync( join( RAIZ, 'promociones', id, f ), 'utf8' ) );
+	const leer = ( f ) => JSON.parse( readFileSync( join( TRABAJO, id, f ), 'utf8' ) );
 	const promocion = leer( 'promocion.json' );
 	return {
 		catalogo: leer( 'catalogo.json' ),
@@ -527,17 +550,24 @@ async function preparar( id ) {
 	if ( ! cambios ) fallo( 'Falta --cambios: cada versión debe explicar qué cambia' );
 	if ( git( RAIZ, 'status', '--porcelain' ) ) fallo( 'El taller tiene cambios sin guardar. Lo publicado debe ser exactamente lo guardado (haz commit primero).' );
 	if ( git( esc, 'status', '--porcelain' ) ) fallo( 'El escaparate tiene cambios sin guardar.' );
+	// los datos: exactamente los guardados en Supabase
+	const robot = await cabecerasRobot().catch( ( e ) => fallo( e.message ) );
+	const guardada = await leerModelo( robot, id );
+	if ( ! guardada ) fallo( `No hay datos de «${ id }» en Supabase. Súbelos primero: node herramientas/promociones.mjs subir ${ id } --nota "…"` );
+	const archivos = archivosLocales( id );
+	const distintos = diferencias( archivos, guardada.archivos );
+	if ( distintos.length ) fallo( `Los datos de trabajo/${ id }/ no son los guardados en Supabase. Lo publicado debe ser exactamente lo guardado:\n  · ${ distintos.join( '\n  · ' ) }\n  Súbelos (node herramientas/promociones.mjs subir ${ id } --nota "…") o vuelve a bajarlos.` );
+	ok( `Datos de la promoción: los guardados en Supabase el ${ guardada.guardado_en.slice( 0, 16 ).replace( 'T', ' ' ) } (huella ${ guardada.huella.slice( 0, 12 ) })` );
 	comprobarSuperficies( id );
 
 	// número siguiente: el mayor entre el registro, la vista previa y producción
 	const registro = leerRegistro( id );
-	const numeros = [ ...registro.versiones.map( ( v ) => v.version ), versionEn( esc, 'HEAD', id ), versionEn( esc, 'origin/main', id ) ]
+	const preparadas = ( await fetch( `${ SUPABASE_URL }/rest/v1/modelo_promocion?promocion_id=eq.${ encodeURIComponent( id ) }&version=not.is.null&select=version`, { headers: robot } ).then( ( r ) => r.json() ) ).map( ( f ) => f.version );
+	const numeros = [ ...registro.versiones.map( ( v ) => v.version ), ...preparadas, versionEn( esc, 'HEAD', id ), versionEn( esc, 'origin/main', id ) ]
 		.filter( Boolean ).map( ( v ) => Number( v.slice( 1 ) ) );
 	const numero = Math.max( 0, ...numeros ) + 1;
 	const version = `v${ numero }`;
 	const motor = git( RAIZ, 'rev-parse', 'HEAD' );
-	const etiqueta = `${ id }/${ version }`;
-	if ( git( RAIZ, 'tag', '--list', etiqueta ) ) fallo( `La etiqueta ${ etiqueta } ya existe en el taller` );
 
 	console.log( `\nPreparación de «${ id }» ${ version } (vista previa, pendiente de aprobación)` );
 	console.log( `  commit del taller: ${ motor.slice( 0, 10 ) }` );
@@ -556,7 +586,7 @@ async function preparar( id ) {
 	// la web sabe su versión: con ella pide al entrar el comprador los datos privados de esa versión
 	process.env.VERSION_PUBLICA = version;
 	const { destino } = construir( id );
-	const tipografia = marca?.marca.tipografia ?? JSON.parse( readFileSync( join( RAIZ, 'promociones', id, 'promocion.json' ), 'utf8' ) ).marca?.tipografia;
+	const tipografia = marca?.marca.tipografia ?? JSON.parse( readFileSync( join( TRABAJO, id, 'promocion.json' ), 'utf8' ) ).marca?.tipografia;
 	ok( `Tipografía dentro de la versión: ${ await guardarFuente( destino, tipografia ) }${ tipografia?.archivos?.length ? ' (propia)' : ' (Google Fonts)' }` );
 	// planos comerciales de esta versión, para que la promotora los valide (Etapa 4)
 	console.log( 'Generando los planos comerciales…' );
@@ -576,6 +606,18 @@ async function preparar( id ) {
 
 	// datos privados de la versión (catálogo, packs y viviendas), antes de tocar el escaparate
 	await guardarDatosPrivados( id, version );
+	// la copia exacta de los datos de esta versión, con el commit del código: no se
+	// puede cambiar nunca, así que va después de lo que sí se puede repetir
+	try {
+
+		const huella = await guardarModelo( robot, id, archivos, { version, codigo: motor, nota: cambios.slice( 0, 500 ) } );
+		ok( `Datos de ${ version } guardados en Supabase (huella ${ String( huella ).slice( 0, 12 ) }, código ${ motor.slice( 0, 10 ) })` );
+
+	} catch ( e ) {
+
+		fallo( `No se han podido guardar los datos de ${ version } en Supabase: ${ e.message }` );
+
+	}
 
 	// escaparate: sustituye la carpeta de la promoción por la nueva versión
 	const carpeta = join( esc, PUBLICO, id );
@@ -589,8 +631,6 @@ async function preparar( id ) {
 	// los cambios viajan en el mensaje (privado): el registro lo escribe «aprobar»
 	git( esc, 'commit', '-q', '-m', `Prepara ${ id } ${ version }\n\nCambios: ${ cambios }\nPreparada por: ${ preparadoPor }\nTaller: ${ motor }` );
 	ok( `Escaparate (rama revision): ${ PUBLICO }/${ id }/ en ${ version }` );
-	git( RAIZ, 'tag', '-a', etiqueta, motor, '-m', `${ id } ${ version } · ${ fecha }` );
-	ok( `Taller: etiqueta ${ etiqueta } en el commit usado` );
 	console.log( '\nFalta enviar a GitHub (push) la rama «revision» del escaparate. Se publica al aprobarla en el Panel.\n' );
 
 }
@@ -599,7 +639,7 @@ async function preparar( id ) {
 
 function aprobar( id ) {
 
-	comprobarPromocion( id );
+	comprobarId( id );
 	const esc = rutaEscaparate();
 	exigirRama( esc, 'main' );
 	const aprobadoPor = opcion( 'aprobado-por' );
@@ -659,7 +699,7 @@ function aprobar( id ) {
 
 function volver( id, version ) {
 
-	comprobarPromocion( id );
+	comprobarId( id );
 	const esc = rutaEscaparate();
 	const motivo = opcion( 'motivo' );
 	if ( ! /^v\d+$/.test( version ?? '' ) ) fallo( 'Indica la versión, por ejemplo: v2' );
@@ -723,7 +763,7 @@ async function comprobar( id ) {
 
 function estado( id ) {
 
-	comprobarPromocion( id );
+	comprobarId( id );
 	const r = leerRegistro( id );
 	if ( ! r.versiones.length ) return console.log( `${ id }: sin versiones publicadas` );
 	console.log( `${ id }:` );

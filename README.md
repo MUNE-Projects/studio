@@ -27,14 +27,15 @@ La interfaz tiene dos niveles de acceso sobre una única experiencia visual:
 ## Estructura: Promoción → Tipologías → Viviendas → Opciones
 
 ```
-promociones/<id>/             una carpeta por promoción (instancia del producto maestro)
+trabajo/<id>/                 datos de cada promoción (instancia del producto maestro). No van a GitHub:
+                              viven en Supabase (herramientas/promociones.mjs bajar | subir; decisión 59)
   promocion.json        marca blanca, promoción, tipologías (opciones admitidas) y viviendas
   catalogo.json         catálogo de opciones de la promoción (precios, parámetros, vista asociada)
-  publicaciones.json    registro de versiones publicadas (v1, v2…), lo escribe la herramienta de publicación
   tipologias/a/
     vivienda.json       geometría (generada por herramientas/extraer_plano.py)
     alternativas.json   distribuciones alternativas que puede elegir el comprador (parches sobre la geometría)
     tipologia.json      cámaras maestras, vistas guiadas y extras ligados a la geometría (piscina)
+promociones/<id>/publicaciones.json   registro de versiones publicadas (v1, v2…); lo escribe el ejecutor
 biblioteca/                   biblioteca compartida del producto (activos de mobiliario y decoración)
 ```
 

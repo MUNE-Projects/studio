@@ -3,8 +3,9 @@
 //
 //   node herramientas/cambios.mjs <promoción> --antes <commit> [--salida <carpeta>]
 //
-// Compara los datos de la promoción (lo guardado ahora) con los de la versión
-// anterior (el commit del taller con el que se preparó, en su registro) y deja
+// Compara los datos de la promoción (trabajo/<id>/, lo guardado ahora) con los de
+// la versión anterior (su copia en Supabase, decisión 59; o, en las de antes, el
+// commit del taller con el que se preparó, en su registro) y deja
 // en <salida>/cambios/cambios.json una lista de cambios escrita en sencillo:
 // tipologías, estancias y superficies, huecos (puertas, ventanas, balconeras),
 // tabiques, equipamiento, alturas, superficies oficiales y acabados. Solo lo
@@ -17,6 +18,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TRABAJO } from './promociones.mjs';
 
 const RAIZ = resolve( dirname( fileURLToPath( import.meta.url ) ), '..' );
 
@@ -214,10 +216,10 @@ export function compararDatos( antes, ahora ) {
 
 // ---------------------------------------------------------------- leer de disco o de git
 
-/** Estado de la promoción en la carpeta del taller (lo guardado ahora). */
+/** Estado de la promoción en su carpeta de trabajo (trabajo/<id>/, bajada de Supabase). */
 export function leerAhora( id ) {
 
-	const base = join( RAIZ, 'promociones', id );
+	const base = join( TRABAJO, id );
 	const leer = ( f ) => JSON.parse( readFileSync( join( base, f ), 'utf8' ) );
 	const tipologias = {};
 	if ( existsSync( join( base, 'tipologias' ) ) ) {
@@ -248,6 +250,21 @@ export function leerEnCommit( id, commit ) {
 			tipologias[ t ] = { tipologia: leer( `tipologias/${ t }/tipologia.json` ), vivienda: leer( `tipologias/${ t }/vivienda.json` ) };
 
 		} catch { /* carpeta sin vivienda */ }
+
+	}
+	return { promocion: leer( 'promocion.json' ), tipologias };
+
+}
+
+/** Estado de la promoción a partir de sus archivos guardados en Supabase ({ ruta: texto }, decisión 59). */
+export function leerDeArchivos( archivos ) {
+
+	const leer = ( f ) => JSON.parse( archivos[ f ] );
+	const tipologias = {};
+	for ( const ruta of Object.keys( archivos ) ) {
+
+		const m = /^tipologias\/([^/]+)\/vivienda\.json$/.exec( ruta );
+		if ( m && archivos[ `tipologias/${ m[ 1 ] }/tipologia.json` ] ) tipologias[ m[ 1 ] ] = { tipologia: leer( `tipologias/${ m[ 1 ] }/tipologia.json` ), vivienda: leer( ruta ) };
 
 	}
 	return { promocion: leer( 'promocion.json' ), tipologias };
