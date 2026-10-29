@@ -332,3 +332,7 @@ label.nombre-categoria input { padding: 6px 8px; font-size: 17px; font-weight: 6
 .marca-origen label, .marca-licencia { display: flex; gap: 8px; align-items: center; justify-content: flex-start; text-align: left; }
 .marca-origen input, .marca-licencia input { width: auto; flex: none; }
 .marca-fuentes select { width: auto; padding: 4px 8px; }
+.solicitar-modo { border: 0; padding: 0; margin: 0 0 8px; display: grid; gap: 4px; }
+.solicitar-modo label { display: flex; gap: 8px; align-items: center; justify-content: flex-start; }
+.solicitar-modo input { width: auto; flex: none; }
+.solicitar-form textarea[name=formulario] { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }

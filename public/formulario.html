@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solicitar información</title>
+</head>
+<body>
+<!--
+	Formulario de la promotora para «Solicitar información» (033_solicitar_informacion.sql).
+	La experiencia abre esta página en un marco aislado (sin «allow-same-origin») y le
+	pasa el código de inserción del CRM de la promotora, con la tipografía y el color de
+	su marca: sus scripts funcionan aquí, con un origen propio, y no pueden leer nada de
+	la experiencia. Las UTM van en la dirección de esta página, que es donde las buscan
+	los CRM (el interesado no las ve). Los estilos de abajo son solo los de por defecto:
+	si el CRM pone los suyos, mandan los del CRM.
+-->
+<script>
+	var limpio = function ( t ) { return String( t || '' ).replace( /[^\w #(),.%-]/g, '' ); };
+	addEventListener( 'message', function recibir( e ) {
+
+		if ( e.source !== parent || ! e.data || typeof e.data.codigoFormulario !== 'string' ) return;
+		removeEventListener( 'message', recibir );
+		var s = e.data.estilo || {};
+		var familia = limpio( s.familia ), color = /^#[0-9a-f]{6}$/i.test( s.color ) ? s.color : '#1c1c1a';
+		var css = typeof s.css === 'string' && /^https:\/\/|^http:\/\/localhost/.test( s.css ) ? s.css.replace( /"/g, '' ) : '';
+		var base = ( css ? '<link rel="stylesheet" href="' + css + '">' : '' ) +
+			'<style>' +
+			'html, body { margin: 0; }' +
+			'body { padding: 18px 20px 24px; font-family: ' + ( familia ? '"' + familia + '", ' : '' ) + 'system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 15px; line-height: 1.45; color: #1c1c1a; background: #fff; }' +
+			'label { display: block; margin: 10px 0 4px; font-size: 13px; font-weight: 500; }' +
+			'input, select, textarea { box-sizing: border-box; width: 100%; padding: 10px 12px; font: inherit; border: 1px solid #d4d0c8; border-radius: 10px; background: #fff; }' +
+			'input:focus, select:focus, textarea:focus { outline: 2px solid ' + color + '; outline-offset: 1px; border-color: ' + color + '; }' +
+			'input[type=checkbox], input[type=radio] { width: auto; }' +
+			'button, input[type=submit] { margin-top: 14px; padding: 11px 20px; font: inherit; font-weight: 600; color: #fff; background: ' + color + '; border: 0; border-radius: 999px; cursor: pointer; width: auto; }' +
+			'a { color: ' + color + '; }' +
+			'</style>';
+		document.open();
+		document.write( base + e.data.codigoFormulario );
+		document.close();
+
+	} );
+	parent.postMessage( 'formulario-listo', '*' );
+</script>
+</body>
+</html>
