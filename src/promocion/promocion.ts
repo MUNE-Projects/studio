@@ -6,7 +6,7 @@
 // su tipología espejada. No hay un modelo 3D por vivienda.
 
 // Los datos de la promoción se eligen al construir: el alias @promocion apunta a
-// promociones/<id>/ (variable PROMOCION; ver vite.config.ts).
+// trabajo/<id>/, bajado de Supabase (variable PROMOCION; ver vite.config.ts).
 import datosPromocion from '@promocion/promocion.json';
 import datosCatalogo from '@promocion/catalogo.json';
 import type { Configuracion, Promocion, Tipologia, Alternativa, Vivienda, ViviendaPromocion } from '../modelo/tipos';
@@ -17,7 +17,7 @@ import { completarVistas } from '../escena/vistas';
 export const PROMOCION = datosPromocion as unknown as Promocion;
 export const CATALOGO = datosCatalogo as unknown as Configuracion;
 
-// datos de cada tipología (promociones/<id>/tipologias/<tipología>/): una carpeta por geometría
+// datos de cada tipología (trabajo/<id>/tipologias/<tipología>/): una carpeta por geometría
 const porTipologia = ( glob: Record<string, unknown>, patron: RegExp ) => {
 
 	const r: Record<string, unknown> = {};

@@ -1,7 +1,8 @@
 // Exportar todo lo de una promoción o de una promotora (receta 20): un ZIP con
 // los datos (datos.json y un LEEME.txt legible) y todos los archivos
-// (documentos subidos con sus versiones, planos entregados y fotos de las
-// peticiones). Cada archivo se comprueba con su huella al descargarlo.
+// (documentos subidos con sus versiones, planos entregados, fotos de las
+// peticiones y el modelo de la promoción: sus datos de trabajo y los de cada
+// versión preparada, 035_modelo_promocion.sql). Cada archivo se comprueba con su huella al descargarlo.
 // Es obligatorio antes de borrar y recomendable antes de desactivar.
 
 import { anotar, sb } from './comun';
@@ -42,7 +43,7 @@ async function bajar(almacen: string, ruta: string, esperada: string | null, avi
 
 /** Mete en el ZIP, bajo «carpeta», todo lo de una promoción. Devuelve el resumen para el LEEME. */
 async function anadirPromocion(zip: Zip, carpeta: string, id: string, equipo: Fila[], avisos: string[], progreso: (t: string) => void): Promise<string> {
-	const [[promocion], requisitos, documentos, entregables, validaciones, peticiones, registro, codigos, selecciones] = await Promise.all([
+	const [[promocion], requisitos, documentos, entregables, validaciones, peticiones, registro, codigos, selecciones, modelos] = await Promise.all([
 		leer(sb.from('promociones').select('*').eq('id', id)),
 		leer(sb.from('requisitos').select('*').eq('promocion_id', id).order('orden').order('id')),
 		leer(sb.from('documentos').select('*').eq('promocion_id', id).order('requisito_id').order('version')),
@@ -52,6 +53,7 @@ async function anadirPromocion(zip: Zip, carpeta: string, id: string, equipo: Fi
 		leer(sb.from('registro').select('*').eq('detalle->>promocion', id).order('momento')),
 		leer(sb.rpc('codigos_de_promocion', { p_promocion: id })),
 		leer(sb.from('selecciones_comprador').select('*').eq('promocion_id', id).order('vivienda_ref').order('comprador')),
+		leer(sb.from('modelo_promocion').select('id, version, archivos, huella, codigo, nota, guardado_en').eq('promocion_id', id).order('id')),
 	]);
 	const reqPorId = new Map(requisitos.map((r) => [r.id, r]));
 	const lineas: string[] = [];
@@ -88,6 +90,18 @@ async function anadirPromocion(zip: Zip, carpeta: string, id: string, equipo: Fi
 		lineas.push(`  · #${p.id} (${p.estado}) ${String(p.texto).slice(0, 100)}`);
 	}
 
+	// Modelo de la promoción: los datos de trabajo más recientes y los de cada versión preparada.
+	const trabajo = modelos.filter((m) => !m.version).at(-1);
+	const versiones = modelos.filter((m) => m.version);
+	lineas.push(`Modelo de la promoción: ${trabajo ? `datos de trabajo del ${String(trabajo.guardado_en).slice(0, 10)}` : 'sin datos de trabajo'} y ${versiones.length} ${versiones.length === 1 ? 'versión preparada' : 'versiones preparadas'}`);
+	for (const m of [...(trabajo ? [trabajo] : []), ...versiones]) {
+		const sub = m.version ? limpio(String(m.version)) : 'trabajo';
+		for (const [ruta, texto] of Object.entries(m.archivos as Record<string, string>)) {
+			zip.anadir(`${carpeta}modelo/${sub}/${ruta.split('/').map(limpio).join('/')}`, texto);
+		}
+		if (m.version) lineas.push(`  · ${m.version} · ${String(m.guardado_en).slice(0, 10)} · ${m.nota || 'sin nota'}`);
+	}
+
 	lineas.push(`Personas con acceso a esta promoción: ${equipo.length}`);
 	for (const a of equipo) lineas.push(`  · ${a.nombre} <${a.email}>${a.cargo ? ` · ${a.cargo}` : ''}${a.activo ? '' : ' · acceso retirado'}`);
 
@@ -106,7 +120,7 @@ function leeme(titulo: string, cuerpo: string, avisos: string[]): string {
 		'  · documentos/: lo que subió la promotora, con todas sus versiones.',
 		'  · entregables/: planos, infografías y PDF entregados, por versión.',
 		'  · peticiones/: fotos de referencia de las peticiones de cambios.',
-		'La experiencia 3D y los datos de construcción de cada promoción no van en esta exportación: MUNE los guarda aparte (almacén privado «taller» de GitHub).',
+		'  · modelo/: los datos con los que MUNE construye la promoción (trabajo/ los más recientes; v1, v2… los de cada versión preparada).',
 		'',
 		avisos.length ? `ATENCIÓN, ${avisos.length} ${avisos.length === 1 ? 'aviso' : 'avisos'}:\n${avisos.map((a) => `  ! ${a}`).join('\n')}` : 'Todos los archivos se han descargado completos y coinciden con los originales.',
 		'',

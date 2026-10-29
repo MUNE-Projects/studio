@@ -14,12 +14,7 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "isolatedModules": true,
-    "paths": {
-      "@promocion/*": [
-        "./promociones/residencial-demo/*"
-      ]
-    }
+    "isolatedModules": true
   },
   "include": [
     "src"

@@ -45,6 +45,7 @@ Claude se usa **solo en producción** (preparar, interpretar, revisar), **nunca 
    - desde la Fase 1 (aprobado el 6/10/2026), también leer requisitos, documentos subidos y entregables, y marcar documentos como vigentes o rechazados, con nota (preguntándole antes, en la receta 2);
    - desde el paso 5a (aprobado el 22/10/2026), también guardar los datos privados de una versión (catálogo con precios, packs y viviendas) al prepararla, solo mientras no se haya enviado a validar (`guardar_datos_privados`, `024_datos_privados.sql`);
    - desde el paso 8a (propuesta del 28/10/2026), también leer las personalizaciones y mejoras que añaden las promotoras y sus documentos adjuntos, para preparar su aspecto en el 3D (`029_catalogo_promotora.sql`); no puede cambiarlas;
+   - desde la auditoría de seguridad (aprobado el 29/10/2026), también leer y guardar el **modelo de cada promoción** (lo que se saca de sus planos y su memoria) y la copia de cada versión que prepara (`guardar_modelo_promocion`, `035_modelo_promocion.sql`); no puede cambiar ni borrar la de una versión ya preparada;
    - desde el paso 8c (propuesta del 28/10/2026), también leer la marca de cada promotora y promoción (nombre, logo, colores, tipografía y contacto) y descargar los archivos de su tipografía al preparar una versión (`031_marca.sql`); no puede cambiarla;
    - desde los comentarios visuales (propuesta del 29/10/2026), también leer los comentarios de las promotoras en planos, 3D y versiones (`038_comentarios.sql`); no puede escribir, responder ni resolverlos;
    - **no** puede borrar, subir archivos, validar planos, publicar, crear administradores, cambiar reglas ni ver usuarios;
@@ -57,7 +58,8 @@ Claude se usa **solo en producción** (preparar, interpretar, revisar), **nunca 
 
 | Pieza | Dónde |
 |---|---|
-| Código (MUNE Studio en `app/`, MUNE Portal en `portal/`, base de datos en `supabase/`), datos de promociones, recetas | GitHub `MUNE-Projects/studio` (privado, antes `taller`), este almacén |
+| Código (MUNE Studio en `app/`, MUNE Portal en `portal/`, base de datos en `supabase/`), recetas | GitHub `MUNE-Projects/studio` (privado, antes `taller`), este almacén |
+| Datos de cada promoción (el modelo: lo que se saca de sus planos y su memoria) | Supabase, `modelo_promocion` (decisión 59). Claude trabaja en `trabajo/<id>/`, que no va a GitHub: `node herramientas/promociones.mjs bajar <id>` y `subir <id> --nota "…"` |
 | Copias de seguridad | GitHub `MUNE-Projects/copias` (privado): cada noche, datos, usuarios y archivos cifrados, como releases en borrador (fuera del historial de git); se conservan 31 días (receta 18, decisión 56) |
 | Solo lo publicado | GitHub `MUNE-Projects/experience` (privado, antes `escaparate`): `main` = producción, `revision` = vista previa |
 | Web pública | https://experience.mune-projects.workers.dev/residencial-demo/ |
@@ -73,7 +75,7 @@ Claude se usa **solo en producción** (preparar, interpretar, revisar), **nunca 
 - **Propuestas:** los cambios del taller se suben a la rama **`revision`** y se abre una propuesta (PR) hacia `main`. La descripción lleva arriba el enlace de **vista previa**, una lista «Qué revisar» y «Para aprobar: Merge pull request → Confirm merge». Ella revisa y aprueba. El nombre de la rama de trabajo de la sesión no debe aparecer en direcciones que ella vea.
 - **Vistas previas:** `revision-studio`, `revision-portal` y `revision-experience` se construyen desde la rama `revision`. Cloudflare construye cada commit una sola vez: sube primero a `revision` y después a la rama de la sesión, o la vista previa de `revision` no se actualiza.
 - **Nueva versión de una promoción** (recetas 9 y 10):
-  1. `node herramientas/publicacion.mjs preparar <id> --cambios "…" --confirmar`, con el escaparate en la rama `revision` y las credenciales del robot (`ROBOT_EMAIL`, `ROBOT_CLAVE`): guarda en Supabase los datos privados de la versión (catálogo con precios, packs y viviendas), que ya no van en la web pública.
+  1. `node herramientas/publicacion.mjs preparar <id> --cambios "…" --confirmar`, con el escaparate en la rama `revision`, las credenciales del robot (`ROBOT_EMAIL`, `ROBOT_CLAVE`) y los datos de `trabajo/<id>/` iguales a los guardados en Supabase: guarda en Supabase los datos privados de la versión (catálogo con precios, packs y viviendas), que ya no van en la web pública, y la copia exacta del modelo de la versión con el commit del código.
   2. `git push` de `revision` del escaparate. `preparar` ya genera los planos comerciales de la versión (`herramientas/planos.mjs`).
   3. Lanzar el proceso `avisar.yml` del taller (`promocion`, `version`, `cambios`). GitHub le manda el email «… lista para revisar».
   4. Tras revisar la vista previa, ella pulsa *Enviar los planos a la promotora*, y la promotora los aprueba en su portal (receta en `docs/recetas/09-10-planos-y-publicar.md`).
