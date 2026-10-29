@@ -58,6 +58,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statS
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generarPlanos } from './planos.mjs';
+import { compararDatos, escribirCambios, leerAhora, leerEnCommit, planosCambiados } from './cambios.mjs';
 
 const RAIZ = resolve( dirname( fileURLToPath( import.meta.url ) ), '..' );
 const SALIDA = join( RAIZ, 'salida' );
@@ -258,6 +259,7 @@ function asegurarCabeceras( esc ) {
 		[ '/:promocion/planos/*', 'Planos comerciales de cada versión: el Panel los copia para enviarlos a la promotora.' ],
 		[ '/:promocion/experiencia/*', 'Unidades de la Experiencia 3D de cada versión: el Panel y el portal las usan para validarla.' ],
 		[ '/:promocion/fuentes/*', 'Tipografía de la marca: también la usa el formulario de «Solicitar información», que va aislado.' ],
+		[ '/:promocion/cambios/*', 'Qué cambia en cada versión respecto a la publicada: MUNE Studio y MUNE Portal lo enseñan al revisarla.' ],
 	];
 	let cambia = false;
 	// Cloudflare solo admite un «*» por regla: las reglas antiguas con dos no se aplicaban.
@@ -439,6 +441,49 @@ async function guardarFuente( destino, tipografia ) {
 
 }
 
+// ---------------------------------------------------------------- qué cambia respecto a la publicada
+
+/**
+ * Compara la versión que se prepara con la publicada (cambios.mjs): deja en la
+ * versión cambios/cambios.json (en sencillo) y, de cada plano que cambia, el de
+ * antes y otro con las diferencias en rojo. MUNE Studio y MUNE Portal lo enseñan
+ * al revisar y validar la versión. Lo privado (catálogo, precios y compradores
+ * afectados) lo compara Supabase (comparar_version, 034).
+ */
+async function compararConPublicada( id, version, destino, esc, registro ) {
+
+	const anterior = versionEn( esc, 'origin/main', id );
+	const taller = registro.versiones.find( ( v ) => v.version === anterior )?.taller;
+	if ( ! anterior || ! taller ) return escribirCambios( destino, { promocion: id, version, anterior: null, grupos: [] } );
+	let grupos;
+	try {
+
+		grupos = compararDatos( leerEnCommit( id, taller ), leerAhora( id ) );
+
+	} catch ( e ) {
+
+		console.warn( `⚠ No se ha podido comparar con la ${ anterior } (${ e.message }).` );
+		return escribirCambios( destino, { promocion: id, version, anterior, grupos: [], sinComparar: true } );
+
+	}
+	// los planos de la publicada, del escaparate (main)
+	const planosAntes = {};
+	try {
+
+		const lista = JSON.parse( git( esc, 'show', `origin/main:${ PUBLICO }/${ id }/planos/planos.json` ) ).planos ?? [];
+		for ( const p of lista ) {
+
+			const png = execFileSync( 'git', [ 'show', `origin/main:${ PUBLICO }/${ id }/planos/${ p.miniatura }` ], { cwd: esc, maxBuffer: 64 * 1024 * 1024 } );
+			planosAntes[ p.clave ] = { huellaDatos: p.huellaDatos, png };
+
+		}
+
+	} catch { /* la publicada no tenía planos */ }
+	const planos = Object.keys( planosAntes ).length ? await planosCambiados( destino, planosAntes ) : [];
+	return escribirCambios( destino, { promocion: id, version, anterior, grupos, planos } );
+
+}
+
 // ---------------------------------------------------------------- datos privados (paso 5a, 024)
 
 /**
@@ -518,6 +563,10 @@ async function preparar( id ) {
 	const planos = await generarPlanos( id, version, destino );
 	ok( `Planos para validar: ${ planos.length } (${ planos.map( ( p ) => p.titulo ).join( ', ' ) })` );
 	ok( `Experiencia 3D para validar: ${ planos.experiencia.length } unidad(es) (${ planos.experiencia.map( ( u ) => u.titulo ).join( ', ' ) })` );
+	const comparacion = await compararConPublicada( id, version, destino, esc, registro );
+	ok( comparacion.anterior
+		? `Cambios respecto a la ${ comparacion.anterior }: ${ comparacion.grupos.reduce( ( n, g ) => n + g.cambios.length, 0 ) } en los datos, ${ comparacion.planos.length } plano(s)`
+		: 'Cambios: no hay versión publicada con la que comparar' );
 	if ( ! bandera( 'confirmar' ) ) {
 
 		console.log( '\nSimulación: no se ha preparado nada. Repite con --confirmar.\n' );
