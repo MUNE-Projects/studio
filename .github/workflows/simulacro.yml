@@ -4,7 +4,7 @@
 # (y cuando se lance a mano), este proceso:
 #  1. levanta dentro de GitHub un Supabase vacío (nunca el real);
 #  2. le aplica la estructura de MUNE (supabase/0NN_*.sql);
-#  3. recupera en él la última copia de MUNE-Projects/copias: datos, usuarios y
+#  3. recupera en él la última copia de MUNE-Projects/copias (bajar.mjs): datos, usuarios y
 #     archivos, comprobando la huella de cada archivo;
 #  4. comprueba que hay exactamente lo mismo que en la copia;
 #  5. lo apunta en MUNE Studio (Sistema). Si falla, te llega un email.
@@ -39,6 +39,8 @@ jobs:
       COPIAS_CIFRADO: ${{ secrets.COPIAS_CIFRADO }}
       LLAVE_B: ${{ secrets.ESCAPARATE_TOKEN }}
       COPIAS: ${{ github.workspace }}/copias-almacen
+      COPIAS_REPO: MUNE-Projects/copias
+      COPIAS_TOKEN: ${{ secrets.ESCAPARATE_TOKEN }}
       RESULTADO: /tmp/resultado-simulacro.json
     steps:
       - name: ¿Está configurado?
@@ -55,18 +57,14 @@ jobs:
       - uses: actions/checkout@v4
         if: steps.listo.outputs.si == 'si'
 
-      - uses: actions/checkout@v4
-        if: steps.listo.outputs.si == 'si'
-        with:
-          repository: MUNE-Projects/copias
-          token: ${{ secrets.ESCAPARATE_TOKEN }}
-          path: copias-almacen
-          fetch-depth: 1
-
       - uses: actions/setup-node@v4
         if: steps.listo.outputs.si == 'si'
         with:
           node-version: 22
+
+      - name: Bajar la última copia
+        if: steps.listo.outputs.si == 'si'
+        run: node supabase/copias/bajar.mjs
 
       - name: Supabase vacío, de prueba
         if: steps.listo.outputs.si == 'si'
