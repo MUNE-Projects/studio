@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solicitar información</title>
+<style>html, body { margin: 0; padding: 12px; font-family: system-ui, sans-serif; background: #fff; color: #1c1c1a; }</style>
+</head>
+<body>
+<!--
+	Formulario de la promotora para «Solicitar información» (033_solicitar_informacion.sql).
+	La experiencia abre esta página en un marco aislado (sin «allow-same-origin») y le
+	pasa el código de inserción del CRM de la promotora: sus scripts funcionan aquí,
+	con un origen propio, y no pueden leer nada de la experiencia. Las UTM van en la
+	dirección de esta página, que es donde las buscan los CRM.
+-->
+<script>
+	addEventListener( 'message', function recibir( e ) {
+
+		if ( e.source !== parent || ! e.data || typeof e.data.codigoFormulario !== 'string' ) return;
+		removeEventListener( 'message', recibir );
+		document.open();
+		document.write( e.data.codigoFormulario );
+		document.close();
+
+	} );
+	parent.postMessage( 'formulario-listo', '*' );
+</script>
+</body>
+</html>

@@ -24,7 +24,7 @@
 			<select id="elegir-vivienda"></select>
 		</p>
 		<p class="solicitar-info solo-publico" hidden>
-			<a id="solicitar-info" class="boton-info" target="_blank" rel="noopener noreferrer">Solicitar información</a>
+			<a id="solicitar-info" class="boton-info" href="#" target="_blank" rel="noopener noreferrer">Solicitar información</a>
 		</p>
 		<p class="acceso-comprador solo-publico">
 			<button type="button" id="abrir-acceso" class="enlace">¿Ya eres comprador? Entra para personalizar tu vivienda.</button>
@@ -107,6 +107,14 @@
 			<button type="button" class="seguir">Seguir personalizando</button>
 			<button type="button" class="descargar-pdf principal">Descargar PDF</button>
 		</div>
+	</dialog>
+
+	<dialog id="formulario-info" class="formulario-info" aria-labelledby="titulo-formulario-info">
+		<div class="cabecera-formulario">
+			<h2 id="titulo-formulario-info">Solicitar información</h2>
+			<button type="button" class="cerrar-dialogo" aria-label="Cerrar">✕</button>
+		</div>
+		<div class="marco-formulario"></div>
 	</dialog>
 
 	<dialog id="acceso" aria-labelledby="titulo-acceso">

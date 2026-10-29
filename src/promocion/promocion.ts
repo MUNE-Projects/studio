@@ -202,11 +202,13 @@ function aplicarDatos( d: DatosComprador ) {
 let codigoComprador = '';
 
 // ---------------------------------------------------------------- Experience pública (paso 6b)
-// Si está activa (módulo de MUNE Studio) y el enlace de «Solicitar información»
-// (028_experiencia_publica.sql). No hace esperar a la visita: se aplica cuando
-// llega la respuesta; si Supabase no responde, null y la visita sigue igual.
+// Si está activa (módulo de MUNE Studio) y cómo funciona «Solicitar información»
+// (028 y 032): un enlace de la promotora o el código del formulario de su CRM.
+// No hace esperar a la visita: se aplica cuando llega la respuesta; si Supabase
+// no responde, null y la visita sigue igual.
 
-export interface EstadoPublico { activa: boolean; accesoComprador: boolean; solicitarInfo: string | null }
+export type SolicitarInfo = { modo: 'enlace'; enlace: string } | { modo: 'formulario'; codigo: string };
+export interface EstadoPublico { activa: boolean; accesoComprador: boolean; solicitarInfo: SolicitarInfo | null }
 
 export async function estadoPublico(): Promise<EstadoPublico | null> {
 
@@ -218,9 +220,12 @@ export async function estadoPublico(): Promise<EstadoPublico | null> {
 			body: JSON.stringify( { p_promocion: PROMOCION.id } ),
 		} );
 		if ( ! r.ok ) return null;
-		const d = await r.json() as { activa: boolean; acceso_comprador: boolean; solicitar_info: string | null };
+		const d = await r.json() as { activa: boolean; acceso_comprador: boolean; solicitar_info: string | null; solicitar_modo?: string; solicitar_formulario?: string | null };
 		const enlace = d.solicitar_info && /^(https:\/\/|mailto:)/.test( d.solicitar_info ) ? d.solicitar_info : null;
-		return { activa: d.activa, accesoComprador: d.acceso_comprador, solicitarInfo: enlace };
+		const solicitarInfo: SolicitarInfo | null = d.solicitar_modo === 'formulario' && d.solicitar_formulario
+			? { modo: 'formulario', codigo: d.solicitar_formulario }
+			: enlace ? { modo: 'enlace', enlace } : null;
+		return { activa: d.activa, accesoComprador: d.acceso_comprador, solicitarInfo };
 
 	} catch {
 
