@@ -257,6 +257,7 @@ function asegurarCabeceras( esc ) {
 	const reglas = [
 		[ '/:promocion/planos/*', 'Planos comerciales de cada versión: el Panel los copia para enviarlos a la promotora.' ],
 		[ '/:promocion/experiencia/*', 'Unidades de la Experiencia 3D de cada versión: el Panel y el portal las usan para validarla.' ],
+		[ '/:promocion/fuentes/*', 'Tipografía de la marca: también la usa el formulario de «Solicitar información», que va aislado.' ],
 	];
 	let cambia = false;
 	// Cloudflare solo admite un «*» por regla: las reglas antiguas con dos no se aplicaban.
