@@ -1,11 +1,14 @@
 # Copias de seguridad (lista maestra, paso 4; receta 18; 023_copias.sql).
 #
-# Cada noche guarda en el almacén privado MUNE-Projects/copias, cifrado con
-# una contraseña que solo tiene la administradora:
+# Cada noche guarda en el almacén privado MUNE-Projects/copias, como releases
+# en borrador (fuera del historial de git: al borrarlas desaparecen de verdad),
+# cifrado con una contraseña que solo tiene la administradora:
 #  · la base de datos (datos de MUNE y usuarios), con el usuario «copias» de
 #    la base de datos, que solo puede leer;
 #  · los archivos nuevos (documentación, entregables y fotos de referencia), con
 #    la cuenta «copias» de MUNE, que solo puede verlos.
+# Se conservan 31 días: lo que se borra en MUNE desaparece de las copias en
+# 31 días como máximo (decisión 56).
 # Después lo apunta en Supabase: MUNE Studio lo enseña en Sistema y avisa en
 # Inicio si una noche falta. Si falla, además te llega un email (un aviso de
 # GitHub). Sin coste: minutos gratuitos de GitHub Actions.
@@ -44,7 +47,8 @@ jobs:
       COPIAS_CUENTA_CLAVE: ${{ secrets.COPIAS_CUENTA_CLAVE }}
       COPIAS_CIFRADO: ${{ secrets.COPIAS_CIFRADO }}
       LLAVE_B: ${{ secrets.ESCAPARATE_TOKEN }}
-      DESTINO: ${{ github.workspace }}/copias-almacen
+      COPIAS_REPO: MUNE-Projects/copias
+      COPIAS_TOKEN: ${{ secrets.ESCAPARATE_TOKEN }}
       DETALLE: /tmp/detalle-copia.json
     steps:
       - name: ¿Está configurado?
@@ -63,14 +67,6 @@ jobs:
         with:
           sparse-checkout: supabase/copias
 
-      - uses: actions/checkout@v4
-        if: steps.listo.outputs.si == 'si'
-        with:
-          repository: MUNE-Projects/copias
-          token: ${{ secrets.ESCAPARATE_TOKEN }}
-          path: copias-almacen
-          fetch-depth: 1
-
       - uses: actions/setup-node@v4
         if: steps.listo.outputs.si == 'si'
         with:
@@ -79,17 +75,6 @@ jobs:
       - name: Copiar la base de datos y los archivos nuevos
         if: steps.listo.outputs.si == 'si'
         run: node supabase/copias/copiar.mjs
-
-      - name: Guardar en el almacén de copias
-        if: steps.listo.outputs.si == 'si'
-        working-directory: copias-almacen
-        run: |
-          git config user.name "Copias de MUNE"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --cached --quiet; then echo "Nada nuevo"; exit 0; fi
-          git commit -q -m "Copia del $(TZ=Europe/Madrid date +%F)"
-          git push -q
 
       - name: Apuntarlo en MUNE Studio
         if: steps.listo.outputs.si == 'si'

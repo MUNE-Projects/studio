@@ -57,7 +57,7 @@ Claude se usa **solo en producción** (preparar, interpretar, revisar), **nunca 
 | Pieza | Dónde |
 |---|---|
 | Código (MUNE Studio en `app/`, MUNE Portal en `portal/`, base de datos en `supabase/`), datos de promociones, recetas | GitHub `MUNE-Projects/studio` (privado, antes `taller`), este almacén |
-| Copias de seguridad | GitHub `MUNE-Projects/copias` (privado): cada noche, datos, usuarios y archivos cifrados (receta 18) |
+| Copias de seguridad | GitHub `MUNE-Projects/copias` (privado): cada noche, datos, usuarios y archivos cifrados, como releases en borrador (fuera del historial de git); se conservan 31 días (receta 18, decisión 56) |
 | Solo lo publicado | GitHub `MUNE-Projects/experience` (privado, antes `escaparate`): `main` = producción, `revision` = vista previa |
 | Web pública | https://experience.mune-projects.workers.dev/residencial-demo/ |
 | Vista previa | https://revision-experience.mune-projects.workers.dev/residencial-demo/ |

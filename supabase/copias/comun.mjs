@@ -113,8 +113,8 @@ for ( const evento of [ 'uncaughtException', 'unhandledRejection' ] ) {
 
 }
 
-// Fecha de hoy en España, AAAA-MM-DD
-export const hoy = () => new Date().toLocaleDateString( 'sv-SE', { timeZone: 'Europe/Madrid' } );
+// Fecha de hoy en España, AAAA-MM-DD (HOY_PRUEBA solo en las pruebas de las copias)
+export const hoy = () => process.env.HOY_PRUEBA || new Date().toLocaleDateString( 'sv-SE', { timeZone: 'Europe/Madrid' } );
 
 // Ruta de un archivo de Supabase dentro del almacén de copias, sin salirse de él.
 export function rutaSegura( almacen, nombre ) {
