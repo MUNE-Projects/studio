@@ -497,6 +497,7 @@ interface Borrado {
 	exportar: (progreso: (t: string) => void) => Promise<Resultado>;
 	archivos: () => PromiseLike<{ data: unknown; error: { message: string } | null }>;
 	borrar: (nombre: string) => PromiseLike<{ error: { message: string } | null }>;
+	retirar: string | null; // promoción con la que pedir que se retire de la web (null: ninguna)
 	despues: string; // a dónde ir al terminar
 }
 
@@ -505,7 +506,7 @@ function pintarZonaBorrado(zona: HTMLElement, b: Borrado): void {
 	zona.innerHTML = `
 		<h2>Borrar definitivamente</h2>
 		${b.detalle}
-		<p><strong>No se puede deshacer.</strong> Las cuentas de las personas no se borran (se quedan sin acceso). El registro de actividad se conserva.</p>
+		<p><strong>No se puede deshacer.</strong> También se borran sus datos 3D y la web de cada versión, y se retira de internet (la web pública y la vista previa) en unos minutos. Las copias de seguridad lo conservan 31 días y después desaparece. Las cuentas de las personas no se borran (se quedan sin acceso). El registro de actividad se conserva.</p>
 		<ol class="pasos">
 			<li>Descarga la copia de todo (es obligatorio antes de borrar):
 				<div class="acciones"><button class="boton secundario pequeno" type="button" data-exportar-antes>Descargar la exportación (ZIP)</button></div>
@@ -564,6 +565,14 @@ function pintarZonaBorrado(zona: HTMLElement, b: Borrado): void {
 			boton.textContent = 'Borrando…';
 			const { error: e3 } = await b.borrar(campo.value);
 			if (e3) throw e3;
+			// 3. Retirarla de internet (037): la web se vuelve a montar sin ella.
+			if (b.retirar) {
+				boton.textContent = 'Retirando de la web…';
+				const { error: e4 } = await sb.functions.invoke('ejecutar', { body: { accion: 'retirar', promocion: b.retirar } });
+				if (e4) {
+					alert('Se ha borrado, pero no se ha podido pedir que se retire de la web. En GitHub → Actions → «Enviar la web a Cloudflare» → Run workflow, o díselo a Claude.');
+				}
+			}
 			location.hash = b.despues;
 		} catch (e) {
 			error.textContent = traducir(e);
@@ -580,14 +589,14 @@ async function contar(tabla: string, promociones: string[]): Promise<number> {
 	return count ?? 0;
 }
 
-/** Aviso si alguna promoción tiene experiencia publicada: borrarla aquí no la quita de internet. */
+/** Aviso si alguna promoción tiene experiencia publicada: al borrarla, se retira también de internet. */
 async function avisoWebs(promociones: { id: string; nombre: string }[]): Promise<string> {
 	const conWeb = (await Promise.all(promociones.map(async (p) => {
 		const e = await estadoVersiones(p.id);
 		return e.pub ?? e.rev ? p : null;
 	}))).filter((p) => p !== null);
 	return conWeb.length ? `<p class="aviso">${conWeb.length === 1 ? `«${esc(conWeb[0].nombre)}» tiene experiencia publicada o en vista previa` : `Tienen experiencia publicada o en vista previa: ${conWeb.map((p) => `«${esc(p.nombre)}»`).join(', ')}`}.
-		Borrar aquí <strong>no la quita de internet</strong> ni borra sus datos 3D: pídeselo a Claude («retira la web de ${esc(conWeb.map((p) => p.id).join(', '))}»).</p>` : '';
+		Al borrar, <strong>se retira también de internet</strong> (la web pública y la vista previa) y se borran sus datos 3D y sus versiones.</p>` : '';
 }
 
 async function pintarBorradoPromocion(zona: HTMLElement, p: Promocion): Promise<void> {
@@ -603,6 +612,7 @@ async function pintarBorradoPromocion(zona: HTMLElement, p: Promocion): Promise<
 		exportar: (progreso) => exportarPromocion(p.id, progreso),
 		archivos: () => sb.rpc('archivos_de_promocion', { p_id: p.id }),
 		borrar: (nombre) => sb.rpc('borrar_promocion', { p_id: p.id, p_nombre: nombre }),
+		retirar: p.id,
 		despues: `#/promotora/${p.promotora_id}`,
 	});
 }
@@ -615,10 +625,12 @@ async function pintarBorradoPromotora(zona: HTMLElement, po: Promotora, promocio
 	pintarZonaBorrado(zona, {
 		que: 'la promotora', nombre: po.nombre,
 		detalle: `<p>Se borrará <strong>${esc(po.nombre)}</strong> con todo lo suyo: ${cuantos(promociones.length, 'promoción', 'promociones')} (también las activas),
-			${cuantos(docs, 'documento subido', 'documentos subidos')}, ${cuantos((archivos.data as unknown[] | null)?.length ?? 0, 'archivo guardado', 'archivos guardados')}, ${cuantos(personas, 'acceso', 'accesos')} y ${cuantos(peticiones, 'petición de cambios', 'peticiones de cambios')}.</p>${web}`,
+			${cuantos(docs, 'documento subido', 'documentos subidos')}, ${cuantos((archivos.data as unknown[] | null)?.length ?? 0, 'archivo guardado', 'archivos guardados')}, ${cuantos(personas, 'acceso', 'accesos')}, ${cuantos(peticiones, 'petición de cambios', 'peticiones de cambios')}, sus datos fiscales y su marca.</p>
+			<p class="ayuda">Si la promotora puede volver más adelante, no la borres: desactívala. Se conserva todo (marca, equipo y datos) y basta con volver a activarla.</p>${web}`,
 		exportar: (progreso) => exportarPromotora(po.id, progreso),
 		archivos: () => sb.rpc('archivos_de_promotora', { p_id: po.id }),
 		borrar: (nombre) => sb.rpc('borrar_promotora', { p_id: po.id, p_nombre: nombre }),
+		retirar: promociones[0]?.id ?? null,
 		despues: '#/promotoras',
 	});
 }

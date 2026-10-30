@@ -60,7 +60,7 @@ Claude se usa **solo en producción** (preparar, interpretar, revisar), **nunca 
 | Código (MUNE Studio en `app/`, MUNE Portal en `portal/`, base de datos en `supabase/`), recetas | GitHub `MUNE-Projects/studio` (privado, antes `taller`), este almacén |
 | Datos de cada promoción (el modelo: lo que se saca de sus planos y su memoria) | Supabase, `modelo_promocion` (decisión 59). Claude trabaja en `trabajo/<id>/`, que no va a GitHub: `node herramientas/promociones.mjs bajar <id>` y `subir <id> --nota "…"` |
 | Copias de seguridad | GitHub `MUNE-Projects/copias` (privado): cada noche, datos, usuarios y archivos cifrados, como releases en borrador (fuera del historial de git); se conservan 31 días (receta 18, decisión 56) |
-| La web de cada versión y el registro de versiones | Supabase: almacén privado «versiones» (`<id>/<vN>/sitio.tar.gz`) y `versiones_promocion` (decisión 60). `herramientas/desplegar.mjs` la envía a Cloudflare (Worker `experience`) desde GitHub Actions, con la cuenta «ejecutor» y la llave C; las páginas fijas (portada, 404, puerta del comprador, cabeceras) están en `experiencia-publica/`. El almacén `MUNE-Projects/experience` ya no se usa (se borra en la propuesta 3) |
+| La web de cada versión y el registro de versiones | Supabase: almacén privado «versiones» (`<id>/<vN>/sitio.tar.gz`) y `versiones_promocion` (decisión 60). `herramientas/desplegar.mjs` la envía a Cloudflare (Worker `experience`) desde GitHub Actions, con la cuenta «ejecutor» y la llave C; las páginas fijas (portada, 404, puerta del comprador, cabeceras) están en `experiencia-publica/`. El almacén `MUNE-Projects/experience` ya no se usa y se borra (decisión 61). Al borrar una promoción en MUNE Studio se borra todo lo suyo y se retira de la web (función `ejecutar`, acción `retirar`) |
 | Web pública | https://experience.mune-projects.workers.dev/residencial-demo/ |
 | Vista previa | https://revision-experience.mune-projects.workers.dev/residencial-demo/ |
 | Puerta del comprador | https://experience.mune-projects.workers.dev/acceso/ («Accede a tu vivienda»: con su código, a su promoción; `experiencia-publica/publico/acceso/`) |
@@ -107,7 +107,8 @@ Ahora la web pública está en **v7**, y la **v8** (de prueba, idéntica) sigue 
 
 - Las llaves del ejecutor caducan el **7/10/2027**:
   - llave A: `GITHUB_EJECUTOR` en Supabase, con *Actions: read/write* sobre `studio` (antes `taller`);
-  - llave B: `ESCAPARATE_TOKEN` en los secretos de `studio`, con *Contents: read/write* sobre `experience` (antes `escaparate`) y `copias`; conserva su nombre hasta la renovación.
+  - llave B: `ESCAPARATE_TOKEN` en los secretos de `studio`, con *Contents: read/write* sobre `copias` (antes también sobre `experience`, que ya no se usa: decisión 61); conserva su nombre hasta la renovación;
+  - llave C: `CLOUDFLARE_API_TOKEN` en los secretos de `studio` (enviar la web al Worker `experience`, decisión 60), y la contraseña de la cuenta «ejecutor» en `EJECUTOR_CLAVE`.
 
   MUNE Studio avisa en Inicio a 60 y 30 días, y la vigilancia manda email a 30 días (receta 19). Al renovarlas, apuntar la fecha en *Sistema → Ya la he renovado*.
 - La protección de ramas en almacenes privados es de pago: no está activada.
