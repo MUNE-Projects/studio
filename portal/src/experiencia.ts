@@ -12,7 +12,7 @@
 // plano comercial. Con «Gestionar personalizaciones», también elegir en su nombre.
 
 import { ESCAPARATE, REVISION, alEnviar, esc, sb } from './comun';
-import { type Hilo, abiertos, hilosDe, leerHilos, pintarComentarios, textoPedirCambios } from './comentarios';
+import { type Hilo, abiertos, hilosDe, pendientes as sinEnviar, leerHilos, pintarComentarios, textoPedirCambios } from './comentarios';
 import {
 	type Contexto, type Elemento, abrirConPase, avance, baseVisita, depsComentarios, chipEstado, faltanTrasAprobar, guardarDecision, htmlPersonas,
 	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, textoPublicando, numVersion, tituloUnidad, versionPublicada, versionesCon,
@@ -80,10 +80,10 @@ export async function pintarExperiencia(caja: HTMLElement, promo: Promocion3D, e
 		const recoge = raiz.querySelector<HTMLElement>('[data-recoge]');
 		const pintarRecoge = () => {
 			if (!recoge) return;
-			const n = abiertos(hilosUnidad).length;
+			const n = sinEnviar(hilosUnidad).length;
 			recoge.hidden = !n;
-			recoge.textContent = n === 1 ? 'Se enviará el comentario abierto de esta tipología. Si quieres, añade algo más.'
-				: `Se enviarán los ${n} comentarios abiertos de esta tipología. Si quieres, añade algo más.`;
+			recoge.textContent = n === 1 ? 'Se enviará el comentario pendiente de esta tipología. Si quieres, añade algo más.'
+				: `Se enviarán los ${n} comentarios pendientes de esta tipología. Si quieres, añade algo más.`;
 			raiz.querySelector<HTMLElement>('[data-etiqueta-pedir]')!.textContent = n ? 'Algo más (opcional)' : 'Qué hay que cambiar';
 		};
 		pintarRecoge();
@@ -109,7 +109,7 @@ export async function pintarExperiencia(caja: HTMLElement, promo: Promocion3D, e
 		const rechazar = raiz.querySelector<HTMLFormElement>('[data-rechazar]');
 		if (rechazar) alEnviar(rechazar, async (d) => {
 			const escrito = String(d.get('comentario') ?? '').trim();
-			if (!abiertos(hilosUnidad).length && escrito.length < 3) throw new Error('Explica qué hay que cambiar, o comenta en el 3D lo que hay que cambiar.');
+			if (!sinEnviar(hilosUnidad).length && escrito.length < 3) throw new Error('Explica qué hay que cambiar, o comenta en el 3D lo que hay que cambiar.');
 			const comentario = textoPedirCambios(hilosUnidad, escrito);
 			const zonaVista = String(d.get('zona') ?? '').trim();
 			await guardarDecision(id, version, 'experiencia', u.id, { decision: 'rechazado', comentario, zona: zonaVista || null });

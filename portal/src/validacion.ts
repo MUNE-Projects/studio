@@ -6,8 +6,8 @@
 // valida». Si el elemento no cambia de una versión a otra, conserva sus
 // aprobaciones.
 
-import { ESCAPARATE, REVISION, SUPABASE_URL, esc, sb, traducir } from './comun';
-import type { Dependencias, Hilo } from './comentarios';
+import { ESCAPARATE, REVISION, esc, sb, traducir } from './comun';
+import type { Dependencias, Hilo, TipoComentario } from './comentarios';
 
 export type TipoValidacion = 'planos' | 'experiencia';
 
@@ -168,56 +168,21 @@ export async function abrirConPase(id: string, url: string, alFallar: (mensaje: 
 	const destino = `${url.split('#')[0]}#p-${data}`;
 	if (ventana) ventana.location.href = destino;
 	else location.href = destino;
-	// lo que se comente en el 3D se avisa a MUNE al volver aquí (avisarComentarios)
-	volverDe3D = id;
 }
-let volverDe3D: string | null = null;
 
 // ─── Comentarios visuales (comentarios.ts) ─────────────────────────────────
-// Aviso agrupado al equipo de MUNE: tras el último comentario, espera dos
-// minutos sin comentarios nuevos (o a que se cierre la página) y avisa una vez
-// con todo lo nuevo (función «aviso-subida», { comentarios: <promoción> }).
-
-let avisoPendiente: string | null = null;
-let temporizador: ReturnType<typeof setTimeout> | undefined;
-let token = '';
-
-function enviarAvisoComentarios(alSalir = false): void {
-	clearTimeout(temporizador);
-	if (!avisoPendiente || !token) return;
-	const id = avisoPendiente;
-	avisoPendiente = null;
-	void fetch(`${SUPABASE_URL}/functions/v1/aviso-subida`, {
-		method: 'POST',
-		keepalive: alSalir,
-		headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-		body: JSON.stringify({ comentarios: id }),
-	}).catch(() => undefined);
-}
-addEventListener('pagehide', () => enviarAvisoComentarios(true));
-document.addEventListener('visibilitychange', () => {
-	if (document.visibilityState === 'hidden') enviarAvisoComentarios(true);
-	else if (volverDe3D) avisarComentarios(volverDe3D);
-});
-
-function avisarComentarios(id: string): void {
-	if (avisoPendiente && avisoPendiente !== id) enviarAvisoComentarios();
-	avisoPendiente = id;
-	void sb.auth.getSession().then(({ data }) => { token = data.session?.access_token ?? ''; });
-	clearTimeout(temporizador);
-	temporizador = setTimeout(() => enviarAvisoComentarios(), 2 * 60 * 1000);
-}
 
 /** Lo que necesitan los comentarios en MUNE Portal. */
 export function depsComentarios(id: string, alFallar: (mensaje: string) => void = (m) => alert(m)): Dependencias {
 	return {
 		sb, esc, traducir: (e) => traducir(e, 'guardar el comentario'), admin: false,
-		alComentar: () => avisarComentarios(id),
 		// el 3D de la versión más reciente con Experiencia 3D: la vista previa si está en revisión
-		abrir3D: (clave: string, h: Hilo | null) => void (async () => {
+		abrir3D: (clave: string | null, h: Hilo | null, tipo: TipoComentario) => void (async () => {
 			const versiones = await versionesCon(id, 'experiencia');
 			const base = versiones[0] ? await baseVisita(id, versiones[0]) : ESCAPARATE;
-			const q = new URLSearchParams({ ver: clave });
+			const q = new URLSearchParams();
+			if (clave) q.set('ver', clave);
+			if (tipo === 'personalizacion') q.set('modo', 'personalizar');
 			if (h) q.set('comentario', String(h.id)); else q.set('comentar', '1');
 			await abrirConPase(id, `${base}/${id}/?${q}`, alFallar);
 		})(),

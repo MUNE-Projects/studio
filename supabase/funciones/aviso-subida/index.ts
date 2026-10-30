@@ -18,12 +18,12 @@
 //    vuelve a comprobar que es la versión revisada, y al terminar avisa por
 //    email al equipo de la promotora y a MUNE.
 //
-// 5. Comentarios visuales (038): con { comentarios: <promoción> }, un solo email
-//    con todo lo nuevo que ha comentado la promotora en esa promoción y aún no
-//    se había avisado (marcar_aviso_comentarios). MUNE Portal lo pide dos
-//    minutos después del último comentario o al cerrar la página, así que los
-//    comentarios seguidos llegan juntos. Un «Pedir cambios» lleva también los
-//    comentarios nuevos en su email.
+// 5. Comentarios visuales (038): solo llegan a MUNE cuando la promotora pide
+//    cambios, todos juntos. Con { comentarios: <promoción> } (el «Pedir cambios»
+//    de la personalización), un email con lo enviado que aún no se había
+//    avisado (marcar_aviso_comentarios). El «Pedir cambios» de un plano o una
+//    tipología ya lleva sus comentarios en su email, y también los de toda la
+//    versión.
 //
 // Las funciones de Supabase no pueden enviar email por SMTP (Gmail), por eso
 // el email lo manda GitHub. No usa la clave de servicio.
@@ -96,11 +96,12 @@ Deno.serve(async (req) => {
 	};
 
 	// Comentarios nuevos de la promotora (lo nuevo, todavía sin avisar), como líneas del email.
-	type Nuevo = { version: string; tipo: string; clave: string | null; con_punto: boolean; texto: string; autor: string; respuesta: boolean; titulo: string | null };
+	type Nuevo = { version: string; tipo: string; clave: string | null; con_punto: boolean; texto: string; autor: string; titulo: string | null };
 	const lineasComentarios = (lista: Nuevo[]) => lista.map((c) => {
-		const lugar = c.tipo === 'version' ? `la ${c.version}` : c.tipo === 'plano' ? `el plano «${corto(c.titulo ?? c.clave, 120)}»`
-			: `el 3D de «${corto(c.clave === 'entorno' ? 'Entorno y elementos generales' : c.titulo ?? c.clave, 120)}»`;
-		return `${corto(c.autor, 80)} ${c.respuesta ? 'responde' : 'comenta'} en ${lugar}${c.con_punto ? ' (en un punto marcado)' : ''}${c.tipo === 'version' ? '' : ` · ${c.version}`}:\n«${corto(c.texto, 400)}»`;
+		const lugar = c.tipo === 'version' ? `toda la ${c.version}` : c.tipo === 'plano' ? `el plano «${corto(c.titulo ?? c.clave, 120)}»`
+			: c.tipo === 'personalizacion' ? `la personalización${c.clave ? ` (${corto(c.titulo ?? c.clave, 120)})` : ''}`
+				: `el 3D de «${corto(c.clave === 'entorno' ? 'Entorno y elementos generales' : c.titulo ?? c.clave, 120)}»`;
+		return `${corto(c.autor, 80)}, sobre ${lugar}${c.con_punto ? ' (en un punto marcado)' : ''}${c.tipo === 'version' ? '' : ` · ${c.version}`}:\n«${corto(c.texto, 400)}»`;
 	});
 
 	if (/^[a-z0-9][a-z0-9-]{0,79}$/.test(comentarios)) {
@@ -111,9 +112,10 @@ Deno.serve(async (req) => {
 		const { data: promo } = await sb.from('promociones').select('nombre').eq('id', comentarios).maybeSingle();
 		const nombre = corto(promo?.nombre, 120) || comentarios;
 		const r = await llamarGitHub(PROCESO, {
-			asunto: `${nombre} · ${lista.length === 1 ? '1 comentario nuevo' : `${lista.length} comentarios nuevos`}`,
-			texto: [...lineasComentarios(lista).slice(0, 12), ...(lista.length > 12 ? [`Y ${lista.length - 12} más.`] : []),
-				'Respóndelos y márcalos como resueltos en MUNE Studio, en «Resumen y versiones» de la promoción.'].join('\n\n'),
+			asunto: `${nombre} · cambios pedidos en la personalización`,
+			texto: [`La promotora pide cambios (${lista.length === 1 ? '1 comentario' : `${lista.length} comentarios`}):`,
+				...lineasComentarios(lista).slice(0, 12), ...(lista.length > 12 ? [`Y ${lista.length - 12} más.`] : []),
+				'Pídeme «mira los comentarios de la promoción» y preparo la versión nueva; los verás resueltos en la vista previa.'].join('\n\n'),
 			enlace: `${STUDIO}#/promocion/${comentarios}/resumen`,
 		});
 		if (!r) return responder(500, { error: 'Falta la llave A (GITHUB_EJECUTOR) en los secretos de Supabase' });
@@ -192,7 +194,7 @@ Deno.serve(async (req) => {
 			const { data: nuevos } = await sb.rpc('marcar_aviso_comentarios', { p_promocion: fv.promocion_id });
 			const clave = (fv.entregables as unknown as { clave?: string } | null)?.clave;
 			const otros = ((nuevos ?? []) as Nuevo[]).filter((c) => !(c.tipo === (tipo === 'planos' ? 'plano' : 'experiencia') && c.clave === clave));
-			if (otros.length) lineas.push(`Además, comentarios nuevos:\n\n${lineasComentarios(otros).slice(0, 8).join('\n\n')}`);
+			if (otros.length) lineas.push(`Además, sobre toda la versión:\n\n${lineasComentarios(otros).slice(0, 8).join('\n\n')}`);
 		}
 		if (parteLista && !todos) lineas.push(tipo === 'experiencia' ? `Todas las tipologías de la Experiencia 3D de la ${fv.version} están aprobadas.` : `Todos los planos comerciales de la ${fv.version} están aprobados.`);
 		if (todos) lineas.push(publicando
