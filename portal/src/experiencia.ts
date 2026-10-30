@@ -38,6 +38,7 @@ export async function pintarExperiencia(caja: HTMLElement, promo: Promocion3D, e
 			${publicada ? `<a class="boton pequeno" href="${esc(`${ESCAPARATE}/${id}/`)}" data-profesional target="_blank" rel="noopener noreferrer">Recorrer la versión publicada (${esc(publicada)})</a>` : ''}
 			${enRevision ? `<a class="boton ${publicada ? 'secundario' : ''} pequeno" href="${esc(`${REVISION}/${id}/`)}" data-profesional target="_blank" rel="noopener noreferrer">Recorrer la versión en revisión (${esc(enRevision)})</a>` : ''}
 			${publicada ? `<a class="enlace" href="${esc(`${ESCAPARATE}/${id}/`)}" target="_blank" rel="noopener noreferrer">Ver como el público</a>` : ''}
+			${publicada ? `<a class="boton secundario pequeno" href="${esc(`${ESCAPARATE}/${id}/?lotes=1`)}" data-profesional target="_blank" rel="noopener noreferrer">Descargar por lotes (planos y renders)</a>` : ''}
 		</div>
 		<p class="error" role="alert" data-error-profesional></p>
 		${htmlCompartir(promo, publicada, publicas)}` : '<p class="vacio">Todavía no hay ninguna versión. Cuando el equipo de MUNE prepare la primera, podrás recorrerla aquí y validarla cuando haga falta.</p>'}`;

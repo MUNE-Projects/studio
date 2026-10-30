@@ -32,6 +32,7 @@ import { conectarSolicitar } from './promocion/solicitar';
 import { Panel } from './configurador/panel';
 import { fmtFecha, packsDeVivienda } from './configurador/packs';
 import { conectarComentarios3D } from './promocion/comentarios3d';
+import { conectarDescargaLotes, type UnidadLote } from './documento/descarga';
 import { CATALOGO, PROMOCION, accesoProfesional, cargarModelo, claveUnidad, catalogoPara, estadoPublico, extraerCodigo, guardarSeleccion as guardarEnSupabase, paseInicial, resolverAcceso, resolverProfesional, salirProfesional, viviendaDeUnidad, viviendaPublica, type Modelo } from './promocion/promocion';
 import { aplicarMarca } from './promocion/marca';
 import { dePlanta, esMultiplanta, plantaCalle, plantasDe } from './modelo/plantas';
@@ -597,8 +598,9 @@ async function iniciar() {
 	cam.alLlegar = ( v ) => nav.configurar( modo === 'plano' ? 'planta' : v.interior ? 'interior' : 'exterior' );
 	type Modo = 'plano' | 'vivienda' | 'personalizar';
 	let modo: Modo = 'vivienda';
-	// comentarios visuales en modo profesional (se conectan más abajo)
+	// comentarios visuales y descarga por lotes, en modo profesional (se conectan más abajo)
 	let comentarios3D: ReturnType<typeof conectarComentarios3D> | null = null;
+	let lotes: ReturnType<typeof conectarDescargaLotes> | null = null;
 	// La visita se abre en el plano (rápido de preparar); la vivienda 3D se
 	// prepara mientras tanto. Si se pide antes de estar lista, se recuerda y se
 	// abre en cuanto lo esté.
@@ -1103,6 +1105,72 @@ async function iniciar() {
 			avisar: ( t ) => avisar( t ),
 		} );
 
+		// Descarga por lotes (descarga.ts): planos y renders de la tipología base de cada unidad.
+		let antesLote: { comprador: ViviendaPromocion | null; ficha: ViviendaPromocion; modo: Modo } | null = null;
+		lotes = conectarDescargaLotes( {
+			promocion: PROMOCION.promocion.nombre,
+			unidades: () => {
+
+				const unidades = new Map<string, UnidadLote>();
+				for ( const v of PROMOCION.viviendas ) {
+
+					const k = claveUnidad( v );
+					if ( unidades.has( k ) ) continue;
+					const t = cargarModelo( v.tipologia, v.espejo ).tipologia;
+					unidades.set( k, {
+						clave: k, titulo: PROMOCION.promocion.tipo === 'unifamiliar' ? `Vivienda ${ v.ref }` : `${ t.nombre }${ v.espejo ? ' · espejo' : '' }`,
+						vistas: t.guiadas.filter( ( x ) => t.vistas[ x ] ).map( ( x ) => ( { id: x, nombre: t.vistas[ x ].nombre } ) ),
+					} );
+
+				}
+				return [ ...unidades.values() ];
+
+			},
+			ponerUnidad: async ( clave ) => {
+
+				antesLote ??= { comprador, ficha: fichaVivienda, modo };
+				const v = PROMOCION.viviendas.find( ( x ) => claveUnidad( x ) === clave );
+				if ( ! v ) return;
+				// la tipología base: sin la personalización de ningún comprador
+				comprador = null;
+				cargarVivienda( v );
+				if ( modo !== 'vivienda' ) irModo( 'vivienda' );
+				await esperarQuieto();
+
+			},
+			render: async ( vista, ancho, alto, muestras, progreso ) => {
+
+				const v = ( modelo.tipologia.vistas as Record<string, Vista> )[ vista ];
+				const est = v?.estancia && vivienda.estancias.find( ( e ) => e.id === v.estancia );
+				if ( est && ( est.planta ?? 0 ) !== plantaActiva ) cambiarPlanta( est.planta ?? 0, false );
+				cam.ir( vista, true );
+				await esperarQuieto();
+				capturando = true;
+				try {
+
+					return await hd.generar( { ancho, alto, muestras: muestrasHD || muestras, progreso: progresoRender( progreso ), aviso: PROMOCION.marca.legal.imagenes } );
+
+				} finally {
+
+					capturando = false;
+					despertar();
+
+				}
+
+			},
+			restaurar: () => {
+
+				if ( ! antesLote ) return;
+				comprador = antesLote.comprador;
+				cargarVivienda( antesLote.ficha );
+				if ( modo !== antesLote.modo ) irModo( antesLote.modo );
+				antesLote = null;
+				despertar();
+
+			},
+			descargar: ( nombre, blob ) => descargar( nombre, blob ),
+		} );
+
 	}
 
 	// ---------------------------------------------------------------- documento de selección
@@ -1497,6 +1565,14 @@ async function iniciar() {
 	const FOTOGRAMAS_ESTABLES = Number( new URLSearchParams( location.search ).get( 'estables' ) ) || 48;
 	let quietos = 0;
 	const despertar = () => ( quietos = 0 );
+	/** Espera a que la imagen se asiente (cámara y exposición quietas): para los renders por lotes. */
+	const esperarQuieto = async () => {
+
+		despertar();
+		const hasta = performance.now() + 5000;
+		while ( quietos < 24 && performance.now() < hasta ) await new Promise( requestAnimationFrame );
+
+	};
 	for ( const ev of [ 'pointerdown', 'wheel', 'keydown', 'click', 'resize' ] ) addEventListener( ev, despertar, { passive: true } );
 	addEventListener( 'pointermove', ( e ) => e.buttons && despertar(), { passive: true } );
 	const matAnterior = new THREE.Matrix4(), proyAnterior = new THREE.Matrix4();
@@ -1718,6 +1794,7 @@ async function iniciar() {
 			document.body.classList.remove( 'cargando-3d' );
 			if ( destino && ( modo as Modo ) === 'plano' ) irModo( destino );
 			void comentarios3D?.alEstarLista();
+			if ( new URLSearchParams( location.search ).has( 'lotes' ) ) lotes?.abrir();
 
 			// 3. luces de ventana y plano completo, solo en los momentos sin interacción
 			await esperarInactividad();
@@ -1737,6 +1814,7 @@ async function iniciar() {
 			modoPendiente = null;
 			if ( pendiente ) irModo( pendiente );
 			void comentarios3D?.alEstarLista();
+			if ( new URLSearchParams( location.search ).has( 'lotes' ) ) lotes?.abrir();
 
 		} finally {
 
