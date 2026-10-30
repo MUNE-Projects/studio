@@ -281,7 +281,7 @@ async function pintarComentariosStudio(destino: HTMLElement, id: string, version
 
 	// lo que resuelve la versión en revisión
 	await pintarComentarios(caja('[data-resueltos]')!, null, deps,
-		{ promocion: id, version, tipo: 'version', clave: null, comentar: false, lugar, filtro: (h) => h.resuelto_version === version }, hilos);
+		{ promocion: id, version, tipo: 'version', clave: null, comentar: false, lugar, filtro: (h) => h.resuelto_version === version, resueltosALaVista: true }, hilos);
 	if (!caja('[data-resueltos] .hilo')) caja('[data-resueltos]')!.innerHTML = '<p class="vacio">Esta versión no marca ningún comentario como resuelto.</p>';
 
 	// las notas para Claude

@@ -21,9 +21,9 @@
 5. **Publicar:** el botón *Publicar vN* del Panel solo se activa con **todos** los planos aprobados (lo comprueba también la función `ejecutar`). Lo pulsas tú, o me pides que lo haga. Al terminar, el equipo de la promotora recibe el email «versión publicada».
 
 ## Comentarios de la promotora
-- La promotora comenta en MUNE Portal pulsando en el plano, en el 3D (*Comentar*) o en el Resumen (toda la versión). Te llega un email agrupado y aparecen en Inicio y en *Resumen y versiones*.
-- Antes de preparar la versión siguiente, pídeme «mira los comentarios de X»: los leo con `node herramientas/documentos.mjs comentarios <id>` y te propongo qué cambiar.
-- Respóndelos en MUNE Studio y márcalos como **resueltos en la vN** cuando la versión nueva lo arregle: la promotora lo ve en su Portal.
+- La promotora comenta en MUNE Portal pulsando en el plano, en el 3D (*Comentar*), en el Resumen (toda la versión) o en *Personalización*. Mientras escribe quedan **pendientes**; al pulsar **«Pedir cambios»** se envían juntos y te llega un email.
+- Claude (pídeselo con «mira los comentarios de X», o en la revisión automática) solo trabaja con lo **enviado**: `node herramientas/documentos.mjs comentarios <id>`. Al preparar la versión nueva marca los que arregla: `… comentarios <id> resolver <ids> --version vN` (antes de enviarla a validar).
+- En MUNE Studio, *Qué resuelve la vN* te los enseña para comprobarlos en la vista previa. Si algo no está bien, apúntalo en *Tus notas para Claude* (general, en un plano o en el 3D) y pulsa **«Devolver a Claude»**.
 
 ## Garantías
 - Queda registrado quién aprobó cada plano, cuándo y la huella del archivo exacto. Una validación no se puede cambiar ni repetir, y solo se validan los planos de la última versión enviada.

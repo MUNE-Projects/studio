@@ -131,6 +131,8 @@ export interface Sitio {
 	lugar?: (h: Hilo) => string;
 	/** Texto de ayuda del formulario (si no, el de cada sitio). */
 	ayuda?: string;
+	/** Enseñar los resueltos a la vista, no plegados (MUNE Studio: «Qué resuelve la vN»). */
+	resueltosALaVista?: boolean;
 	/** Tras comentar, responder, resolver o borrar: los hilos de este sitio, al día. */
 	alCambiar?: (hs: Hilo[]) => void;
 }
@@ -165,7 +167,7 @@ export async function pintarComentarios(caja: HTMLElement, plano: HTMLElement | 
 				? 'Escribe lo que hay que cambiar de la personalización (opciones, packs, cómo se ve en el 3D…), o márcalo en el 3D con «Comentar en el 3D».'
 				: 'Para lo que no es de un plano ni de una tipología concreta (por ejemplo, «falta la zona de piscina»).');
 
-	caja.innerHTML = `
+	caja.innerHTML = s.resueltosALaVista ? (hs.length ? hs.map((h) => htmlHilo(d, h, null, lugar(h))).join('') : '<p class="vacio">Ninguno.</p>') : `
 		${abiertosAqui.length ? abiertosAqui.map((h) => htmlHilo(d, h, numero(h), lugar(h))).join('') : s.lugar ? '<p class="vacio">No hay comentarios abiertos.</p>' : ''}
 		${resueltos.length ? `<details class="resueltos"><summary>${resueltos.length === 1 ? '1 comentario resuelto' : `${resueltos.length} comentarios resueltos`}</summary>
 			${resueltos.map((h) => htmlHilo(d, h, null, lugar(h))).join('')}</details>` : ''}
