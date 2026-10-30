@@ -2026,6 +2026,75 @@ await caso( DEBE_FALLAR, '49. Publicar sin GitHub: la promotora, alguien sin ses
 
 } );
 
+// ─── Borrado completo (037_borrado_completo.sql) ────────────────────────────
+
+const [ pBorra ] = await exigir( admin.from( 'promotoras' ).insert( { nombre: 'Promotora que se borra entera' } ).select( 'id' ), 'alta promotora que se borra' );
+await exigir( admin.from( 'promociones' ).insert( [
+	{ id: 'prueba-borra-web', promotora_id: pA.id, nombre: 'Con web (se borra)' },
+	{ id: 'prueba-borra-po', promotora_id: pBorra.id, nombre: 'De la promotora que se borra' },
+] ), 'alta promociones que se borran' );
+for ( const id of [ 'prueba-borra-web', 'prueba-borra-po' ] ) {
+
+	await exigir( subirSitio( robot, `${ id }/v1/sitio.tar.gz` ), `web de ${ id }` );
+	await exigir( prepararV( robot, 'v1', id ), `preparar ${ id }` );
+	await exigir( guardarModelo( robot, MODELO, {}, id ), `modelo de ${ id }` );
+
+}
+const MARCA_PO = `${ pBorra.id }/marca/tipografia.woff2`;
+await exigir( servicio.storage.from( 'documentos' ).upload( MARCA_PO, Buffer.from( 'tipografía' ), { contentType: 'font/woff2' } ), 'marca de la promotora' );
+
+await caso( DEBE_FALLAR, '50. Borrado completo: la web guardada o la marca se borran con la promoción activa, por el robot o por la promotora', async () => {
+
+	const r = {
+		adminActiva: await admin.storage.from( 'versiones' ).remove( [ 'prueba-borra-web/v1/sitio.tar.gz' ] ),
+		robot: await robot.storage.from( 'versiones' ).remove( [ 'prueba-borra-web/v1/sitio.tar.gz' ] ),
+		promotora: await aprobA.storage.from( 'versiones' ).remove( [ 'prueba-borra-web/v1/sitio.tar.gz' ] ),
+		adminMarcaActiva: await admin.storage.from( 'documentos' ).remove( [ MARCA_PO ] ),
+		promotoraArchivos: await aprobA.rpc( 'archivos_de_promocion', { p_id: 'prueba-borra-web' } ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	if ( ! await existe( 'versiones', 'prueba-borra-web/v1/sitio.tar.gz' ) ) noFallan.push( 'la web se ha borrado' );
+	if ( ! await existe( 'documentos', MARCA_PO ) ) noFallan.push( 'la marca se ha borrado' );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Borrado completo: al borrar una promoción o una promotora se borran también su web guardada, su modelo, su registro de versiones y la marca de la promotora', async () => {
+
+	const borrarTodo = async ( lista ) => {
+
+		const porAlmacen = {};
+		for ( const a of lista ) ( porAlmacen[ a.bucket ] ??= [] ).push( a.nombre );
+		for ( const [ almacen, nombres ] of Object.entries( porAlmacen ) ) await exigir( admin.storage.from( almacen ).remove( nombres ), `borrar de ${ almacen }` );
+
+	};
+	// promoción
+	await exigir( admin.from( 'promociones' ).update( { activa: false } ).eq( 'id', 'prueba-borra-web' ), 'desactivar' );
+	const deLaPromocion = await exigir( admin.rpc( 'archivos_de_promocion', { p_id: 'prueba-borra-web' } ), 'archivos de la promoción' );
+	await borrarTodo( deLaPromocion );
+	await exigir( admin.rpc( 'borrar_promocion', { p_id: 'prueba-borra-web', p_nombre: 'Con web (se borra)' } ), 'borrar promoción' );
+	// promotora
+	await exigir( admin.from( 'promotoras' ).update( { activa: false } ).eq( 'id', pBorra.id ), 'desactivar promotora' );
+	const deLaPromotora = await exigir( admin.rpc( 'archivos_de_promotora', { p_id: pBorra.id } ), 'archivos de la promotora' );
+	await borrarTodo( deLaPromotora );
+	await exigir( admin.rpc( 'borrar_promotora', { p_id: pBorra.id, p_nombre: 'Promotora que se borra entera' } ), 'borrar promotora' );
+
+	const quedan = {
+		versiones: ( await servicio.from( 'versiones_promocion' ).select( 'version' ).in( 'promocion_id', [ 'prueba-borra-web', 'prueba-borra-po' ] ) ).data.length,
+		modelo: ( await servicio.from( 'modelo_promocion' ).select( 'id' ).in( 'promocion_id', [ 'prueba-borra-web', 'prueba-borra-po' ] ) ).data.length,
+		webs: ( await existe( 'versiones', 'prueba-borra-web/v1/sitio.tar.gz' ) ? 1 : 0 ) + ( await existe( 'versiones', 'prueba-borra-po/v1/sitio.tar.gz' ) ? 1 : 0 ),
+		marca: await existe( 'documentos', MARCA_PO ) ? 1 : 0,
+		desplegar: ( await exigir( ejecutor.rpc( 'versiones_para_desplegar' ), 'qué va a la web' ) ).filter( ( d ) => d.promocion_id.startsWith( 'prueba-borra' ) ).length,
+	};
+	const listados = deLaPromocion.some( ( a ) => a.bucket === 'versiones' ) && deLaPromotora.some( ( a ) => a.nombre === MARCA_PO ) && deLaPromotora.some( ( a ) => a.bucket === 'versiones' );
+	const mal = Object.entries( quedan ).filter( ( [ , n ] ) => n !== 0 ).map( ( [ k, n ] ) => `${ k }: ${ n }` );
+	if ( ! listados ) mal.push( 'no se listaban la web o la marca' );
+	if ( mal.length ) throw new Error( `quedan: ${ mal.join( ', ' ) }` );
+	return true;
+
+} );
+
 // ─── Resumen ────────────────────────────────────────────────────────────────
 
 const fallidos = resultados.filter( ( r ) => ! r.ok );
