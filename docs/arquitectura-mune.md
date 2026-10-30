@@ -436,7 +436,7 @@ Sustituye al orden de pasos 0–5 anterior (los pasos 0, 2 y 3 de equipos y vali
 8. Personalización configurable y Fase 2 (fases o grupos, opciones, restricciones, aplicabilidad, apertura y cierre; la promotora gestiona catálogo, precios, fechas y marca). En tres propuestas: 8a catálogo, precios, packs y fechas (`029_catalogo_promotora.sql`, decisión 52); 8b restricciones por tipología (no por vivienda ni entre opciones; `030_tipologias_en_preparacion.sql`, decisión 53); 8c marca (general de la promotora y propia de una promoción, en la versión siguiente; `031_marca.sql`, decisión 54).
 9. Comparación entre versiones, impacto de cambios y vigencia (Vigente / Requiere actualizar / Pendiente de validar). Comparar versiones: hecho (resumen de cambios, planos con diferencias y compradores afectados; decisión 58).
 10. Comentarios visuales en planos y Experience, unidos a su versión (no dependen del 9). Hecho: en el plano, en el 3D y de toda la versión, con el punto opcional; la personalización aparte; «Pedir cambios» los envía juntos y Claude marca los que resuelve cada versión (decisión 62).
-11. Generación de materiales por lotes (depende del 6).
+11. Generación de materiales por lotes (depende del 6). Hecho: planos comerciales vigentes y renders de las vistas, en un ZIP con una carpeta por tipología (decisión 63).
 12. Analítica del uso de MUNE, agregada y por contexto (importes de selecciones cerradas, opciones más elegidas, tipologías y vistas más vistas…).
 13. Entorno real (ubicación, orientación, parcela, vistas), sin soleamiento.
 14. «Solicitar información» más específico, solo si hace falta.
