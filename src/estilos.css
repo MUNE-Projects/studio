@@ -687,3 +687,22 @@ body.marcando-comentario #lienzo canvas { cursor: crosshair; }
 @media (max-width: 640px) { .panel-comentario { top: auto; bottom: 150px; right: 12px; left: 12px; width: auto; max-height: 45%; } }
 .marca-comentario.interna { background: #5b4bb7; }
 @media (min-width: 641px) { body[data-modo="personalizar"] .panel-comentario { right: calc(var(--cajon) + 32px); } }
+
+/* Descarga por lotes (descarga.ts) */
+#lotes { width: min(560px, calc(100% - 32px)); max-height: calc(100% - 48px); overflow: auto; padding: 22px 24px; border: 1px solid var(--linea); border-radius: 16px; background: var(--papel); color: var(--tinta); box-shadow: 0 24px 64px rgb(0 0 0 / 0.2); }
+#lotes::backdrop { background: rgb(28 28 26 / 0.45); }
+#lotes h2 { margin: 0; font-size: 18px; font-weight: 500; }
+#lotes .texto { margin: 6px 0 12px; font-size: 12.5px; color: var(--tinta-2); line-height: 1.45; }
+.lotes fieldset { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--linea); border-radius: 10px; background: #fff; display: grid; gap: 4px; }
+.lotes legend { padding: 0 4px; font-size: 12.5px; font-weight: 600; }
+.lotes label { display: flex; align-items: baseline; gap: 6px; font-size: 13px; cursor: pointer; }
+.lotes small { color: var(--tinta-3); font-size: 11.5px; }
+.lotes .lotes-opciones { display: grid; gap: 4px; padding-left: 20px; }
+.lotes .formatos-render { display: flex; gap: 14px; margin-top: 2px; }
+.lote-unidad summary { cursor: pointer; list-style-position: outside; }
+.lote-unidad summary label { display: inline-flex; font-weight: 600; }
+.lote-vistas { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 10px; padding: 4px 0 6px 20px; }
+.resumen-lote { margin: 0 0 8px; font-size: 12.5px; color: var(--tinta-2); }
+#lotes .progreso { margin: 0 0 8px; font-size: 12.5px; color: var(--acento); }
+#lotes .acciones { display: flex; gap: 10px; align-items: center; }
+#lotes .cancelar { border: 0; background: none; color: var(--tinta-2); text-decoration: underline; cursor: pointer; font: inherit; font-size: 12.5px; }

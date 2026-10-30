@@ -129,6 +129,7 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 		</div>
 		<div class="acciones">
 			${pub ? enlace(`${ESCAPARATE}/${id}/`, `Ver la publicada (${pub.version})`, 'abre la publicada', { id, version: pub.version }) : ''}
+			${pub ? '<button class="boton secundario" type="button" data-lotes title="Planos comerciales y renders de las tipologías de la versión publicada, en un ZIP">Descargar por lotes</button>' : ''}
 			${pendiente ? enlace(`${REVISION}/${id}/`, `Ver la vista previa (${rev!.version})`, 'abre la vista previa', { id, version: rev!.version }, true) : ''}
 			${pendiente ? `<button class="boton" type="button" data-publicar ${bloqueo ? 'disabled' : ''}>Publicar ${esc(rev!.version)}</button>` : ''}
 			${volver.length ? '<button class="boton secundario" type="button" data-abrir-volver>Volver a una anterior</button>' : ''}
@@ -184,6 +185,9 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 	// comentarios de la promotora (comentarios.ts): todos, los abiertos primero
 	const ultima = (pendiente ? rev : pub) ?? rev;
 	if (ultima) void pintarComentariosStudio(destino, id, ultima.version, pendiente ? REVISION : ESCAPARATE, pendiente);
+
+	// descarga por lotes: en el 3D de la versión publicada (descarga.ts del visor)
+	destino.querySelector('[data-lotes]')?.addEventListener('click', () => void abrirConPase(id, `${ESCAPARATE}/${id}/?lotes=1`));
 
 	destino.querySelector<HTMLButtonElement>('[data-publicar]')?.addEventListener('click', async (ev) => {
 		const b = ev.currentTarget as HTMLButtonElement;

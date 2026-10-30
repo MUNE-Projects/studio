@@ -9,10 +9,11 @@
 // de una versión a otra, sus aprobaciones siguen valiendo.
 
 import { alEnviar, esc, sb, traducir } from './comun';
+import { Zip } from './zip';
 import { type Hilo, abiertos, hilosDe, pendientes, htmlPlanoConMarcas, leerHilos, pintarComentarios, textoPedirCambios } from './comentarios';
 import {
 	type Contexto, type Elemento, baseVisita, avance, chipEstado, depsComentarios, faltanTrasAprobar, guardarDecision, htmlPersonas,
-	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, textoPublicando, versionesCon,
+	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, textoPublicando, versionPublicada, versionesCon,
 } from './validacion';
 
 export const versionesConPlanos = (id: string) => versionesCon(id, 'planos');
@@ -184,5 +185,54 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
 		const comentario = textoPedirCambios(hilosPlano, escrito);
 		await guardarDecision(id, e.version, 'planos', p.id, { decision: 'rechazado', comentario });
 		alValidar(`Hemos recibido tu petición de cambios en «${p.titulo}». El equipo de MUNE preparará el plano corregido.`);
+	});
+}
+
+/**
+ * Descarga por lotes de los planos comerciales vigentes: los de la versión
+ * publicada (si todavía no hay ninguna, los de la última con todos validados).
+ * Cada versión lleva todos los planos, también los que no cambian, así que es
+ * el juego completo. Son los archivos exactos que se aprobaron (PDF).
+ */
+export async function conectarDescargaVigentes(caja: HTMLElement, id: string, nombrePromocion: string, versiones: string[]): Promise<void> {
+	const publicada = await versionPublicada(id);
+	const vigente = publicada && versiones.includes(publicada) ? publicada : await ultimaValidada(id, versiones);
+	if (!vigente) return;
+	caja.insertAdjacentHTML('afterbegin', `<div class="aviso descarga-vigentes">
+		<p>Planos comerciales vigentes: los de la ${esc(vigente)}${publicada === vigente ? ', la versión publicada' : ''}, todos validados.</p>
+		<div class="acciones"><button class="boton pequeno" type="button" data-bajar-vigentes>Descargar todos (ZIP)</button></div>
+		<p class="ayuda">Para los planos en imagen PNG y los renders de las vistas, usa «Descargar por lotes» en Experiencia 3D.</p>
+		<p class="error" role="alert"></p>
+	</div>`);
+	const zona = caja.querySelector<HTMLElement>('.descarga-vigentes')!;
+	const boton = zona.querySelector<HTMLButtonElement>('[data-bajar-vigentes]')!;
+	boton.addEventListener('click', async () => {
+		const error = zona.querySelector<HTMLElement>('.error')!;
+		error.textContent = '';
+		boton.disabled = true;
+		boton.textContent = 'Preparando…';
+		try {
+			const planos = await leerPlanos(id, vigente);
+			const { data, error: e } = await sb.storage.from('entregables').createSignedUrls(planos.map((p) => p.ruta), 600);
+			if (e) throw e;
+			const zip = new Zip();
+			for (const [i, p] of planos.entries()) {
+				const url = data?.[i]?.signedUrl;
+				if (!url) throw new Error('No se ha podido descargar uno de los planos.');
+				const r = await fetch(url);
+				if (!r.ok) throw new Error('No se ha podido descargar uno de los planos.');
+				zip.anadir(`Plano comercial - ${p.titulo.replace(/[\\/:*?"<>|]+/g, '-')}.pdf`, new Uint8Array(await r.arrayBuffer()));
+			}
+			const a = document.createElement('a');
+			a.href = URL.createObjectURL(zip.cerrar());
+			a.download = `Planos comerciales - ${nombrePromocion.replace(/[\\/:*?"<>|]+/g, '-')} - ${vigente}.zip`;
+			a.click();
+			setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+		} catch (err) {
+			error.textContent = traducir(err, 'descargar los planos');
+		} finally {
+			boton.disabled = false;
+			boton.textContent = 'Descargar todos (ZIP)';
+		}
 	});
 }
