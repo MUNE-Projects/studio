@@ -19,7 +19,7 @@ import { pintarEquipo } from './equipo';
 import { pintarEstados } from './estado';
 import { pintarExperiencia, versionesConExperiencia } from './experiencia';
 import { type Miembro, type Permisos, permisosDe } from './permisos';
-import { htmlLista, leerPlanos, pintarDetalle, versionesConPlanos } from './planos';
+import { conectarDescargaVigentes, htmlLista, leerPlanos, pintarDetalle, versionesConPlanos } from './planos';
 import { type Contexto, type Elemento, depsComentarios, leerValidacion, numVersion, tituloUnidad, versionPublicada } from './validacion';
 
 // ── Decide qué pantalla toca ──────────────────────────────────────────────
@@ -494,6 +494,7 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 					<span>${esc(TIPOS_ENTREGABLE[e.tipo] ?? e.tipo)} · ${esc(e.version)}<br><span class="promo-lugar">${esc(e.nombre)}</span></span>
 					<button class="boton secundario pequeno" type="button" data-bajar="entregables" data-ruta="${esc(e.ruta)}" data-nombre="${esc(e.nombre)}">Descargar</button>
 				</div>`).join('')}` : ''}`;
+			if (versionesPlanos.length) await conectarDescargaVigentes(caja, id, p.nombre, versionesPlanos);
 		}
 	}
 

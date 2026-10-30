@@ -141,6 +141,30 @@ export async function generarLote( avisar: ( t: string ) => void = () => {} ): P
 
 }
 
+/**
+ * Los planos comerciales para la descarga por lotes (descarga.ts): los mismos
+ * que se validan (mismos datos y mismo dibujo), a tamaño completo, de las
+ * unidades elegidas (clave de tipología y variante, o de vivienda).
+ */
+export async function* planosParaDescargar( unidades: Set<string>, pdf: boolean, png: boolean ) {
+
+	for ( const e of encargos() ) {
+
+		const unidad = claveUnidad( e.viviendas[ 0 ] );
+		if ( ! unidades.has( unidad ) ) continue;
+		const modelo = cargarModelo( e.tipologia, e.espejo );
+		const alternativa = e.alternativa && ( modelo.alternativas.find( ( a ) => a.id === e.alternativa!.id ) ?? null );
+		const { vivienda } = aplicarAlternativa( modelo.vivienda, alternativa );
+		const datos: DatosPlano = {
+			promocion: PROMOCION, tipologia: modelo.tipologia, vivienda, ficha: e.ficha,
+			distribucion: e.alternativa ? e.alternativa.nombre : 'base',
+		};
+		yield { unidad, titulo: e.titulo, pdf: pdf ? await planoPDF( datos ) : null, png: png ? await planoPNG( datos ) : null };
+
+	}
+
+}
+
 // ---------------------------------------------------------------- Experiencia 3D
 
 export interface UnidadExperiencia {
