@@ -2095,6 +2095,93 @@ await caso( DEBE_FUNCIONAR, 'Borrado completo: al borrar una promoción o una pr
 
 } );
 
+// ─── Comentarios visuales (038_comentarios.sql) ─────────────────────────────
+
+// una versión nueva con el plano «a», para comentarla y pedir cambios
+const [ planoV99 ] = await exigir( enviarPlanos( 'v99', [ [ 'a', 'geometria-a-v99' ] ] ), 'planos v99' );
+const comentar = ( sb, extra = {} ) => sb.rpc( 'comentar', { p_promocion: 'prueba-a', p_version: 'v99', p_tipo: 'plano', p_clave: 'a', p_punto: { x: 0.4, y: 0.5 }, p_texto: 'La puerta abre hacia el otro lado', ...extra } );
+const comentarioA = await exigir( comentar( aprobA ), 'comentario de la promotora A' );
+const notaMune = await exigir( comentar( admin, { p_tipo: 'version', p_clave: null, p_punto: null, p_texto: 'Nota interna para Claude' } ), 'nota de MUNE' );
+
+await caso( DEBE_FALLAR, '51. Comentarios visuales: otra promotora, el robot o sin sesión comentan o leen los de otra promotora; la promotora ve las notas de MUNE, resuelve, borra lo enviado o lo ajeno, devuelve a Claude o comenta la personalización sin permiso; puntos, sitios o versiones inventados', async () => {
+
+	const paseB = await exigir( abrirPase( aprobB, 'prueba-b' ), 'pase B' );
+	const r = {
+		otraPromotora: await comentar( aprobB ),
+		robot: await comentar( robot ),
+		anonimo: await comentar( anonimo ),
+		leeOtra: await aprobB.rpc( 'comentarios_de', { p_promocion: 'prueba-a' } ),
+		leeAnonimo: await anonimo.rpc( 'comentarios_de', { p_promocion: 'prueba-a' } ),
+		tablaDirecta: await aprobA.from( 'comentarios' ).select( 'id' ),
+		resuelvePromotora: await aprobA.rpc( 'resolver_comentarios', { p_promocion: 'prueba-a', p_version: 'v100', p_comentarios: [ comentarioA ] } ),
+		resuelveEnviada: await robot.rpc( 'resolver_comentarios', { p_promocion: 'prueba-a', p_version: 'v99', p_comentarios: [ comentarioA ] } ),
+		reabrePromotora: await aprobA.rpc( 'reabrir_comentario', { p_comentario: comentarioA } ),
+		devuelvePromotora: await aprobA.rpc( 'devolver_a_claude', { p_promocion: 'prueba-a' } ),
+		borraOtra: await aprobB.rpc( 'borrar_comentario', { p_comentario: comentarioA } ),
+		respondeOtra: await comentar( aprobB, { p_padre: comentarioA } ),
+		respondeNotaMune: await comentar( aprobA, { p_padre: notaMune } ),
+		personalizacionSinPermiso: await comentar( soloCompradores.sb, { p_tipo: 'personalizacion', p_clave: null, p_punto: null } ),
+		pidePersonalizacionOtra: await aprobB.rpc( 'pedir_cambios_personalizacion', { p_promocion: 'prueba-a' } ),
+		puntoFuera: await comentar( aprobA, { p_punto: { x: 2, y: 0.5 } } ),
+		puntoRaro: await comentar( aprobA, { p_tipo: 'experiencia', p_punto: { p: [ 0, 0 ], cam: [ 0, 0, 0 ], obj: [ 0, 0, 0 ] } } ),
+		versionConPunto: await comentar( aprobA, { p_tipo: 'version', p_clave: null } ),
+		versionInventada: await comentar( aprobA, { p_version: 'v999' } ),
+		vacio: await comentar( aprobA, { p_texto: '   ' } ),
+		paseAjeno: await anonimo.rpc( 'comentar_profesional', { p_promocion: 'prueba-a', p_pase: paseB, p_version: 'v99', p_tipo: 'experiencia', p_clave: 'a', p_punto: null, p_texto: 'x' } ),
+		paseFalso: await anonimo.rpc( 'comentar_profesional', { p_promocion: 'prueba-a', p_pase: 'f'.repeat( 48 ), p_version: 'v99', p_tipo: 'experiencia', p_clave: 'a', p_punto: null, p_texto: 'x' } ),
+		avisoOtra: await aprobB.rpc( 'marcar_aviso_comentarios', { p_promocion: 'prueba-a' } ),
+		avisoAnonimo: await anonimo.rpc( 'marcar_aviso_comentarios', { p_promocion: 'prueba-a' } ),
+		bandejaPromotora: await aprobA.rpc( 'comentarios_abiertos' ),
+	};
+	const verPaseAjeno = await anonimo.rpc( 'comentarios_profesional', { p_promocion: 'prueba-a', p_pase: paseB } );
+	const veNotas = ( await aprobA.rpc( 'comentarios_de', { p_promocion: 'prueba-a' } ) ).data?.some( ( h ) => h.interno );
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	if ( ! ( verPaseAjeno.error || verPaseAjeno.data === null ) ) noFallan.push( 'verPaseAjeno' );
+	if ( veNotas !== false ) noFallan.push( 'promotoraVeNotasDeMune' );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Comentarios visuales: pendiente → enviado al pedir cambios (plano y personalización), el aviso sale una vez con lo enviado, MUNE devuelve a Claude sus notas, el robot lee lo enviado y lo resuelve al preparar, y responder reabre', async () => {
+
+	const general = await exigir( comentar( aprobA, { p_tipo: 'version', p_clave: null, p_punto: null, p_texto: 'Falta la piscina' } ), 'general' );
+	const pase = await exigir( abrirPase( soloPersonalizacion.sb ), 'pase' );
+	const personalizacion = await exigir( anonimo.rpc( 'comentar_profesional', { p_promocion: 'prueba-a', p_pase: pase, p_version: 'v99', p_tipo: 'personalizacion', p_clave: 'a',
+		p_punto: { p: [ 1, 1.2, - 2 ], cam: [ 3, 1.6, 0 ], obj: [ 1, 1.2, - 2 ], planta: 0, vista: 'Salón' }, p_texto: 'El roble se ve oscuro' } ), '3D personalización' );
+	const antes = await exigir( aprobA.rpc( 'marcar_aviso_comentarios', { p_promocion: 'prueba-a' } ), 'aviso antes de pedir' );
+	// pedir cambios del plano «a» envía su comentario y el de toda la versión
+	await exigir( aprobA.from( 'validaciones' ).insert( { entregable_id: planoV99.id, decision: 'rechazado', comentario: 'Ver comentarios' } ), 'pedir cambios plano' );
+	const enviados = await exigir( soloPersonalizacion.sb.rpc( 'pedir_cambios_personalizacion', { p_promocion: 'prueba-a' } ), 'pedir cambios personalización' );
+	const aviso1 = await exigir( aprobA.rpc( 'marcar_aviso_comentarios', { p_promocion: 'prueba-a' } ), 'aviso 1' );
+	const aviso2 = await exigir( aprobA.rpc( 'marcar_aviso_comentarios', { p_promocion: 'prueba-a' } ), 'aviso 2' );
+	const devueltas = await exigir( admin.rpc( 'devolver_a_claude', { p_promocion: 'prueba-a' } ), 'devolver a Claude' );
+	const robotLee = await exigir( robot.rpc( 'comentarios_de', { p_promocion: 'prueba-a' } ), 'robot lee' );
+	const resueltos = await exigir( robot.rpc( 'resolver_comentarios', { p_promocion: 'prueba-a', p_version: 'v100', p_comentarios: [ comentarioA, general, notaMune ] } ), 'robot resuelve' );
+	await exigir( comentar( aprobA, { p_padre: comentarioA, p_texto: 'Sigue igual' } ), 'responde' );
+	const hilos = await exigir( aprobA.rpc( 'comentarios_de', { p_promocion: 'prueba-a' } ), 'lee' );
+	const reabierto = hilos.find( ( h ) => h.id === comentarioA );
+	const desde3D = await exigir( anonimo.rpc( 'comentarios_profesional', { p_promocion: 'prueba-a', p_pase: pase } ), '3D lee' );
+	const bandeja = await exigir( admin.rpc( 'comentarios_abiertos' ), 'bandeja' );
+	const mal = Object.entries( {
+		nadaAntes: antes.length === 0,
+		personalizacionEnviada: enviados === 1,
+		aviso: aviso1.length === 3 && aviso1.some( ( c ) => c.tipo === 'personalizacion' && c.con_punto ) && aviso1.some( ( c ) => c.tipo === 'version' ),
+		unaVez: aviso2.length === 0,
+		devueltas: devueltas === 1,
+		robotVeNotas: robotLee.some( ( h ) => h.id === notaMune && h.interno && h.enviado_en ),
+		resueltos: resueltos === 3,
+		reabierto: reabierto && ! reabierto.resuelto_en && ! reabierto.enviado_en,
+		general: hilos.find( ( h ) => h.id === general )?.resuelto_version === 'v100',
+		sinNotas: ! hilos.some( ( h ) => h.interno ),
+		solo3D: desde3D.length === 1 && desde3D[ 0 ].id === personalizacion,
+		bandeja: bandeja.some( ( x ) => x.promocion_id === 'prueba-a' && x.enviados === 1 && x.pendientes === 1 ),
+	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
+	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) }` );
+	return true;
+
+} );
+
 // ─── Resumen ────────────────────────────────────────────────────────────────
 
 const fallidos = resultados.filter( ( r ) => ! r.ok );

@@ -12,6 +12,7 @@ import { pintarPersonalizacion } from './personalizacion';
 import { pintarCatalogo } from './catalogo';
 import { pintarMarca } from './marca';
 import { pintarComparacion } from './comparacion';
+import { pendientes, pintarComentarios } from './comentarios';
 import { conectarSolicitar, formSolicitar, type DatosSolicitar } from './solicitar';
 import { COLUMNAS_DOCUMENTO, COLUMNAS_REQUISITO, type Documento, type Requisito, leerCubre, pintarDocumentacion, resumenDocumentos } from './documentos';
 import { pintarEquipo } from './equipo';
@@ -19,7 +20,7 @@ import { pintarEstados } from './estado';
 import { pintarExperiencia, versionesConExperiencia } from './experiencia';
 import { type Miembro, type Permisos, permisosDe } from './permisos';
 import { htmlLista, leerPlanos, pintarDetalle, versionesConPlanos } from './planos';
-import { type Contexto, type Elemento, leerValidacion, numVersion, tituloUnidad } from './validacion';
+import { type Contexto, type Elemento, depsComentarios, leerValidacion, numVersion, tituloUnidad, versionPublicada } from './validacion';
 
 // ── Decide qué pantalla toca ──────────────────────────────────────────────
 
@@ -448,6 +449,10 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 			<p class="promo-versiones" data-publicada>Comprobando la versión publicada…</p>
 			${htmlValidacionEnCurso(id, enCurso, per.puede('planos') ? planosCurso : null, expCurso)}
 			${enCurso ? '<section class="comparacion" data-comparacion hidden></section>' : ''}
+			${enCurso ? `<section class="comentarios separado">
+				<h3>Comentarios generales de la ${esc(enCurso)}</h3>
+				<div data-comentarios-version></div>
+			</section>` : ''}
 			<div class="lista-promos separado">
 				${per.puede('documentacion') ? `<a class="promo-enlace" href="#/promocion/${esc(id)}/documentacion"><span><strong>Documentación</strong><br>
 					<span class="promo-lugar">${faltan ? `${faltan === 1 ? 'Falta 1 documento obligatorio' : `Faltan ${faltan} documentos obligatorios`}` : 'Todos los documentos obligatorios entregados'}${rechazados ? ` · ${rechazados} por corregir` : ''}</span></span>
@@ -461,6 +466,9 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 		void pintarPublicada(p.id);
 		// qué cambia en la versión en curso respecto a la publicada (comparacion.ts)
 		if (enCurso) void pintarComparacion(caja.querySelector<HTMLElement>('[data-comparacion]')!, { sb, esc, traducir, base: REVISION, privado: per.puede('personalizacion') }, id, enCurso);
+		// comentarios de toda la versión (los de un plano o una tipología van en su pestaña)
+		if (enCurso) void pintarComentarios(caja.querySelector<HTMLElement>('[data-comentarios-version]')!, null, depsComentarios(id),
+			{ promocion: id, version: enCurso, tipo: 'version', clave: null, comentar: true });
 	}
 
 	if (actual === 'documentacion') {
@@ -501,12 +509,16 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 		caja.innerHTML = `
 			<div data-selecciones><p class="vacio">Cargando…</p></div>
 			<section class="separado" data-catalogo></section>
+			<section class="comentarios" data-cambios-personalizacion></section>
 			<h2 class="separado">Formalización de la personalización</h2>
 			<p class="ayuda">Cuando un comprador termina su personalización, descarga el documento de selección y lo firma. Indica aquí a quién debe enviarlo y, si las mejoras se pagan por transferencia, los datos de la cuenta. Solo lo ven los compradores que entran con su código.</p>
 			${formFormalizacion((p as unknown as { formalizacion: Formalizacion }).formalizacion)}`;
 		conectarFormulario('[data-formalizacion]', (d) => sb.rpc('guardar_formalizacion', datosFormalizacion(p.id, d)));
 		await pintarPersonalizacion(caja.querySelector<HTMLElement>('[data-selecciones]')!, { sb, esc, fecha, traducir, modo: 'promotora' }, p);
 		await pintarCatalogo(caja.querySelector<HTMLElement>('[data-catalogo]')!, { sb, esc, fecha, traducir, modo: 'promotora' }, p);
+		// cambios de la personalización: comentarios y «Pedir cambios» (separado de la validación de la Experiencia 3D)
+		const version = enCurso ?? await versionPublicada(id);
+		if (version) await pintarCambiosPersonalizacion(caja.querySelector<HTMLElement>('[data-cambios-personalizacion]')!, id, version);
 	}
 
 	if (actual === 'datos') {
@@ -630,3 +642,40 @@ function fallo(e: unknown): void {
 }
 
 decidir().catch(fallo);
+
+/**
+ * Cambios de la personalización (038_comentarios.sql): comentarios sobre las
+ * opciones, los packs o cómo se ven en el 3D (en modo Personalizar), y «Pedir
+ * cambios», que los envía juntos al equipo de MUNE. Va aparte de la validación
+ * de la Experiencia 3D.
+ */
+async function pintarCambiosPersonalizacion(zona: HTMLElement, id: string, version: string): Promise<void> {
+	zona.innerHTML = `<h2>Cambios en la personalización</h2>
+		<p class="ayuda">Si algo de la personalización no está bien (una opción, un precio en el 3D, cómo se ve un acabado…), coméntalo aquí o en el 3D, en modo Personalizar. Cuando termines, pulsa «Pedir cambios» y se enviará todo junto al equipo de MUNE.</p>
+		<div data-hilos></div>
+		<div class="acciones"><button class="boton" type="button" data-pedir-cambios hidden></button></div>
+		<p class="error" role="alert" data-error-pedir></p>`;
+	const pedir = zona.querySelector<HTMLButtonElement>('[data-pedir-cambios]')!;
+	const contar = (n: number) => {
+		pedir.hidden = !n;
+		pedir.textContent = n === 1 ? 'Pedir cambios (1 comentario)' : `Pedir cambios (${n} comentarios)`;
+	};
+	const hilos = await pintarComentarios(zona.querySelector<HTMLElement>('[data-hilos]')!, null, depsComentarios(id), {
+		promocion: id, version, tipo: 'personalizacion', clave: null, comentar: true,
+		alCambiar: (hs) => contar(pendientes(hs).length),
+	});
+	contar(pendientes(hilos).length);
+	pedir.addEventListener('click', async () => {
+		const error = zona.querySelector<HTMLElement>('[data-error-pedir]')!;
+		error.textContent = '';
+		if (!confirm('¿Pedir estos cambios de la personalización?\n\nSe enviarán todos los comentarios pendientes al equipo de MUNE, que preparará una versión nueva.')) return;
+		pedir.disabled = true;
+		const { error: e } = await sb.rpc('pedir_cambios_personalizacion', { p_promocion: id });
+		if (e) { error.textContent = traducir(e, 'pedir los cambios'); pedir.disabled = false; return; }
+		// aviso por email al equipo de MUNE (si falla, la petición ya está guardada)
+		await Promise.race([sb.functions.invoke('aviso-subida', { body: { comentarios: id } }).catch(() => undefined), new Promise((r) => setTimeout(r, 8000))]);
+		pedir.disabled = false;
+		await pintarCambiosPersonalizacion(zona, id, version);
+		zona.insertAdjacentHTML('afterbegin', '<p class="aviso" role="status">Hemos recibido tu petición de cambios de la personalización. El equipo de MUNE preparará una versión nueva.</p>');
+	});
+}

@@ -11,9 +11,10 @@
 // personalización con precios y lo que ha elegido cada comprador; renders y
 // plano comercial. Con «Gestionar personalizaciones», también elegir en su nombre.
 
-import { ESCAPARATE, REVISION, alEnviar, esc, sb, traducir } from './comun';
+import { ESCAPARATE, REVISION, alEnviar, esc, sb } from './comun';
+import { type Hilo, abiertos, hilosDe, pendientes as sinEnviar, leerHilos, pintarComentarios, textoPedirCambios } from './comentarios';
 import {
-	type Contexto, type Elemento, avance, baseVisita, chipEstado, faltanTrasAprobar, guardarDecision, htmlPersonas,
+	type Contexto, type Elemento, abrirConPase, avance, baseVisita, depsComentarios, chipEstado, faltanTrasAprobar, guardarDecision, htmlPersonas,
 	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, textoPublicando, numVersion, tituloUnidad, versionPublicada, versionesCon,
 } from './validacion';
 
@@ -48,7 +49,8 @@ export async function pintarExperiencia(caja: HTMLElement, promo: Promocion3D, e
 	}
 	const version = versiones.includes(extra) ? extra : versiones[0];
 	const actual = version === versiones[0];
-	const [unidades, base] = await Promise.all([leerValidacion(id, version, 'experiencia'), baseVisita(id, version)]);
+	const [unidades, base, hilos] = await Promise.all([leerValidacion(id, version, 'experiencia'), baseVisita(id, version),
+		leerHilos(sb, id).catch(() => [] as Hilo[])]);
 	const supuestos = await leerSupuestos(base, id);
 	const aprobadas = unidades.filter((u) => u.estado === 'aprobado').length;
 	const todas = unidades.length > 0 && aprobadas === unidades.length;
@@ -63,7 +65,7 @@ export async function pintarExperiencia(caja: HTMLElement, promo: Promocion3D, e
 		${actual ? htmlSupuestos(id, supuestos) : ''}
 		${todas ? '' : `<p class="promo-versiones">${aprobadas} de ${unidades.length} aprobadas${pendientes.length && aprobadas ? ` · Pendiente: ${esc(pendientes.join(', '))}` : ''}</p>
 		<progress class="progreso" value="${aprobadas}" max="${Math.max(1, unidades.length)}" aria-hidden="true"></progress>`}
-		${unidades.map((u) => htmlUnidad(id, u, version, actual, base, ctx)).join('')}
+		${unidades.map((u) => htmlUnidad(id, u, version, actual, base, ctx, abiertos(hilosDe(hilos, 'experiencia', u.clave, version)).length)).join('')}
 		${versiones.length > 1 ? `<p class="ayuda separado">Otras versiones: ${versiones.filter((v) => v !== version)
 			.map((v) => `<a class="enlace" href="#/promocion/${esc(id)}/experiencia/${esc(v)}">${esc(v)}</a>`).join(' · ')}</p>` : ''}`;
 	abrirProfesional(caja, id);
@@ -73,6 +75,23 @@ export async function pintarExperiencia(caja: HTMLElement, promo: Promocion3D, e
 		const raiz = caja.querySelector<HTMLElement>(`[data-unidad="${u.id}"]`);
 		if (!raiz) continue;
 		const nombre = `Experiencia 3D · ${tituloUnidad(u)}`;
+		// sus comentarios; «Pedir cambios» recoge los abiertos
+		let hilosUnidad = hilosDe(hilos, 'experiencia', u.clave, version);
+		const recoge = raiz.querySelector<HTMLElement>('[data-recoge]');
+		const pintarRecoge = () => {
+			if (!recoge) return;
+			const n = sinEnviar(hilosUnidad).length;
+			recoge.hidden = !n;
+			recoge.textContent = n === 1 ? 'Se enviará el comentario pendiente de esta tipología. Si quieres, añade algo más.'
+				: `Se enviarán los ${n} comentarios pendientes de esta tipología. Si quieres, añade algo más.`;
+			raiz.querySelector<HTMLElement>('[data-etiqueta-pedir]')!.textContent = n ? 'Algo más (opcional)' : 'Qué hay que cambiar';
+		};
+		pintarRecoge();
+		const zona = raiz.querySelector<HTMLElement>('[data-comentarios]');
+		if (zona) void pintarComentarios(zona, null, depsComentarios(id), {
+			promocion: id, version, tipo: 'experiencia', clave: u.clave, comentar: actual,
+			alCambiar: (hs) => { hilosUnidad = hs; pintarRecoge(); },
+		}, hilos);
 		const aprobar = raiz.querySelector<HTMLFormElement>('[data-aprobar]');
 		if (aprobar) alEnviar(aprobar, async (d) => {
 			if (!d.get('confirmado')) throw new Error('Marca la casilla para confirmar que la has recorrido.');
@@ -89,10 +108,11 @@ export async function pintarExperiencia(caja: HTMLElement, promo: Promocion3D, e
 		});
 		const rechazar = raiz.querySelector<HTMLFormElement>('[data-rechazar]');
 		if (rechazar) alEnviar(rechazar, async (d) => {
-			const comentario = String(d.get('comentario') ?? '').trim();
-			if (comentario.length < 3) throw new Error('Explica qué hay que cambiar.');
-			const zona = String(d.get('zona') ?? '').trim();
-			await guardarDecision(id, version, 'experiencia', u.id, { decision: 'rechazado', comentario, zona: zona || null });
+			const escrito = String(d.get('comentario') ?? '').trim();
+			if (!sinEnviar(hilosUnidad).length && escrito.length < 3) throw new Error('Explica qué hay que cambiar, o comenta en el 3D lo que hay que cambiar.');
+			const comentario = textoPedirCambios(hilosUnidad, escrito);
+			const zonaVista = String(d.get('zona') ?? '').trim();
+			await guardarDecision(id, version, 'experiencia', u.id, { decision: 'rechazado', comentario, zona: zonaVista || null });
 			alValidar(`Hemos recibido tu petición de cambios en «${nombre}». El equipo de MUNE preparará la versión corregida.`, version);
 		});
 	}
@@ -119,7 +139,7 @@ function htmlSupuestos(id: string, supuestos: Supuesto[]): string {
 	</div>`;
 }
 
-function htmlUnidad(id: string, u: Elemento, version: string, actual: boolean, base: string, ctx: Contexto): string {
+function htmlUnidad(id: string, u: Elemento, version: string, actual: boolean, base: string, ctx: Contexto, hilosAbiertos: number): string {
 	const voto = miVoto(u, ctx);
 	const puede = actual && u.estado !== 'aprobado' && !!voto;
 	const vistas = (u.vistas ?? []).filter((v) => v && v.nombre);
@@ -143,47 +163,34 @@ function htmlUnidad(id: string, u: Elemento, version: string, actual: boolean, b
 				</form>` : ''}
 				<form class="peticion-form" data-rechazar novalidate>
 					<h3 class="subtitulo">Pedir cambios</h3>
+					<p class="ayuda" data-recoge hidden></p>
 					<label>Vista o zona (opcional)
 						<select name="zona">
 							${vistas.map((v) => `<option value="${esc(v.nombre.slice(0, 120))}">${esc(v.nombre)}</option>`).join('')}
 							<option value="" selected>General / otra</option>
 						</select></label>
-					<label>Qué hay que cambiar
+					<label><span data-etiqueta-pedir>Qué hay que cambiar</span>
 						<textarea name="comentario" rows="3" maxlength="4000" placeholder="Por ejemplo: la ventana del dormitorio principal debe llegar hasta el suelo."></textarea></label>
 					<p class="error" role="alert"></p>
 					<div class="acciones"><button class="boton secundario" type="submit">Pedir cambios</button></div>
 				</form>
 			</div>
 		</details>` : ''}
+		<details class="comentarios-plegable" ${hilosAbiertos ? 'open' : ''}>
+			<summary>Comentarios${hilosAbiertos ? ` (${hilosAbiertos} abierto${hilosAbiertos === 1 ? '' : 's'})` : ''}</summary>
+			<div data-comentarios></div>
+		</details>
 	</article>`;
 }
 
-/**
- * Los enlaces al 3D se abren en modo profesional: se pide un pase a Supabase y
- * se añade al enlace (#p-…), que la web quita de la dirección al entrar. La
- * pestaña se abre antes de pedirlo para que el navegador no la bloquee.
- */
+/** Los enlaces al 3D se abren en modo profesional (abrirConPase). */
 function abrirProfesional(caja: HTMLElement, id: string): void {
 	const error = caja.querySelector<HTMLElement>('[data-error-profesional]');
 	for (const a of caja.querySelectorAll<HTMLAnchorElement>('a[data-profesional]')) {
-		a.addEventListener('click', async (ev) => {
+		a.addEventListener('click', (ev) => {
 			ev.preventDefault();
 			if (error) error.textContent = '';
-			const ventana = window.open('', '_blank');
-			if (ventana) {
-				ventana.opener = null;
-				ventana.document.title = 'Abriendo la Experiencia 3D…';
-			}
-			const { data, error: e } = await sb.rpc('abrir_experiencia_profesional', { p_promocion: id });
-			if (e || typeof data !== 'string') {
-				ventana?.close();
-				if (error) error.textContent = traducir(e, 'abrir la Experiencia 3D');
-				else alert(traducir(e, 'abrir la Experiencia 3D'));
-				return;
-			}
-			const destino = `${a.href.split('#')[0]}#p-${data}`;
-			if (ventana) ventana.location.href = destino;
-			else location.href = destino;
+			void abrirConPase(id, a.href, (m) => (error ? (error.textContent = m) : alert(m)));
 		});
 	}
 }

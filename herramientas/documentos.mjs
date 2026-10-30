@@ -5,6 +5,7 @@
 //   node herramientas/documentos.mjs pendientes [promoción]           (documentos por revisar)
 //   node herramientas/documentos.mjs bajar <id>                       (descarga a salida/documentos/ y comprueba la huella)
 //   node herramientas/documentos.mjs estado <id> vigente|rechazado [--nota "Texto"]
+//   node herramientas/documentos.mjs comentarios <promoción> [resolver <ids> --version vN]   (comentarios visuales enviados, 038)
 //
 // Receta 2 («revisa lo nuevo de X»): pendientes → bajar cada uno → leerlo y
 // comprobarlo → proponer a la administradora qué marcar como vigente y qué
@@ -32,7 +33,7 @@ const opcion = ( nombre ) => {
 	return i >= 0 ? args[ i + 1 ] : undefined;
 
 };
-const posicionales = args.filter( ( a, i ) => ! a.startsWith( '--' ) && ! [ '--nota', '--desde' ].includes( args[ i - 1 ] ) );
+const posicionales = args.filter( ( a, i ) => ! a.startsWith( '--' ) && ! [ '--nota', '--desde', '--version' ].includes( args[ i - 1 ] ) );
 
 function fallo( texto ) {
 
@@ -172,6 +173,52 @@ async function novedades( token ) {
 
 }
 
+// Comentarios visuales de una promoción (038_comentarios.sql). Claude solo
+// trabaja con lo ENVIADO: lo que la promotora ha mandado con «Pedir cambios» y
+// las notas que la administradora ha devuelto a Claude. Lo pendiente de enviar
+// (la promotora aún lo está escribiendo) se cuenta, pero no se toca.
+//   comentarios <promoción>                                 lo enviado y sin resolver
+//   comentarios <promoción> resolver <id,id,…> --version vN  al preparar vN, marca lo que arregla
+// Solo marca resueltos en una versión que aún no se ha enviado a validar.
+async function comentarios( token, promocion, accion ) {
+
+	if ( ! /^[a-z0-9-]{1,60}$/.test( promocion ?? '' ) ) fallo( 'Indica la promoción, por ejemplo: residencial-demo' );
+	if ( accion === 'resolver' ) {
+
+		const ids = ( posicionales[ 3 ] ?? '' ).split( ',' ).map( Number ).filter( ( n ) => Number.isInteger( n ) && n > 0 );
+		const version = opcion( 'version' );
+		if ( ! ids.length || ! /^v\d+$/.test( version ?? '' ) ) fallo( 'Uso: comentarios <promoción> resolver 12,15 --version v18' );
+		const n = await pedir( '/rest/v1/rpc/resolver_comentarios', { metodo: 'POST', token, cuerpo: { p_promocion: promocion, p_version: version, p_comentarios: ids } } );
+		return console.log( `✓ ${ n } comentario(s) marcados como resueltos en la ${ version }.` );
+
+	}
+	const hilos = await pedir( '/rest/v1/rpc/comentarios_de', { metodo: 'POST', token, cuerpo: { p_promocion: promocion } } );
+	const abiertos = hilos.filter( ( h ) => ! h.resuelto_en ).sort( ( x, y ) => x.creado_en.localeCompare( y.creado_en ) );
+	const enviados = abiertos.filter( ( h ) => h.enviado_en );
+	const sinEnviar = abiertos.filter( ( h ) => ! h.enviado_en && ! h.interno ).length;
+	const lugar = ( h ) => h.tipo === 'version' ? 'toda la versión' : h.tipo === 'personalizacion' ? `personalización${ h.clave ? ` ${ h.clave }` : '' }`
+		: `${ h.tipo === 'plano' ? 'plano' : '3D' } ${ h.clave }`;
+	const punto = ( h ) => ! h.punto ? 'general' : h.tipo === 'plano'
+		? `punto (${ Math.round( h.punto.x * 100 ) } %, ${ Math.round( h.punto.y * 100 ) } %) de la imagen`
+		: `punto [${ h.punto.p.join( ', ' ) }]${ h.punto.vista ? ` · vista ${ h.punto.vista }` : '' }${ h.punto.planta ? ` · planta ${ h.punto.planta }` : '' }`;
+	if ( ! enviados.length ) console.log( `No hay comentarios enviados sin resolver en ${ promocion }.` );
+	for ( const [ titulo, grupo ] of [ [ 'Notas de MUNE para Claude', enviados.filter( ( h ) => h.interno ) ], [ 'Cambios pedidos por la promotora', enviados.filter( ( h ) => ! h.interno ) ] ] ) {
+
+		if ( ! grupo.length ) continue;
+		console.log( `\n■ ${ titulo }` );
+		for ( const h of grupo ) {
+
+			console.log( `\n#${ h.id } · ${ lugar( h ) } · ${ punto( h ) } · ${ h.version } · ${ h.autor } · ${ fecha( h.creado_en ) }\n  «${ h.texto }»` );
+			for ( const r of h.respuestas ) console.log( `    ↳ ${ r.de_mune ? 'Equipo de MUNE' : r.autor }: «${ r.texto }»` );
+
+		}
+
+	}
+	if ( sinEnviar ) console.log( `\n(${ sinEnviar } comentario(s) de la promotora todavía sin enviar: no se tocan hasta que pida cambios.)` );
+	if ( enviados.length ) console.log( `\nAl preparar la versión nueva: node herramientas/documentos.mjs comentarios ${ promocion } resolver <ids> --version vN` );
+
+}
+
 const [ orden, a, b ] = posicionales;
 const token = await entrar();
 switch ( orden ) {
@@ -180,6 +227,7 @@ switch ( orden ) {
 	case 'pendientes': await pendientes( token, a ); break;
 	case 'bajar': await bajar( token, a ); break;
 	case 'estado': await cambiarEstado( token, a, b ); break;
-	default: fallo( 'Orden desconocida. Usa: novedades | pendientes | bajar | estado' );
+	case 'comentarios': await comentarios( token, a, b ); break;
+	default: fallo( 'Orden desconocida. Usa: novedades | pendientes | bajar | estado | comentarios' );
 
 }

@@ -6,7 +6,8 @@
 // valida». Si el elemento no cambia de una versión a otra, conserva sus
 // aprobaciones.
 
-import { ESCAPARATE, REVISION, esc, sb } from './comun';
+import { ESCAPARATE, REVISION, esc, sb, traducir } from './comun';
+import type { Dependencias, Hilo, TipoComentario } from './comentarios';
 
 export type TipoValidacion = 'planos' | 'experiencia';
 
@@ -146,3 +147,51 @@ export function mensajeAprobado(e: Elemento | undefined, tipo: TipoValidacion): 
 
 /** Nombre de una unidad de la Experiencia 3D: la tipología o variante, o el entorno. */
 export const tituloUnidad = (e: Pick<Elemento, 'clave' | 'titulo'>) => e.clave === 'entorno' ? 'Entorno y elementos generales' : e.titulo;
+
+/**
+ * Abre el 3D en modo profesional: pide un pase a Supabase y lo añade al enlace
+ * (#p-…), que la web quita de la dirección al entrar. La pestaña se abre antes
+ * de pedirlo para que el navegador no la bloquee.
+ */
+export async function abrirConPase(id: string, url: string, alFallar: (mensaje: string) => void): Promise<void> {
+	const ventana = window.open('', '_blank');
+	if (ventana) {
+		ventana.opener = null;
+		ventana.document.title = 'Abriendo la Experiencia 3D…';
+	}
+	const { data, error } = await sb.rpc('abrir_experiencia_profesional', { p_promocion: id });
+	if (error || typeof data !== 'string') {
+		ventana?.close();
+		alFallar(traducir(error, 'abrir la Experiencia 3D'));
+		return;
+	}
+	const destino = `${url.split('#')[0]}#p-${data}`;
+	if (ventana) ventana.location.href = destino;
+	else location.href = destino;
+}
+
+// ─── Comentarios visuales (comentarios.ts) ─────────────────────────────────
+
+/** Lo que necesitan los comentarios en MUNE Portal. */
+export function depsComentarios(id: string, alFallar: (mensaje: string) => void = (m) => alert(m)): Dependencias {
+	return {
+		sb, esc, traducir: (e) => traducir(e, 'guardar el comentario'), admin: false,
+		// el 3D de la versión más reciente con Experiencia 3D: la vista previa si está en revisión
+		abrir3D: (clave: string | null, h: Hilo | null, tipo: TipoComentario) => void (async () => {
+			const versiones = await versionesCon(id, 'experiencia');
+			const base = versiones[0] ? await baseVisita(id, versiones[0]) : ESCAPARATE;
+			const q = new URLSearchParams();
+			if (clave) q.set('ver', clave);
+			if (tipo === 'personalizacion') q.set('modo', 'personalizar');
+			if (h) q.set('comentario', String(h.id)); else q.set('comentar', '1');
+			await abrirConPase(id, `${base}/${id}/?${q}`, alFallar);
+		})(),
+		imagenPlano: async (clave: string, version: string) => {
+			const { data } = await sb.from('entregables').select('miniatura').eq('promocion_id', id).eq('tipo', 'plano')
+				.eq('version', version).eq('clave', clave).maybeSingle();
+			if (!data?.miniatura) return null;
+			const { data: u } = await sb.storage.from('entregables').createSignedUrl(data.miniatura as string, 600);
+			return u?.signedUrl ?? null;
+		},
+	};
+}

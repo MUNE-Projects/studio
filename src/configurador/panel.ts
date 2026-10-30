@@ -274,7 +274,8 @@ export class Panel {
 		if ( chip ) {
 
 			chip.hidden = c.totalExtras === 0;
-			chip.textContent = `Tu personalización: +${ fmtEuros( c.totalExtras ) }`;
+			// en modo profesional, el equipo de la promotora ve la del comprador de esa vivienda
+			chip.textContent = `${ document.body.classList.contains( 'profesional' ) ? 'Personalización del comprador' : 'Tu personalización' }: +${ fmtEuros( c.totalExtras ) }`;
 
 		}
 

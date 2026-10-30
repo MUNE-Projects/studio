@@ -6,8 +6,10 @@
 
 import { alEnviar, anotar, esc, fallo, fecha, sb, traducir } from './comun';
 import { pintarComparacion } from './comparacion';
+import { type Hilo, htmlPlanoConMarcas, leerHilos, pintarComentarios } from './comentarios';
+import { leerManifiesto } from './planos';
 import { avisarPromotora } from './avisos';
-import { apuntarSinNadaNuevo, leerValidacion, listaParaPublicar, motivoNoPublicar, pintarValidacion, type Validacion } from './validacion';
+import { apuntarSinNadaNuevo, leerExperiencia, leerValidacion, listaParaPublicar, motivoNoPublicar, pintarValidacion, type Validacion } from './validacion';
 
 export const ESCAPARATE: string = import.meta.env.VITE_ESCAPARATE ?? 'https://experience.mune-projects.workers.dev';
 export const REVISION: string = import.meta.env.VITE_REVISION ?? 'https://revision-experience.mune-projects.workers.dev';
@@ -136,6 +138,29 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 		<p class="aviso" data-progreso role="status" hidden></p>
 		<div data-validacion></div>
 		${pendiente ? '<section class="comparacion" data-comparacion hidden></section>' : ''}
+		${pendiente ? `<section class="comentarios">
+			<h3>Qué resuelve la ${esc(rev!.version)}</h3>
+			<p class="ayuda">Los comentarios que Claude ha marcado como resueltos al preparar esta versión. Comprueba en la vista previa que están bien antes de enviarla a la promotora; si alguno no lo está, pulsa «No está resuelto: reabrir» o déjale una nota abajo.</p>
+			<div data-resueltos></div>
+		</section>
+		<section class="comentarios">
+			<h3>Tus notas para Claude sobre la ${esc(rev!.version)}</h3>
+			<p class="ayuda">Si al revisar la vista previa ves algo que corregir, apúntalo aquí: general, en un plano o en el 3D. La promotora no lo ve. Cuando termines, pulsa «Devolver a Claude».</p>
+			<div data-notas></div>
+			<div class="notas-sitios">
+				<label>Marcar en un plano <select data-plano-nota><option value="">Elige un plano…</option></select></label>
+				<div data-zona-plano-nota></div>
+				<label>Marcar en el 3D <select data-unidad-nota><option value="">Elige una tipología…</option></select></label>
+				<div class="acciones"><button class="boton secundario pequeno" type="button" data-nota-3d disabled>Comentar la Experiencia 3D</button><button class="boton secundario pequeno" type="button" data-nota-3d-personalizacion disabled>Comentar la personalización</button></div>
+			</div>
+			<div class="acciones"><button class="boton" type="button" data-devolver hidden></button></div>
+			<p class="error" role="alert" data-error-devolver></p>
+		</section>` : ''}
+		${pub || rev ? `<section class="comentarios">
+			<h3>Comentarios de la promotora</h3>
+			<p class="ayuda">Lo que comenta el equipo de la promotora en los planos, en el 3D, en la personalización y en la versión. Claude trabaja con lo que ya han enviado («Pedido») y, al preparar la versión nueva, marca lo que resuelve. Si quieres, puedes responderles.</p>
+			<div data-comentarios></div>
+		</section>` : ''}
 		${volver.length ? `<form class="peticion-form" data-volver hidden novalidate>
 			<label>Volver la experiencia publicada de ${esc(p.nombre)} a la
 				<select name="version">${volver.reverse().map((v) => `<option>${v}</option>`).join('')}</select>
@@ -156,6 +181,9 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 	if (validacion) void pintarValidacion(destino.querySelector<HTMLElement>('[data-validacion]')!, REVISION, p, validacion, repintar);
 	// qué cambia respecto a la publicada (comparacion.ts)
 	if (pendiente) void pintarComparacion(destino.querySelector<HTMLElement>('[data-comparacion]')!, { sb, esc, traducir, base: REVISION, privado: true }, id, rev!.version);
+	// comentarios de la promotora (comentarios.ts): todos, los abiertos primero
+	const ultima = (pendiente ? rev : pub) ?? rev;
+	if (ultima) void pintarComentariosStudio(destino, id, ultima.version, pendiente ? REVISION : ESCAPARATE, pendiente);
 
 	destino.querySelector<HTMLButtonElement>('[data-publicar]')?.addEventListener('click', async (ev) => {
 		const b = ev.currentTarget as HTMLButtonElement;
@@ -201,4 +229,126 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 			if (ok) cerrar(); else throw new Error('No se ha podido poner en marcha. Mira el aviso de arriba.');
 		});
 	}
+}
+
+/**
+ * Comentarios en MUNE Studio (comentarios.ts): los de la promotora; con una
+ * versión en revisión, también lo que resuelve y las notas para Claude.
+ */
+async function pintarComentariosStudio(destino: HTMLElement, id: string, version: string, base: string, enRevision: boolean): Promise<void> {
+	const { data } = await sb.from('entregables').select('tipo, clave, titulo, nombre').eq('promocion_id', id).in('tipo', ['plano', 'experiencia'])
+		.order('creado_en', { ascending: false });
+	const titulos = new Map<string, string>();
+	for (const x of (data ?? []) as { tipo: string; clave: string | null; titulo: string | null; nombre: string }[]) {
+		const k = `${x.tipo}:${x.clave}`;
+		if (!titulos.has(k)) titulos.set(k, x.titulo ?? x.nombre);
+	}
+	const [planos, experiencia] = enRevision ? await Promise.all([leerManifiesto(REVISION, id, version), leerExperiencia(REVISION, id, version)]) : [null, null];
+	for (const p of planos?.planos ?? []) titulos.set(`plano:${p.clave}`, p.titulo);
+	for (const u of experiencia?.unidades ?? []) titulos.set(`experiencia:${u.clave}`, u.titulo);
+	const unidad = (clave: string | null) => (clave === 'entorno' ? 'Entorno y elementos generales' : titulos.get(`experiencia:${clave}`) ?? clave ?? '');
+	const lugar = (h: Hilo) => h.tipo === 'version' ? 'Toda la versión'
+		: h.tipo === 'plano' ? `Plano · ${titulos.get(`plano:${h.clave}`) ?? h.clave}`
+			: h.tipo === 'personalizacion' ? `Personalización${h.clave ? ` · ${unidad(h.clave)}` : ''}`
+				: `3D · ${unidad(h.clave)}`;
+	const abrir3D = (clave: string | null, h: Hilo | null, tipo: string) => {
+		const q = new URLSearchParams();
+		if (clave) q.set('ver', clave);
+		if (tipo === 'personalizacion') q.set('modo', 'personalizar');
+		if (h) q.set('comentario', String(h.id)); else q.set('comentar', '1');
+		void abrirConPase(id, `${base}/${id}/?${q}`);
+	};
+	const deps = {
+		sb, esc, traducir, admin: true, abrir3D,
+		imagenPlano: async (clave: string, v: string) => {
+			const { data: e } = await sb.from('entregables').select('miniatura').eq('promocion_id', id).eq('tipo', 'plano')
+				.eq('version', v).eq('clave', clave).maybeSingle();
+			if (e?.miniatura) {
+				const { data: u } = await sb.storage.from('entregables').createSignedUrl(e.miniatura as string, 600);
+				return u?.signedUrl ?? null;
+			}
+			const enVista = planos?.planos.find((p) => p.clave === clave);
+			return enVista ? `${REVISION}/${id}/planos/${enVista.miniatura}` : null;
+		},
+	};
+	const hilos = await leerHilos(sb, id).catch(() => [] as Hilo[]);
+	const caja = (sel: string) => destino.querySelector<HTMLElement>(sel);
+
+	// los de la promotora
+	if (caja('[data-comentarios]')) await pintarComentarios(caja('[data-comentarios]')!, null, deps,
+		{ promocion: id, version, tipo: 'version', clave: null, comentar: false, lugar, filtro: (h) => !h.interno }, hilos);
+	if (!enRevision) return;
+
+	// lo que resuelve la versión en revisión
+	await pintarComentarios(caja('[data-resueltos]')!, null, deps,
+		{ promocion: id, version, tipo: 'version', clave: null, comentar: false, lugar, filtro: (h) => h.resuelto_version === version, resueltosALaVista: true }, hilos);
+	if (!caja('[data-resueltos] .hilo')) caja('[data-resueltos]')!.innerHTML = '<p class="vacio">Esta versión no marca ningún comentario como resuelto.</p>';
+
+	// las notas para Claude
+	const devolver = caja('[data-devolver]') as HTMLButtonElement;
+	const contar = (hs: Hilo[]) => {
+		const n = hs.filter((h) => h.interno && !h.enviado_en && !h.resuelto_en).length;
+		devolver.hidden = !n;
+		devolver.textContent = n === 1 ? 'Devolver a Claude (1 nota)' : `Devolver a Claude (${n} notas)`;
+	};
+	const notas = () => pintarComentarios(caja('[data-notas]')!, null, deps, {
+		promocion: id, version, tipo: 'version', clave: null, comentar: true, lugar, filtro: (h) => h.interno && !h.resuelto_en,
+		ayuda: 'Una nota general para Claude (para un sitio concreto, márcalo en un plano o en el 3D, abajo).',
+		alCambiar: () => void leerHilos(sb, id).then(contar),
+	});
+	contar(await notas());
+
+	const selPlano = caja('[data-plano-nota]') as HTMLSelectElement;
+	for (const p of planos?.planos ?? []) selPlano.add(new Option(p.titulo, p.clave));
+	selPlano.closest('label')!.hidden = !planos?.planos.length;
+	selPlano.addEventListener('change', async () => {
+		const zona = caja('[data-zona-plano-nota]')!;
+		const p = planos?.planos.find((x) => x.clave === selPlano.value);
+		if (!p) { zona.innerHTML = ''; return; }
+		const todos = await leerHilos(sb, id);
+		const aqui = todos.filter((h) => h.interno && h.tipo === 'plano' && h.clave === p.clave && !h.resuelto_en);
+		zona.innerHTML = `${htmlPlanoConMarcas(esc, `${REVISION}/${id}/planos/${p.miniatura}`, `Plano ${p.titulo}`, aqui, true)}<div data-hilos-plano></div>`;
+		await pintarComentarios(zona.querySelector<HTMLElement>('[data-hilos-plano]')!, zona.querySelector<HTMLElement>('[data-plano-marcas]'), deps, {
+			promocion: id, version, tipo: 'plano', clave: p.clave, comentar: true, filtro: (h) => h.interno,
+			ayuda: 'Pulsa en el plano donde está lo que hay que corregir y escribe la nota.',
+			alCambiar: () => void notas().then(contar),
+		}, todos);
+	});
+
+	const selUnidad = caja('[data-unidad-nota]') as HTMLSelectElement;
+	for (const u of experiencia?.unidades ?? []) selUnidad.add(new Option(u.clave === 'entorno' ? 'Entorno y elementos generales' : u.titulo, u.clave));
+	const b3d = caja('[data-nota-3d]') as HTMLButtonElement;
+	const b3dP = caja('[data-nota-3d-personalizacion]') as HTMLButtonElement;
+	selUnidad.addEventListener('change', () => { b3d.disabled = b3dP.disabled = !selUnidad.value; });
+	b3d.addEventListener('click', () => abrir3D(selUnidad.value, null, 'experiencia'));
+	b3dP.addEventListener('click', () => abrir3D(selUnidad.value, null, 'personalizacion'));
+	// al volver del 3D, las notas puestas allí
+	document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && devolver.isConnected) void notas().then(contar); });
+
+	devolver.addEventListener('click', async () => {
+		const error = caja('[data-error-devolver]')!;
+		error.textContent = '';
+		if (!confirm(`¿Devolver la ${version} a Claude con tus notas?\n\nClaude preparará una versión nueva con lo que has apuntado.`)) return;
+		devolver.disabled = true;
+		const { error: e } = await sb.rpc('devolver_a_claude', { p_promocion: id });
+		devolver.disabled = false;
+		if (e) { error.textContent = traducir(e); return; }
+		contar(await notas());
+		error.insertAdjacentHTML('beforebegin', '<p class="aviso" role="status">Hecho. Pídeme «mira las notas de la promoción» (o lo verá Claude en su próxima revisión) y preparo la versión nueva.</p>');
+	});
+}
+
+/** Abre el 3D con un pase (como el modo profesional del Portal) para ver los comentarios en su sitio. */
+async function abrirConPase(id: string, url: string): Promise<void> {
+	const ventana = window.open('', '_blank');
+	if (ventana) ventana.opener = null;
+	const { data, error } = await sb.rpc('abrir_experiencia_profesional', { p_promocion: id });
+	if (error || typeof data !== 'string') {
+		ventana?.close();
+		alert(traducir(error));
+		return;
+	}
+	const destino = `${url}#p-${data}`;
+	if (ventana) ventana.location.href = destino;
+	else location.href = destino;
 }
