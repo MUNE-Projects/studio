@@ -8,13 +8,16 @@
 # después de comprobar que esa versión está validada entera). Las dos usan la
 # llave A, que únicamente permite arrancar procesos de este almacén.
 #
-# Llaves que usa:
-#  · ESCAPARATE_TOKEN (llave B, secreto de este almacén): escribir en
-#    MUNE-Projects/experience (antes «escaparate») y nada más.
-#  · GITHUB_TOKEN (automática de GitHub, solo dura este proceso): guardar el
-#    registro de versiones en este almacén.
+# Desde la decisión 60 (036_publicacion.sql) no escribe nada en GitHub: apunta la
+# publicación en Supabase y envía la web directamente a Cloudflare.
 #
-# Toda la lógica y sus comprobaciones están en herramientas/publicacion.mjs.
+# Llaves que usa (secretos de este almacén):
+#  · EJECUTOR_CLAVE: la cuenta «ejecutor» de MUNE en Supabase, que solo puede
+#    leer las versiones y publicarlas o volver atrás;
+#  · CLOUDFLARE_API_TOKEN (llave C): enviar la web al Worker «experience».
+#
+# Toda la lógica y sus comprobaciones están en herramientas/publicacion.mjs
+# (publicar o volver) y herramientas/desplegar.mjs (enviar a Cloudflare).
 
 name: Publicar desde el Panel
 run-name: ${{ inputs.accion }} ${{ inputs.promocion }} ${{ inputs.version }} · ${{ inputs.por }}
@@ -62,7 +65,7 @@ on:
         default: ''
 
 permissions:
-  contents: write
+  contents: read
   issues: write   # cerrar el aviso «lista para revisar» al publicar
   actions: write  # avisos por email de la publicación al aprobar la promotora
 
@@ -92,50 +95,28 @@ jobs:
             [[ -n "$MOTIVO" ]] || { echo "::error::Volver atrás exige un motivo"; exit 1; }
           fi
 
-      - name: Taller
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-          path: taller
-
-      - name: Escaparate
-        uses: actions/checkout@v4
-        with:
-          repository: MUNE-Projects/experience
-          ref: main
-          fetch-depth: 0
-          path: escaparate
-          token: ${{ secrets.ESCAPARATE_TOKEN }}
-
-      - name: Traer la vista previa (rama revision)
-        run: git -C escaparate fetch --no-tags origin +refs/heads/revision:refs/remotes/origin/revision
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Identidad del ejecutor
-        run: |
-          for r in taller escaparate; do
-            git -C "$r" config user.name "MUNE ejecutor"
-            git -C "$r" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          done
-
       - name: Publicar o volver
-        working-directory: taller
+        env:
+          EJECUTOR_CLAVE: ${{ secrets.EJECUTOR_CLAVE }}
         run: |
           if [[ "$ACCION" == aprobar ]]; then
-            node herramientas/publicacion.mjs aprobar "$PROMOCION" --version "$VERSION" --aprobado-por "$POR" --escaparate ../escaparate --confirmar
+            node herramientas/publicacion.mjs aprobar "$PROMOCION" --version "$VERSION" --aprobado-por "$POR" --confirmar
           else
-            node herramientas/publicacion.mjs volver "$PROMOCION" "$VERSION" --motivo "$MOTIVO" --aprobado-por "$POR" --escaparate ../escaparate --confirmar
+            node herramientas/publicacion.mjs volver "$PROMOCION" "$VERSION" --motivo "$MOTIVO" --aprobado-por "$POR" --confirmar
           fi
 
-      - name: Enviar a producción y guardar el registro
-        run: |
-          git -C escaparate push origin main --follow-tags
-          git -C taller pull --rebase --no-tags origin main
-          git -C taller push origin main
+      - name: Enviar a Cloudflare (producción y vista previa)
+        env:
+          EJECUTOR_CLAVE: ${{ secrets.EJECUTOR_CLAVE }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 2706295406853446349339961bd45902
+        run: node herramientas/desplegar.mjs ambas
 
       - name: Cerrar el aviso «lista para revisar»
         if: inputs.accion == 'aprobar'

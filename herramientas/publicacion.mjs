@@ -15,22 +15,26 @@
 //   node herramientas/publicacion.mjs volver    <promoción> <vN> --motivo "Texto" [--aprobado-por "Nombre"] [--confirmar]
 //   node herramientas/publicacion.mjs estado    <promoción>
 //
-// Flujo: «preparar» deja la versión en la rama «revision» del escaparate (vista
-// previa, estado «en_revision»); «aprobar» la copia a «main» (producción, estado
-// «publicada»). «volver» restaura en «main» una versión anterior.
+// Flujo (036_publicacion.sql, decisión 60): «preparar» guarda la web construida
+// de la versión en Supabase (almacén «versiones») y la apunta «en revisión»;
+// «aprobar» la marca «publicada»; «volver» vuelve a publicar una anterior. Lo que
+// va a cada web lo envía a Cloudflare herramientas/desplegar.mjs (en GitHub
+// Actions: avisar.yml la vista previa y publicar.yml las dos). Nada de ninguna
+// promoción se guarda en GitHub.
 //
-// Opciones comunes: --escaparate <ruta> (por defecto ../experience, o ../escaparate si aún se llama así).
-// Sin --confirmar, publicar y volver solo muestran lo que harían (no cambian nada).
+// Sin --confirmar, preparar, publicar y volver solo muestran lo que harían (no cambian nada).
+// «aprobar» y «volver» usan la cuenta «ejecutor» (EJECUTOR_CLAVE) o, en MUNE
+// Studio, la administradora; «preparar», el robot de Claude.
 //
 // Reglas que garantiza:
 //  - la web pública se construye SIN Studio y se comprueba que no lo contiene;
-//  - ningún archivo con forma de secreto llega al escaparate;
+//  - ningún archivo con forma de secreto llega a la web pública;
 //  - cada publicación es una versión numerada (v1, v2…) que fija el commit exacto
-//    del código (producto maestro) y guarda la copia exacta de sus datos en Supabase;
+//    del código (producto maestro) y guarda en Supabase la copia exacta de sus
+//    datos y de su web construida (que no se puede cambiar: solo se publica la revisada);
 //  - nunca se borra una versión: volver atrás restaura una anterior y marca la
 //    vigente como «retirada»;
-//  - publicar exige el taller sin cambios pendientes (lo publicado = lo guardado);
-//  - no se envía nada a GitHub: el envío (push) es un paso aparte y explícito.
+//  - preparar exige el taller sin cambios pendientes (lo publicado = lo guardado).
 //
 // Datos privados (paso 5a, 024_datos_privados.sql): el catálogo con precios, los
 // packs y las viviendas no van en la web pública. «preparar» los guarda en Supabase
@@ -60,17 +64,16 @@
 // y deja en fuentes/LICENCIA.txt de dónde sale.
 
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generarPlanos } from './planos.mjs';
 import { compararDatos, escribirCambios, leerAhora, leerDeArchivos, leerEnCommit, planosCambiados } from './cambios.mjs';
 import { TRABAJO, archivosLocales, cabecerasRobot, diferencias, guardarModelo, leerModelo } from './promociones.mjs';
+import { bajarSitio, cabecerasEjecutor, cabecerasRobotVersiones, desempaquetar, empaquetar, llamar, registroDe, sha256, subirSitio } from './versiones.mjs';
 
 const RAIZ = resolve( dirname( fileURLToPath( import.meta.url ) ), '..' );
 const SALIDA = join( RAIZ, 'salida' );
-// en el escaparate, lo que Cloudflare sirve vive en publico/<promoción>/
-const PUBLICO = 'publico';
 
 // límites de Cloudflare (archivos estáticos)
 const MAX_ARCHIVO = 25 * 1024 * 1024;
@@ -103,7 +106,7 @@ const opcion = ( nombre ) => {
 
 };
 const bandera = ( nombre ) => args.includes( `--${ nombre }` );
-const CON_VALOR = [ '--escaparate', '--aprobado-por', '--preparado-por', '--cambios', '--motivo', '--version' ];
+const CON_VALOR = [ '--aprobado-por', '--preparado-por', '--cambios', '--motivo', '--version' ];
 const posicionales = args.filter( ( a, i ) => ! a.startsWith( '--' ) && ! CON_VALOR.includes( args[ i - 1 ] ) );
 
 const fallo = ( texto ) => {
@@ -180,49 +183,11 @@ function comprobarSuperficies( id ) {
 
 }
 
-const rutaRegistro = ( id ) => join( RAIZ, 'promociones', id, 'publicaciones.json' );
-const leerRegistro = ( id ) => leerJSON( rutaRegistro( id ), { promocion: id, versiones: [] } );
+/** Registro de versiones de la promoción en Supabase, con la sesión indicada. */
+async function registro( cabeceras, id ) {
 
-function rutaEscaparate() {
-
-	// el almacén «experience» (antes «escaparate»), junto al de MUNE Studio
-	const ruta = resolve( opcion( 'escaparate' ) ?? [ 'experience', 'escaparate' ].map( ( n ) => join( RAIZ, '..', n ) ).find( ( r ) => existsSync( r ) ) ?? join( RAIZ, '..', 'experience' ) );
-	if ( ! existsSync( join( ruta, '.git' ) ) ) fallo( `No encuentro el escaparate en ${ ruta } (usa --escaparate <ruta>)` );
-	return ruta;
-
-}
-
-const ramaActual = ( cwd ) => git( cwd, 'rev-parse', '--abbrev-ref', 'HEAD' );
-
-function exigirRama( esc, rama ) {
-
-	const actual = ramaActual( esc );
-	if ( actual !== rama ) fallo( `El escaparate debe estar en la rama «${ rama }» (está en «${ actual }»)` );
-
-}
-
-/** Versión de una promoción en una referencia del escaparate (null si no está). */
-function versionEn( esc, ref, id ) {
-
-	try {
-
-		return JSON.parse( git( esc, 'show', `${ ref }:${ PUBLICO }/${ id }/version.json` ) ).version;
-
-	} catch {
-
-		return null;
-
-	}
-
-}
-
-/** Commit del escaparate con la versión indicada: su etiqueta o, si no existe, buscándola en el historial. */
-function commitDeVersion( esc, id, version ) {
-
-	const etiqueta = `${ id }/${ version }`;
-	if ( git( esc, 'tag', '--list', etiqueta ) ) return etiqueta;
-	const commits = git( esc, 'log', '--all', '--format=%H', '--', `${ PUBLICO }/${ id }/version.json` ).split( '\n' ).filter( Boolean );
-	return commits.find( ( c ) => versionEn( esc, c, id ) === version ) ?? null;
+	if ( ! cabeceras ) fallo( 'Faltan las credenciales: la cuenta «ejecutor» (EJECUTOR_CLAVE) o el robot de Claude (ROBOT_EMAIL y ROBOT_CLAVE).' );
+	return registroDe( cabeceras, id ).catch( ( e ) => fallo( `No se ha podido leer el registro de versiones: ${ e.message }` ) );
 
 }
 
@@ -263,41 +228,6 @@ function construir( id ) {
 	ok( `Sin Studio y sin secretos · ${ archivos.length } archivos · ${ ( total / 1048576 ).toFixed( 1 ) } MB` );
 
 	return { destino, archivos: archivos.length, bytes: total };
-
-}
-
-// ---------------------------------------------------------------- publicar
-
-// El Panel y el portal leen, desde otra dirección, los planos y la Experiencia 3D
-// de cada versión: el escaparate tiene que permitirlo (en las dos ramas).
-function asegurarCabeceras( esc ) {
-
-	const cabeceras = join( esc, PUBLICO, '_headers' );
-	let texto = existsSync( cabeceras ) ? readFileSync( cabeceras, 'utf8' ).trimEnd() : '';
-	const reglas = [
-		[ '/:promocion/planos/*', 'Planos comerciales de cada versión: el Panel los copia para enviarlos a la promotora.' ],
-		[ '/:promocion/experiencia/*', 'Unidades de la Experiencia 3D de cada versión: el Panel y el portal las usan para validarla.' ],
-		[ '/:promocion/fuentes/*', 'Tipografía de la marca: también la usa el formulario de «Solicitar información», que va aislado.' ],
-		[ '/:promocion/cambios/*', 'Qué cambia en cada versión respecto a la publicada: MUNE Studio y MUNE Portal lo enseñan al revisarla.' ],
-	];
-	let cambia = false;
-	// Cloudflare solo admite un «*» por regla: las reglas antiguas con dos no se aplicaban.
-	for ( const vieja of [ '/*/planos/*', '/*/experiencia/*' ] ) {
-
-		const bloque = new RegExp( `\\n*# [^\\n]*\\n${ vieja.replace( /[*/]/g, '\\$&' ) }\\n(  [^\\n]*\\n?)*`, 'g' );
-		if ( bloque.test( texto ) ) { texto = texto.replace( bloque, '\n' ).trimEnd(); cambia = true; }
-
-	}
-	for ( const [ ruta, motivo ] of reglas ) {
-
-		if ( texto.includes( `\n${ ruta }\n` ) || texto.startsWith( `${ ruta }\n` ) ) continue;
-		texto += `\n\n# ${ motivo }\n${ ruta }\n  Access-Control-Allow-Origin: *\n  Cache-Control: no-cache`;
-		cambia = true;
-
-	}
-	if ( ! cambia ) return;
-	writeFileSync( cabeceras, `${ texto.trimStart() }\n` );
-	git( esc, 'add', join( PUBLICO, '_headers' ) );
 
 }
 
@@ -469,17 +399,18 @@ async function guardarFuente( destino, tipografia ) {
  * al revisar y validar la versión. Lo privado (catálogo, precios y compradores
  * afectados) lo compara Supabase (comparar_version, 034).
  */
-async function compararConPublicada( id, version, destino, esc, registro ) {
+async function compararConPublicada( id, version, destino, robot, versiones ) {
 
-	const anterior = versionEn( esc, 'origin/main', id );
-	const taller = registro.versiones.find( ( v ) => v.version === anterior )?.taller;
+	const publicada = versiones.find( ( v ) => v.estado === 'publicada' );
+	const anterior = publicada?.version;
+	const taller = publicada?.taller;
 	if ( ! anterior ) return escribirCambios( destino, { promocion: id, version, anterior: null, grupos: [] } );
 	let grupos;
 	try {
 
 		// los datos de la publicada: su copia en Supabase (decisión 59) o, en las
 		// versiones de antes, el historial del taller
-		const guardada = await leerModelo( await cabecerasRobot(), id, anterior );
+		const guardada = await leerModelo( robot, id, anterior );
 		if ( ! guardada && ! taller ) return escribirCambios( destino, { promocion: id, version, anterior: null, grupos: [] } );
 		grupos = compararDatos( guardada ? leerDeArchivos( guardada.archivos ) : leerEnCommit( id, taller ), leerAhora( id ) );
 
@@ -489,17 +420,15 @@ async function compararConPublicada( id, version, destino, esc, registro ) {
 		return escribirCambios( destino, { promocion: id, version, anterior, grupos: [], sinComparar: true } );
 
 	}
-	// los planos de la publicada, del escaparate (main)
+	// los planos de la publicada, de su web guardada en Supabase
 	const planosAntes = {};
 	try {
 
-		const lista = JSON.parse( git( esc, 'show', `origin/main:${ PUBLICO }/${ id }/planos/planos.json` ) ).planos ?? [];
-		for ( const p of lista ) {
-
-			const png = execFileSync( 'git', [ 'show', `origin/main:${ PUBLICO }/${ id }/planos/${ p.miniatura }` ], { cwd: esc, maxBuffer: 64 * 1024 * 1024 } );
-			planosAntes[ p.clave ] = { huellaDatos: p.huellaDatos, png };
-
-		}
+		const carpeta = join( SALIDA, 'publicada', id );
+		rmSync( carpeta, { recursive: true, force: true } );
+		desempaquetar( await bajarSitio( robot, id, anterior, publicada.huella ), carpeta );
+		const lista = JSON.parse( readFileSync( join( carpeta, 'planos', 'planos.json' ), 'utf8' ) ).planos ?? [];
+		for ( const p of lista ) planosAntes[ p.clave ] = { huellaDatos: p.huellaDatos, png: readFileSync( join( carpeta, 'planos', p.miniatura ) ) };
 
 	} catch { /* la publicada no tenía planos */ }
 	const planos = Object.keys( planosAntes ).length ? await planosCambiados( destino, planosAntes ) : [];
@@ -543,13 +472,10 @@ async function guardarDatosPrivados( id, version ) {
 async function preparar( id ) {
 
 	comprobarPromocion( id );
-	const esc = rutaEscaparate();
-	exigirRama( esc, 'revision' );
 	const preparadoPor = opcion( 'preparado-por' ) ?? 'Claude';
 	const cambios = opcion( 'cambios' );
 	if ( ! cambios ) fallo( 'Falta --cambios: cada versión debe explicar qué cambia' );
 	if ( git( RAIZ, 'status', '--porcelain' ) ) fallo( 'El taller tiene cambios sin guardar. Lo publicado debe ser exactamente lo guardado (haz commit primero).' );
-	if ( git( esc, 'status', '--porcelain' ) ) fallo( 'El escaparate tiene cambios sin guardar.' );
 	// los datos: exactamente los guardados en Supabase
 	const robot = await cabecerasRobot().catch( ( e ) => fallo( e.message ) );
 	const guardada = await leerModelo( robot, id );
@@ -560,11 +486,10 @@ async function preparar( id ) {
 	ok( `Datos de la promoción: los guardados en Supabase el ${ guardada.guardado_en.slice( 0, 16 ).replace( 'T', ' ' ) } (huella ${ guardada.huella.slice( 0, 12 ) })` );
 	comprobarSuperficies( id );
 
-	// número siguiente: el mayor entre el registro, la vista previa y producción
-	const registro = leerRegistro( id );
+	// número siguiente: el mayor del registro de versiones y de las copias del modelo
+	const versiones = await registro( robot, id );
 	const preparadas = ( await fetch( `${ SUPABASE_URL }/rest/v1/modelo_promocion?promocion_id=eq.${ encodeURIComponent( id ) }&version=not.is.null&select=version`, { headers: robot } ).then( ( r ) => r.json() ) ).map( ( f ) => f.version );
-	const numeros = [ ...registro.versiones.map( ( v ) => v.version ), ...preparadas, versionEn( esc, 'HEAD', id ), versionEn( esc, 'origin/main', id ) ]
-		.filter( Boolean ).map( ( v ) => Number( v.slice( 1 ) ) );
+	const numeros = [ ...versiones.map( ( v ) => v.version ), ...preparadas ].map( ( v ) => Number( v.slice( 1 ) ) );
 	const numero = Math.max( 0, ...numeros ) + 1;
 	const version = `v${ numero }`;
 	const motor = git( RAIZ, 'rev-parse', 'HEAD' );
@@ -593,7 +518,7 @@ async function preparar( id ) {
 	const planos = await generarPlanos( id, version, destino );
 	ok( `Planos para validar: ${ planos.length } (${ planos.map( ( p ) => p.titulo ).join( ', ' ) })` );
 	ok( `Experiencia 3D para validar: ${ planos.experiencia.length } unidad(es) (${ planos.experiencia.map( ( u ) => u.titulo ).join( ', ' ) })` );
-	const comparacion = await compararConPublicada( id, version, destino, esc, registro );
+	const comparacion = await compararConPublicada( id, version, destino, robot, versiones );
 	ok( comparacion.anterior
 		? `Cambios respecto a la ${ comparacion.anterior }: ${ comparacion.grupos.reduce( ( n, g ) => n + g.cambios.length, 0 ) } en los datos, ${ comparacion.planos.length } plano(s)`
 		: 'Cambios: no hay versión publicada con la que comparar' );
@@ -604,7 +529,7 @@ async function preparar( id ) {
 
 	}
 
-	// datos privados de la versión (catálogo, packs y viviendas), antes de tocar el escaparate
+	// datos privados de la versión (catálogo, packs y viviendas), antes de guardar la web
 	await guardarDatosPrivados( id, version );
 	// la copia exacta de los datos de esta versión, con el commit del código: no se
 	// puede cambiar nunca, así que va después de lo que sí se puede repetir
@@ -619,102 +544,71 @@ async function preparar( id ) {
 
 	}
 
-	// escaparate: sustituye la carpeta de la promoción por la nueva versión
-	const carpeta = join( esc, PUBLICO, id );
-	rmSync( carpeta, { recursive: true, force: true } );
-	mkdirSync( carpeta, { recursive: true } );
-	cpSync( destino, carpeta, { recursive: true } );
-	const fecha = hoy();
-	escribirJSON( join( carpeta, 'version.json' ), { promocion: id, version, fecha, taller: motor } );
-	git( esc, 'add', '-A', join( PUBLICO, id ) );
-	asegurarCabeceras( esc );
-	// los cambios viajan en el mensaje (privado): el registro lo escribe «aprobar»
-	git( esc, 'commit', '-q', '-m', `Prepara ${ id } ${ version }\n\nCambios: ${ cambios }\nPreparada por: ${ preparadoPor }\nTaller: ${ motor }` );
-	ok( `Escaparate (rama revision): ${ PUBLICO }/${ id }/ en ${ version }` );
-	console.log( '\nFalta enviar a GitHub (push) la rama «revision» del escaparate. Se publica al aprobarla en el Panel.\n' );
+	// la web construida, con su versión, en el almacén «versiones» (no se puede cambiar)
+	escribirJSON( join( destino, 'version.json' ), { promocion: id, version, fecha: hoy(), taller: motor } );
+	const paquete = empaquetar( destino );
+	const huella = sha256( paquete );
+	try {
+
+		await subirSitio( robot, id, version, paquete );
+		await llamar( robot, 'preparar_version', { p_promocion: id, p_version: version, p_cambios: cambios, p_preparada_por: preparadoPor, p_taller: motor, p_huella: huella } );
+
+	} catch ( e ) {
+
+		fallo( `No se ha podido guardar la web de la ${ version } en Supabase: ${ e.message }` );
+
+	}
+	ok( `Web de la ${ version } guardada en Supabase y en revisión (${ ( paquete.length / 1048576 ).toFixed( 1 ) } MB, huella ${ huella.slice( 0, 12 ) })` );
+	console.log( `\nFalta lanzar avisar.yml (promoción, versión y cambios): envía la vista previa a Cloudflare y te avisa por email. Se publica al aprobarla en MUNE Studio.\n` );
 
 }
 
 // ---------------------------------------------------------------- aprobar (publicar)
 
-function aprobar( id ) {
+async function aprobar( id ) {
 
 	comprobarId( id );
-	const esc = rutaEscaparate();
-	exigirRama( esc, 'main' );
 	const aprobadoPor = opcion( 'aprobado-por' );
 	if ( ! aprobadoPor ) fallo( 'Falta --aprobado-por: ninguna publicación sin aprobación explícita' );
-	if ( git( esc, 'status', '--porcelain' ) ) fallo( 'El escaparate tiene cambios sin guardar.' );
-
-	const enRevision = versionEn( esc, 'origin/revision', id );
-	const publicada = versionEn( esc, 'HEAD', id );
-	if ( ! enRevision ) fallo( `No hay ninguna versión de ${ id } en la vista previa (rama revision)` );
-	if ( enRevision === publicada ) fallo( `${ enRevision } ya es la versión publicada: no hay nada pendiente` );
 	// solo se publica exactamente la versión que la administradora ha revisado
 	const revisada = opcion( 'version' );
 	if ( ! revisada ) fallo( 'Falta --version: la versión que se ha revisado en la vista previa' );
-	if ( revisada !== enRevision ) fallo( `La vista previa ha cambiado: ahora contiene ${ enRevision }, no ${ revisada }. Revísala antes de publicar.` );
+	const cabeceras = await cabecerasEjecutor().catch( ( e ) => fallo( e.message ) );
+	if ( ! cabeceras ) fallo( 'Falta EJECUTOR_CLAVE: solo la cuenta «ejecutor» publica desde aquí.' );
+	const versiones = await registro( cabeceras, id );
+	const enRevision = versiones.find( ( v ) => v.estado === 'en_revision' );
+	const publicada = versiones.find( ( v ) => v.estado === 'publicada' );
+	if ( ! enRevision ) fallo( `No hay ninguna versión de ${ id } en la vista previa` );
+	if ( revisada !== enRevision.version ) fallo( `La vista previa ha cambiado: ahora contiene ${ enRevision.version }, no ${ revisada }. Revísala antes de publicar.` );
 
-	// datos de la preparación: version.json y el mensaje del commit en «revision»
-	const datosV = JSON.parse( git( esc, 'show', `origin/revision:${ PUBLICO }/${ id }/version.json` ) );
-	const mensaje = git( esc, 'log', '-1', '--format=%B', 'origin/revision', '--', `${ PUBLICO }/${ id }/version.json` );
-	const campo = ( nombre ) => mensaje.match( new RegExp( `^${ nombre }: (.*)$`, 'm' ) )?.[ 1 ]?.trim() ?? null;
-
-	console.log( `\nAprobar «${ id }» ${ enRevision } (sustituye a ${ publicada ?? '—' })\n  aprobado por: ${ aprobadoPor }\n  cambios: ${ campo( 'Cambios' ) ?? '—' }` );
+	console.log( `\nAprobar «${ id }» ${ enRevision.version } (sustituye a ${ publicada?.version ?? '—' })\n  aprobado por: ${ aprobadoPor }\n  cambios: ${ enRevision.cambios || '—' }` );
 	if ( ! bandera( 'confirmar' ) ) {
 
 		console.log( '\nSimulación: no se ha publicado nada. Repite con --confirmar.\n' );
 		return;
 
 	}
-
-	const fecha = hoy();
-	git( esc, 'rm', '-r', '-q', '--ignore-unmatch', join( PUBLICO, id ) );
-	git( esc, 'checkout', 'origin/revision', '--', join( PUBLICO, id ) );
-	asegurarCabeceras( esc );
-	git( esc, 'commit', '-q', '-m', `Publica ${ id } ${ enRevision }\n\nAprobada en el Panel por: ${ aprobadoPor }` );
-	const etiqueta = `${ id }/${ enRevision }`;
-	if ( ! git( esc, 'tag', '--list', etiqueta ) ) git( esc, 'tag', '-a', etiqueta, '-m', `${ id } ${ enRevision } · ${ fecha }` );
-	ok( `Escaparate: ${ PUBLICO }/${ id }/ publicado en ${ enRevision }` );
-
-	// el registro del taller solo lo escribe el ejecutor (aprobar y volver), en main
-	const registro = leerRegistro( id );
-	for ( const x of registro.versiones ) if ( x.estado === 'publicada' ) x.estado = 'sustituida';
-	const entrada = {
-		version: enRevision, fecha: datosV.fecha, estado: 'publicada', taller: datosV.taller,
-		preparadaPor: campo( 'Preparada por' ), cambios: campo( 'Cambios' ), aprobadoPor, publicadaEl: fecha,
-	};
-	const previa = registro.versiones.findIndex( ( x ) => x.version === enRevision );
-	if ( previa >= 0 ) registro.versiones[ previa ] = { ...registro.versiones[ previa ], ...entrada };
-	else registro.versiones.push( entrada );
-	registro.historial = [ ...( registro.historial ?? [] ), { fecha, accion: 'aprobar', version: enRevision, por: aprobadoPor } ];
-	escribirJSON( rutaRegistro( id ), registro );
-	git( RAIZ, 'add', rutaRegistro( id ) );
-	git( RAIZ, 'commit', '-q', '-m', `Registro: ${ id } ${ enRevision } publicada (aprobada por ${ aprobadoPor })` );
-	ok( 'Taller: registro de versiones actualizado' );
+	await llamar( cabeceras, 'aprobar_version', { p_promocion: id, p_version: revisada, p_por: aprobadoPor } ).catch( ( e ) => fallo( e.message ) );
+	ok( `Registro: ${ id } ${ revisada } publicada. Falta enviarla a Cloudflare (desplegar.mjs ambas).` );
 
 }
 
 // ---------------------------------------------------------------- volver a una versión anterior
 
-function volver( id, version ) {
+async function volver( id, version ) {
 
 	comprobarId( id );
-	const esc = rutaEscaparate();
 	const motivo = opcion( 'motivo' );
 	if ( ! /^v\d+$/.test( version ?? '' ) ) fallo( 'Indica la versión, por ejemplo: v2' );
 	if ( ! motivo ) fallo( 'Falta --motivo' );
-	if ( git( RAIZ, 'status', '--porcelain' ) || git( esc, 'status', '--porcelain' ) ) fallo( 'Hay cambios sin guardar en el taller o el escaparate.' );
-	exigirRama( esc, 'main' );
-
-	const registro = leerRegistro( id );
-	const destinoV = registro.versiones.find( ( v ) => v.version === version );
-	const vigente = registro.versiones.find( ( v ) => v.estado === 'publicada' );
-	if ( ! destinoV ) fallo( `No existe la versión ${ version } de ${ id }` );
-	if ( versionEn( esc, 'HEAD', id ) === version ) fallo( `${ version } ya es la versión publicada` );
-	const origen = commitDeVersion( esc, id, version );
-	if ( ! origen ) fallo( `No encuentro ${ version } de ${ id } en el historial del escaparate` );
 	const aprobadoPor = opcion( 'aprobado-por' ) ?? 'sin indicar';
+	const cabeceras = await cabecerasEjecutor().catch( ( e ) => fallo( e.message ) );
+	if ( ! cabeceras ) fallo( 'Falta EJECUTOR_CLAVE: solo la cuenta «ejecutor» vuelve atrás desde aquí.' );
+	const versiones = await registro( cabeceras, id );
+	const destinoV = versiones.find( ( v ) => v.version === version );
+	const vigente = versiones.find( ( v ) => v.estado === 'publicada' );
+	if ( ! destinoV ) fallo( `No existe la versión ${ version } de ${ id }` );
+	if ( vigente?.version === version ) fallo( `${ version } ya es la versión publicada` );
 
 	console.log( `\nVolver «${ id }» de ${ vigente?.version ?? '—' } a ${ version }\n  motivo: ${ motivo }` );
 	if ( ! bandera( 'confirmar' ) ) {
@@ -723,28 +617,15 @@ function volver( id, version ) {
 		return;
 
 	}
-
-	const fecha = hoy();
-	git( esc, 'rm', '-r', '-q', '--ignore-unmatch', join( PUBLICO, id ) );
-	git( esc, 'checkout', origen, '--', join( PUBLICO, id ) );
-	git( esc, 'commit', '-q', '-m', `Vuelve ${ id } a ${ version }\n\nMotivo: ${ motivo }\nAprobado por: ${ aprobadoPor }` );
-	ok( `Escaparate: ${ PUBLICO }/${ id }/ restaurado a ${ version }` );
-
-	if ( vigente ) vigente.estado = 'retirada';
-	destinoV.estado = 'publicada';
-	registro.historial = [ ...( registro.historial ?? [] ), { fecha, accion: 'volver', desde: vigente?.version ?? null, a: version, motivo, por: aprobadoPor } ];
-	escribirJSON( rutaRegistro( id ), registro );
-	git( RAIZ, 'add', rutaRegistro( id ) );
-	git( RAIZ, 'commit', '-q', '-m', `Registro: ${ id } vuelve a ${ version }` );
-	ok( 'Registro de versiones actualizado (la versión retirada se conserva)' );
-	console.log( '\nFalta enviar a GitHub (push) el taller y el escaparate.\n' );
+	await llamar( cabeceras, 'volver_version', { p_promocion: id, p_version: version, p_motivo: motivo, p_por: aprobadoPor } ).catch( ( e ) => fallo( e.message ) );
+	ok( `Registro: ${ id } vuelve a ${ version } (la ${ vigente?.version ?? 'anterior' } se conserva). Falta enviarla a Cloudflare (desplegar.mjs ambas).` );
 
 }
 
 // ---------------------------------------------------------------- comprobar
 
 // Las mismas comprobaciones de «preparar» (superficies, acabados, choques y lo
-// que la visita aún no sabe representar), sin versión ni escaparate: para la
+// que la visita aún no sabe representar), sin versión ni web guardada: para la
 // receta 1, mientras se pasan a datos los planos y la memoria. Los planos de
 // prueba quedan en salida/comprobar/<promoción>/ para mirarlos.
 async function comprobar( id ) {
@@ -761,13 +642,14 @@ async function comprobar( id ) {
 
 // ---------------------------------------------------------------- estado
 
-function estado( id ) {
+async function estado( id ) {
 
 	comprobarId( id );
-	const r = leerRegistro( id );
-	if ( ! r.versiones.length ) return console.log( `${ id }: sin versiones publicadas` );
+	const cabeceras = await cabecerasEjecutor().catch( () => null ) ?? await cabecerasRobotVersiones().catch( ( e ) => fallo( e.message ) );
+	const versiones = await registro( cabeceras, id );
+	if ( ! versiones.length ) return console.log( `${ id }: sin versiones` );
 	console.log( `${ id }:` );
-	for ( const v of r.versiones ) console.log( `  ${ v.version.padEnd( 4 ) } ${ v.estado.padEnd( 11 ) } ${ v.fecha }  ${ v.aprobadoPor ?? v.preparadaPor ?? '' } · ${ v.cambios }` );
+	for ( const v of versiones ) console.log( `  ${ v.version.padEnd( 4 ) } ${ v.estado.padEnd( 11 ) } ${ v.preparada_en.slice( 0, 10 ) }  ${ v.aprobado_por ?? v.preparada_por ?? '' } · ${ v.cambios }` );
 
 }
 
@@ -779,9 +661,9 @@ switch ( orden ) {
 	case 'construir': construir( id ); break;
 	case 'comprobar': await comprobar( id ); break;
 	case 'preparar': await preparar( id ); break;
-	case 'aprobar': aprobar( id ); break;
-	case 'volver': volver( id, extra ); break;
-	case 'estado': estado( id ); break;
+	case 'aprobar': await aprobar( id ); break;
+	case 'volver': await volver( id, extra ); break;
+	case 'estado': await estado( id ); break;
 	default: fallo( 'Orden desconocida. Usa: construir | comprobar | preparar | aprobar | volver | estado' );
 
 }

@@ -43,7 +43,7 @@ async function bajar(almacen: string, ruta: string, esperada: string | null, avi
 
 /** Mete en el ZIP, bajo «carpeta», todo lo de una promoción. Devuelve el resumen para el LEEME. */
 async function anadirPromocion(zip: Zip, carpeta: string, id: string, equipo: Fila[], avisos: string[], progreso: (t: string) => void): Promise<string> {
-	const [[promocion], requisitos, documentos, entregables, validaciones, peticiones, registro, codigos, selecciones, modelos] = await Promise.all([
+	const [[promocion], requisitos, documentos, entregables, validaciones, peticiones, registro, codigos, selecciones, modelos, registroVersiones] = await Promise.all([
 		leer(sb.from('promociones').select('*').eq('id', id)),
 		leer(sb.from('requisitos').select('*').eq('promocion_id', id).order('orden').order('id')),
 		leer(sb.from('documentos').select('*').eq('promocion_id', id).order('requisito_id').order('version')),
@@ -54,6 +54,7 @@ async function anadirPromocion(zip: Zip, carpeta: string, id: string, equipo: Fi
 		leer(sb.rpc('codigos_de_promocion', { p_promocion: id })),
 		leer(sb.from('selecciones_comprador').select('*').eq('promocion_id', id).order('vivienda_ref').order('comprador')),
 		leer(sb.from('modelo_promocion').select('id, version, archivos, huella, codigo, nota, guardado_en').eq('promocion_id', id).order('id')),
+		leer(sb.from('versiones_promocion').select('*').eq('promocion_id', id).order('numero')),
 	]);
 	const reqPorId = new Map(requisitos.map((r) => [r.id, r]));
 	const lineas: string[] = [];
@@ -106,7 +107,7 @@ async function anadirPromocion(zip: Zip, carpeta: string, id: string, equipo: Fi
 	for (const a of equipo) lineas.push(`  · ${a.nombre} <${a.email}>${a.cargo ? ` · ${a.cargo}` : ''}${a.activo ? '' : ' · acceso retirado'}`);
 
 	lineas.push(`Viviendas con código de comprador: ${codigos.length} (los códigos no se exportan: por seguridad, MUNE no los guarda)`);
-	zip.anadir(`${carpeta}datos.json`, json({ promocion, equipo, requisitos, documentos, entregables, validaciones, peticiones, codigos_de_comprador: codigos, selecciones_de_comprador: selecciones, registro }));
+	zip.anadir(`${carpeta}datos.json`, json({ promocion, equipo, requisitos, documentos, entregables, validaciones, peticiones, codigos_de_comprador: codigos, selecciones_de_comprador: selecciones, versiones: registroVersiones, registro }));
 	return [`■ ${promocion?.nombre ?? id} (${id})`, ...lineas].join('\n');
 }
 
