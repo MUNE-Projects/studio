@@ -8,6 +8,10 @@
 //    procesos del taller). La llave nunca sale de aquí.
 // 4. Lo anota en el registro de actividad.
 //
+// «retirar» (037_borrado_completo.sql): después de borrar una promoción en MUNE
+// Studio, arranca desplegar.yml para que la web pública y la vista previa se
+// vuelvan a montar sin ella.
+//
 // Publicar exige que la promotora haya validado esa versión entera (020): todos
 // los planos comerciales y todas las tipologías de la Experiencia 3D. Las
 // versiones preparadas antes de existir una de esas partes (sin planos.json o
@@ -23,6 +27,8 @@ const ORIGENES = [
 	'https://studio.mune-projects.workers.dev', 'https://revision-studio.mune-projects.workers.dev',
 ];
 const PROCESO = 'https://api.github.com/repos/MUNE-Projects/studio/actions/workflows/publicar.yml/dispatches';
+// «retirar» (037): después de borrar una promoción, vuelve a enviar la web a Cloudflare sin ella
+const DESPLEGAR = 'https://api.github.com/repos/MUNE-Projects/studio/actions/workflows/desplegar.yml/dispatches';
 const REVISION = Deno.env.get('REVISION_ESCAPARATE') ?? 'https://revision-experience.mune-projects.workers.dev';
 const PARTES = {
 	planos: { que: 'los planos comerciales', archivo: 'planos/planos.json' },
@@ -71,8 +77,27 @@ Deno.serve(async (req) => {
 	const promocion = String(cuerpo.promocion ?? '');
 	const version = String(cuerpo.version ?? '');
 	const motivo = String(cuerpo.motivo ?? '').trim();
-	if (accion !== 'aprobar' && accion !== 'volver') return responder(400, { error: 'Acción no válida' });
+	if (accion !== 'aprobar' && accion !== 'volver' && accion !== 'retirar') return responder(400, { error: 'Acción no válida' });
 	if (!/^[a-z0-9-]{1,60}$/.test(promocion)) return responder(400, { error: 'Promoción no válida' });
+
+	const llaveA = Deno.env.get('GITHUB_EJECUTOR');
+	if (!llaveA) return responder(500, { error: 'Falta la llave A (GITHUB_EJECUTOR) en los secretos de Supabase' });
+	const lanzar = (url: string, inputs: Record<string, string>) => fetch(url, {
+		method: 'POST',
+		headers: { Authorization: `Bearer ${llaveA}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'mune-panel' },
+		body: JSON.stringify({ ref: 'main', inputs }),
+	});
+
+	// Retirar de la web una promoción ya borrada: la web se vuelve a montar con lo
+	// que dice el registro de versiones, que ya no la tiene.
+	if (accion === 'retirar') {
+		const { data: sigue } = await sb.from('promociones').select('id').eq('id', promocion).maybeSingle();
+		if (sigue) return responder(409, { error: 'Esa promoción no está borrada: para quitarla de la web, bórrala primero.' });
+		const r = await lanzar(DESPLEGAR, { destino: 'ambas' });
+		if (!r.ok) return responder(502, { error: `GitHub no ha aceptado la orden (${r.status}). ${(await r.text()).slice(0, 200)}` });
+		await sb.from('registro').insert({ accion: 'retira de la web una promoción borrada', detalle: { promocion } });
+		return responder(202, { ok: true });
+	}
 	// «aprobar»: la versión revisada en la vista previa (el ejecutor comprueba que sigue siendo esa)
 	if (!/^v[0-9]{1,5}$/.test(version)) return responder(400, { error: 'Versión no válida' });
 	if (accion === 'volver' && (motivo.length < 3 || motivo.length > 500)) {
@@ -96,23 +121,8 @@ Deno.serve(async (req) => {
 	const { data: { user } } = await sb.auth.getUser();
 	const { data: admin } = await sb.from('administradores').select('nombre').eq('user_id', user?.id ?? '').maybeSingle();
 
-	const llave = Deno.env.get('GITHUB_EJECUTOR');
-	if (!llave) return responder(500, { error: 'Falta la llave A (GITHUB_EJECUTOR) en los secretos de Supabase' });
-
 	const solicitud = crypto.randomUUID();
-	const r = await fetch(PROCESO, {
-		method: 'POST',
-		headers: {
-			Authorization: `Bearer ${llave}`,
-			Accept: 'application/vnd.github+json',
-			'X-GitHub-Api-Version': '2022-11-28',
-			'User-Agent': 'mune-panel',
-		},
-		body: JSON.stringify({
-			ref: 'main',
-			inputs: { accion, promocion, version, motivo, por: admin?.nombre ?? 'Administradora', solicitud },
-		}),
-	});
+	const r = await lanzar(PROCESO, { accion, promocion, version, motivo, por: admin?.nombre ?? 'Administradora', solicitud });
 	if (!r.ok) {
 		const detalle = (await r.text()).slice(0, 200);
 		return responder(502, { error: `GitHub no ha aceptado la orden (${r.status}). ${detalle}` });
