@@ -1,10 +1,12 @@
 // Comentarios visuales en el 3D (038_comentarios.sql), solo en modo profesional:
-// el equipo de la promotora pulsa «Comentar», toca el sitio y escribe. El
-// comentario guarda el punto, desde dónde se miraba, la planta y la vista, para
-// volver a ese mismo encuadre (MUNE Portal y MUNE Studio lo abren con
-// ?comentario=<id>). Los comentarios abiertos de la tipología se ven como marcas
-// numeradas; al pulsar una se lee el hilo y se puede responder. Se resuelven en
-// MUNE Studio.
+// el equipo de la promotora pulsa «Comentar», toca el sitio y escribe. En modo
+// Vivienda (o Plano) es un comentario de la Experiencia 3D; en modo Personalizar,
+// de la personalización (van por separado). El comentario guarda el punto,
+// desde dónde se miraba, la planta y la vista, para volver a ese mismo encuadre
+// (MUNE Portal y MUNE Studio lo abren con ?comentario=<id>). Los comentarios
+// abiertos se ven como marcas numeradas; al pulsar una se lee el hilo y se
+// puede responder. Quedan pendientes hasta que se pide cambios en MUNE Portal.
+// La administradora, desde MUNE Studio, deja aquí notas para Claude.
 
 import * as THREE from 'three/webgpu';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -13,7 +15,12 @@ import { conPase } from './promocion';
 
 interface Mensaje { id: number; texto: string; autor: string; de_mune: boolean; creado_en: string }
 interface Punto3D { p: number[]; cam: number[]; obj: number[]; planta?: number; vista?: string }
-interface Hilo extends Mensaje { version: string; clave: string | null; punto: Punto3D | null; resuelto_en: string | null; respuestas: Mensaje[] }
+type Tipo = 'experiencia' | 'personalizacion';
+interface Hilo extends Mensaje {
+	version: string; tipo: Tipo; clave: string | null; punto: Punto3D | null; interno: boolean;
+	enviado_en: string | null; resuelto_en: string | null; respuestas: Mensaje[];
+}
+export type Modo3D = 'plano' | 'vivienda' | 'personalizar' | 'promocion';
 
 export interface Contexto3D {
 	escena: THREE.Scene;
@@ -26,8 +33,10 @@ export interface Contexto3D {
 	vista: () => string;
 	/** ¿Está la vivienda en 3D lista para tocarla? */
 	lista: () => boolean;
-	/** Lleva la cámara al encuadre del comentario (en su planta, en modo Vivienda). */
-	irA: ( p: Punto3D ) => void;
+	modo: () => Modo3D;
+	ponerModo: ( m: Modo3D ) => void;
+	/** Lleva la cámara al encuadre del comentario (en su planta; en Personalizar, sin salir de ese modo). */
+	irA: ( p: Punto3D, personalizar: boolean ) => void;
 	despertar: () => void;
 	avisar: ( texto: string ) => void;
 }
@@ -49,7 +58,8 @@ export function conectarComentarios3D( c: Contexto3D ) {
 	let nuevo: Punto3D | null = null;
 	const marcaNueva = new CSS2DObject( Object.assign( document.createElement( 'span' ), { className: 'marca-comentario nueva', textContent: '+' } ) );
 
-	const abiertos = () => hilos.filter( ( h ) => h.punto && ! h.resuelto_en && h.clave === c.clave() );
+	const tipo = (): Tipo => ( c.modo() === 'personalizar' ? 'personalizacion' : 'experiencia' );
+	const abiertos = () => hilos.filter( ( h ) => h.punto && ! h.resuelto_en && h.clave === c.clave() && h.tipo === tipo() );
 
 	const pintarMarcas = () => {
 
@@ -63,7 +73,7 @@ export function conectarComentarios3D( c: Contexto3D ) {
 
 			const el = document.createElement( 'button' );
 			el.type = 'button';
-			el.className = 'marca-comentario';
+			el.className = `marca-comentario${ h.interno ? ' interna' : '' }`;
 			el.textContent = String( i + 1 );
 			el.title = h.texto.slice( 0, 80 );
 			el.addEventListener( 'pointerdown', ( ev ) => ev.stopPropagation() );
@@ -103,13 +113,16 @@ export function conectarComentarios3D( c: Contexto3D ) {
 
 	};
 
+	const estado = ( h: Hilo ) => h.interno ? ( h.enviado_en ? 'nota enviada a Claude' : 'nota sin enviar' )
+		: h.enviado_en ? 'enviado a MUNE' : 'pendiente de enviar';
+
 	const mensaje = ( m: Mensaje ) => {
 
 		const div = document.createElement( 'div' );
 		div.className = 'mensaje';
 		const autor = document.createElement( 'p' );
 		autor.className = 'autor';
-		autor.textContent = `${ m.de_mune ? 'Equipo de MUNE' : m.autor } · ${ cuando( m.creado_en ) }`;
+		autor.textContent = `${ m.de_mune ? 'Equipo de MUNE' : m.autor } · ${ cuando( m.creado_en ) }${ 'enviado_en' in m ? ` · ${ estado( m as Hilo ) }` : '' }`;
 		const texto = document.createElement( 'p' );
 		texto.className = 'texto';
 		texto.textContent = m.texto;
@@ -181,13 +194,19 @@ export function conectarComentarios3D( c: Contexto3D ) {
 		const lista = document.createElement( 'div' );
 		lista.className = 'hilo';
 		lista.append( mensaje( h ), ...h.respuestas.map( ( r ) => Object.assign( mensaje( r ), { className: 'mensaje respuesta' } ) ) );
+		if ( h.interno ) {
+
+			abrirPanel( `Nota para Claude ${ n }`, lista );
+			return;
+
+		}
 		const responder = formulario( 'Responder', async ( texto ) => {
 
-			await conPase( 'comentar_profesional', { p_version: __VERSION__, p_clave: h.clave, p_punto: null, p_texto: texto, p_padre: h.id } );
+			await conPase( 'comentar_profesional', { p_version: __VERSION__, p_tipo: h.tipo, p_clave: h.clave, p_punto: null, p_texto: texto, p_padre: h.id } );
 			await cargar();
 			const actual = hilos.find( ( x ) => x.id === h.id );
 			if ( actual ) abrirHilo( actual, n ); else cerrarPanel();
-			c.avisar( 'Respuesta guardada. El equipo de MUNE la verá en MUNE Studio.' );
+			c.avisar( 'Respuesta guardada.' );
 
 		} );
 		abrirPanel( `Comentario ${ n }${ h.version !== __VERSION__ ? ` · ${ h.version }` : '' }`, lista, responder );
@@ -202,13 +221,18 @@ export function conectarComentarios3D( c: Contexto3D ) {
 		c.despertar();
 		const ayuda = document.createElement( 'p' );
 		ayuda.className = 'ayuda';
-		ayuda.textContent = 'Escribe qué hay que cambiar en el punto marcado. Lo verá el equipo de MUNE.';
+		const t = tipo();
+		ayuda.textContent = t === 'personalizacion'
+			? 'Comentario sobre la personalización: escribe qué hay que cambiar en el punto marcado.'
+			: 'Comentario sobre la Experiencia 3D: escribe qué hay que cambiar en el punto marcado.';
 		abrirPanel( 'Comentario nuevo', ayuda, formulario( 'Comentario', async ( texto ) => {
 
-			await conPase( 'comentar_profesional', { p_version: __VERSION__, p_clave: c.clave(), p_punto: nuevo, p_texto: texto } );
+			await conPase( 'comentar_profesional', { p_version: __VERSION__, p_tipo: t, p_clave: c.clave(), p_punto: nuevo, p_texto: texto } );
 			cerrarPanel();
 			await cargar();
-			c.avisar( 'Comentario guardado. Lo verás también en MUNE Portal, en Experiencia 3D.' );
+			c.avisar( t === 'personalizacion'
+				? 'Comentario guardado. Cuando termines, envíalo con «Pedir cambios» en MUNE Portal → Personalización.'
+				: 'Comentario guardado. Cuando termines, envíalo con «Pedir cambios» al validar esta tipología en MUNE Portal.' );
 
 		} ) );
 
@@ -269,7 +293,7 @@ export function conectarComentarios3D( c: Contexto3D ) {
 
 	} );
 
-	/** Al cambiar de vivienda o de tipología, sus marcas. */
+	/** Al cambiar de vivienda, de tipología o de modo, sus marcas. */
 	const alCambiarUnidad = () => {
 
 		cerrarPanel();
@@ -284,9 +308,10 @@ export function conectarComentarios3D( c: Contexto3D ) {
 		const q = new URLSearchParams( location.search );
 		const id = Number( q.get( 'comentario' ) );
 		const h = id ? hilos.find( ( x ) => x.id === id ) : null;
+		if ( q.get( 'modo' ) === 'personalizar' || h?.tipo === 'personalizacion' ) c.ponerModo( 'personalizar' );
 		if ( h?.punto ) {
 
-			c.irA( h.punto );
+			c.irA( h.punto, h.tipo === 'personalizacion' );
 			const n = abiertos().indexOf( h ) + 1;
 			setTimeout( () => abrirHilo( h, n || 1 ), 400 );
 

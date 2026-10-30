@@ -641,6 +641,8 @@ async function iniciar() {
 	cam.alLlegar = ( v ) => nav.configurar( modo === 'plano' ? 'planta' : v.interior ? 'interior' : 'exterior' );
 	type Modo = 'plano' | 'vivienda' | 'personalizar' | 'promocion';
 	let modo: Modo = 'vivienda';
+	// comentarios visuales en modo profesional (se conectan más abajo)
+	let comentarios3D: ReturnType<typeof conectarComentarios3D> | null = null;
 	// La visita se abre en el plano (rápido de preparar); la vivienda 3D se
 	// prepara mientras tanto. Si se pide antes de estar lista, se recuerda y se
 	// abre en cuanto lo esté.
@@ -837,6 +839,7 @@ async function iniciar() {
 		modo = m;
 		document.body.dataset.modo = m;
 		if ( m === 'promocion' || anterior === 'promocion' ) entrarPromocion( m === 'promocion' );
+		comentarios3D?.alCambiarUnidad();
 		botonesModo.forEach( ( b ) => b.setAttribute( 'aria-current', String( b.dataset.modo === m ) ) );
 		const n = m === 'plano' ? 1 : 4;
 		if ( est.actual !== n ) est.ir( n );
@@ -1175,7 +1178,6 @@ async function iniciar() {
 	// Solo el equipo de la promotora pasa de una vivienda a otra. El público ve
 	// únicamente la tipología de su enlace (…/?ver=<tipología>, decisión 47).
 	// Comentarios visuales (038_comentarios.sql): marcar un sitio y escribir.
-	let comentarios3D: ReturnType<typeof conectarComentarios3D> | null = null;
 	if ( profesional ) {
 
 		$( '#salir-comprador' ).textContent = 'Salir del modo profesional';
@@ -1197,11 +1199,14 @@ async function iniciar() {
 			planta: () => plantaActiva,
 			vista: () => ( modo === 'plano' ? 'Plano' : cam.vistas[ cam.actual ]?.nombre ?? '' ),
 			lista: () => viviendaLista,
-			irA: ( p ) => {
+			modo: () => modo,
+			ponerModo: ( m ) => irModo( m ),
+			irA: ( p, personalizar ) => {
 
 				// marcado en el modo Plano: se vuelve al plano de su planta
 				const enPlano = p.vista === 'Plano';
-				if ( modo !== ( enPlano ? 'plano' : 'vivienda' ) ) irModo( enPlano ? 'plano' : 'vivienda' );
+				const destino: Modo = enPlano ? 'plano' : personalizar ? 'personalizar' : 'vivienda';
+				if ( modo !== destino ) irModo( destino );
 				if ( p.planta !== undefined && p.planta !== plantaActiva && p.planta < plantasDe( vivienda ).length ) cambiarPlanta( p.planta, enPlano );
 				if ( enPlano ) return;
 				const interior = interioresPlanta.some( ( e ) => puntoEnPoligono( p.cam[ 0 ], - p.cam[ 2 ], e.poligono ) );

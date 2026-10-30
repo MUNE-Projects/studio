@@ -3,34 +3,34 @@
 // copia el otro.
 //
 // · Se pulsa en el sitio del plano (o del 3D, desde la web de la promoción) y se
-//   escribe. El punto es opcional: sin él, el comentario es general de ese plano
-//   o tipología; y también los hay de toda la versión.
-// · Cada comentario es un hilo: el equipo de MUNE y la promotora responden; el
-//   equipo de MUNE lo marca «Resuelto» y, si la promotora vuelve a responder, se
-//   reabre. Los abiertos siguen a la vista en las versiones siguientes.
-// · «Pedir cambios» recoge solos los comentarios abiertos (textoPedirCambios).
+//   escribe. El punto es opcional: sin él, el comentario es general de ese plano,
+//   tipología o personalización; y también los hay de toda la versión.
+// · Pendiente de enviar → Enviado: «Pedir cambios» envía juntos los pendientes
+//   (textoPedirCambios los lleva también en el texto de la petición). Claude
+//   solo trabaja con lo enviado y, al preparar la versión nueva, marca los que
+//   resuelve. Si la promotora responde a uno resuelto, se reabre.
+// · En MUNE Studio, lo que escribe la administradora en la vista previa son
+//   notas internas para Claude (la promotora no las ve).
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export type TipoComentario = 'version' | 'plano' | 'experiencia';
+export type TipoComentario = 'version' | 'plano' | 'experiencia' | 'personalizacion';
 export interface PuntoPlano { x: number; y: number }
 export interface Punto3D { p: number[]; cam: number[]; obj: number[]; vista?: string }
 interface Mensaje { id: number; texto: string; autor: string; de_mune: boolean; mio: boolean; creado_en: string }
 export interface Hilo extends Mensaje {
-	version: string; tipo: TipoComentario; clave: string | null; punto: PuntoPlano | Punto3D | null;
-	resuelto_en: string | null; resuelto_version: string | null; respuestas: Mensaje[];
+	version: string; tipo: TipoComentario; clave: string | null; punto: PuntoPlano | Punto3D | null; interno: boolean;
+	enviado_en: string | null; resuelto_en: string | null; resuelto_version: string | null; respuestas: Mensaje[];
 }
 
 export interface Dependencias {
 	sb: SupabaseClient;
 	esc: (t: string) => string;
 	traducir: (e: unknown) => string;
-	/** MUNE Studio: responde como el equipo de MUNE y resuelve. */
+	/** MUNE Studio: responde como el equipo de MUNE; sus comentarios son notas para Claude. */
 	admin: boolean;
-	/** Tras escribir la promotora (para el aviso agrupado a MUNE). */
-	alComentar?: () => void;
-	/** Abre el 3D profesional en el sitio de un comentario (o para marcar uno, sin hilo). */
-	abrir3D?: (clave: string, hilo: Hilo | null) => void;
+	/** Abre el 3D profesional en el sitio de un comentario (o para marcar uno, sin hilo; en personalización, en modo Personalizar). */
+	abrir3D?: (clave: string | null, hilo: Hilo | null, tipo: TipoComentario) => void;
 	/** Enlace temporal a la imagen de un plano (para ver dónde está un comentario). */
 	imagenPlano?: (clave: string, version: string) => Promise<string | null>;
 }
@@ -53,10 +53,12 @@ export function hilosDe(hilos: Hilo[], tipo: TipoComentario, clave: string | nul
 }
 
 export const abiertos = (hs: Hilo[]) => hs.filter((h) => !h.resuelto_en);
+/** Abiertos y todavía sin enviar: los que enviará el próximo «Pedir cambios». */
+export const pendientes = (hs: Hilo[]) => hs.filter((h) => !h.resuelto_en && !h.enviado_en);
 
-/** El texto de «Pedir cambios» con los comentarios abiertos de ese sitio (y lo que se escriba, si algo). */
+/** El texto de «Pedir cambios» con los comentarios pendientes de ese sitio (y lo que se escriba, si algo). */
 export function textoPedirCambios(hs: Hilo[], texto: string): string {
-	const lista = abiertos(hs).map((h, i) => `${i + 1}. ${h.punto ? '(punto marcado) ' : ''}${h.texto.replace(/\s+/g, ' ').trim()}`);
+	const lista = pendientes(hs).map((h, i) => `${i + 1}. ${h.punto ? '(punto marcado) ' : ''}${h.texto.replace(/\s+/g, ' ').trim()}`);
 	const partes = [texto.trim(), lista.length ? `Comentarios marcados:\n${lista.join('\n')}` : ''].filter(Boolean);
 	const todo = partes.join('\n\n');
 	return todo.length > 4000 ? `${todo.slice(0, 3990)}…` : todo;
@@ -67,8 +69,16 @@ function htmlMensaje(esc: Dependencias['esc'], m: Mensaje): string {
 		<p class="comentario-texto">${esc(m.texto)}</p>`;
 }
 
+/** En qué punto está un comentario. */
+function chipEstado(d: Dependencias, h: Hilo): string {
+	const { esc } = d;
+	if (h.resuelto_en) return `<span class="estado al-dia">Resuelto${h.resuelto_version ? ` en la ${esc(h.resuelto_version)}` : ''}</span>`;
+	if (h.interno) return h.enviado_en ? '<span class="estado pendiente">Enviada a Claude</span>' : '<span class="estado">Nota sin enviar</span>';
+	return h.enviado_en ? `<span class="estado pendiente">${d.admin ? 'Pedido' : 'Enviado a MUNE'}</span>` : '<span class="estado">Pendiente de enviar</span>';
+}
+
 /** Un hilo: el comentario, sus respuestas y las acciones. n: su número en el plano (si tiene punto). */
-function htmlHilo(d: Dependencias, h: Hilo, n: number | null, lugar: string, versionActual: string | null): string {
+function htmlHilo(d: Dependencias, h: Hilo, n: number | null, lugar: string): string {
 	const { esc } = d;
 	const resuelto = !!h.resuelto_en;
 	const sinRespuestaAjena = h.respuestas.every((r) => r.mio);
@@ -76,18 +86,16 @@ function htmlHilo(d: Dependencias, h: Hilo, n: number | null, lugar: string, ver
 		<div class="hilo-cabecera">
 			${n !== null ? `<span class="marca-numero">${n}</span>` : ''}
 			<span class="promo-lugar">${lugar ? `${esc(lugar)} · ` : ''}${h.punto ? 'en un punto' : 'general'} · ${esc(h.version)}</span>
-			${resuelto ? `<span class="estado al-dia">Resuelto${h.resuelto_version ? ` en la ${esc(h.resuelto_version)}` : ''}</span>` : '<span class="estado pendiente">Abierto</span>'}
+			${chipEstado(d, h)}
 		</div>
 		${htmlMensaje(esc, h)}
 		${h.respuestas.map((r) => `<div class="respuesta">${htmlMensaje(esc, r)}</div>`).join('')}
 		<div class="acciones">
-			${h.tipo === 'experiencia' && h.punto && d.abrir3D ? '<button class="boton secundario pequeno" type="button" data-ver-3d>Ver en 3D</button>' : ''}
+			${(h.tipo === 'experiencia' || h.tipo === 'personalizacion') && h.clave && h.punto && d.abrir3D ? '<button class="boton secundario pequeno" type="button" data-ver-3d>Ver en 3D</button>' : ''}
 			${h.tipo === 'plano' && h.punto && d.imagenPlano ? '<button class="boton secundario pequeno" type="button" data-ver-plano>Ver en el plano</button>' : ''}
-			<button class="boton secundario pequeno" type="button" data-responder>Responder</button>
-			${d.admin ? (resuelto
-				? '<button class="boton secundario pequeno" type="button" data-reabrir>Reabrir</button>'
-				: `<button class="boton pequeno" type="button" data-resolver>Marcar como resuelto${versionActual ? ` en la ${esc(versionActual)}` : ''}</button>`) : ''}
-			${h.mio && sinRespuestaAjena ? '<button class="enlace" type="button" data-borrar>Borrar</button>' : ''}
+			${h.interno ? '' : '<button class="boton secundario pequeno" type="button" data-responder>Responder</button>'}
+			${d.admin && resuelto ? '<button class="enlace" type="button" data-reabrir>No está resuelto: reabrir</button>' : ''}
+			${h.mio && !h.enviado_en && sinRespuestaAjena ? '<button class="enlace" type="button" data-borrar>Borrar</button>' : ''}
 		</div>
 		<div data-zona-plano></div>
 		<form class="peticion-form respuesta-form" data-respuesta hidden novalidate>
@@ -118,10 +126,13 @@ export interface Sitio {
 	clave: string | null;
 	/** ¿Se puede comentar? (la versión más reciente) */
 	comentar: boolean;
-	/** Versión con la que MUNE marca como resuelto (MUNE Studio). */
-	versionActual?: string | null;
-	/** Nombre de cada sitio para la lista completa (MUNE Studio): «Plano · Tipología A». */
+	/** Lista de varios sitios (MUNE Studio): qué hilos se enseñan y el nombre de su sitio («Plano · Tipología A»). */
+	filtro?: (h: Hilo) => boolean;
 	lugar?: (h: Hilo) => string;
+	/** Texto de ayuda del formulario (si no, el de cada sitio). */
+	ayuda?: string;
+	/** Enseñar los resueltos a la vista, no plegados (MUNE Studio: «Qué resuelve la vN»). */
+	resueltosALaVista?: boolean;
 	/** Tras comentar, responder, resolver o borrar: los hilos de este sitio, al día. */
 	alCambiar?: (hs: Hilo[]) => void;
 }
@@ -141,30 +152,33 @@ export async function pintarComentarios(caja: HTMLElement, plano: HTMLElement | 
 		caja.innerHTML = `<p class="error">${esc(d.traducir(e))}</p>`;
 		return [];
 	}
-	const hs = s.tipo === 'version' && s.lugar ? todos.slice().sort((a, b) => a.creado_en.localeCompare(b.creado_en)) : hilosDe(todos, s.tipo, s.clave, s.version);
+	const base = s.lugar ? todos.slice().sort((a, b) => a.creado_en.localeCompare(b.creado_en)) : hilosDe(todos, s.tipo, s.clave, s.version);
+	const hs = s.filtro ? base.filter(s.filtro) : base;
 	const abiertosAqui = abiertos(hs);
 	const resueltos = hs.filter((h) => h.resuelto_en);
 	const conPunto = abiertosAqui.filter((h) => h.punto);
 	const numero = (h: Hilo) => (!s.lugar && h.tipo === 'plano' && h.punto && !h.resuelto_en ? conPunto.indexOf(h) + 1 : null);
 	const lugar = (h: Hilo) => s.lugar?.(h) ?? '';
-	const ayuda = s.tipo === 'plano'
+	const ayuda = s.ayuda ?? (s.tipo === 'plano'
 		? 'Para comentar un sitio concreto, pulsa en el plano y escribe. Si no marcas ningún sitio, el comentario es general del plano.'
 		: s.tipo === 'experiencia'
 			? 'Escribe un comentario general de esta tipología, o márcalo en su sitio dentro del 3D con «Comentar en el 3D».'
-			: 'Para lo que no es de un plano ni de una tipología concreta (por ejemplo, «falta la zona de piscina»).';
+			: s.tipo === 'personalizacion'
+				? 'Escribe lo que hay que cambiar de la personalización (opciones, packs, cómo se ve en el 3D…), o márcalo en el 3D con «Comentar en el 3D».'
+				: 'Para lo que no es de un plano ni de una tipología concreta (por ejemplo, «falta la zona de piscina»).');
 
-	caja.innerHTML = `
-		${abiertosAqui.length ? abiertosAqui.map((h) => htmlHilo(d, h, numero(h), lugar(h), s.versionActual ?? null)).join('') : s.lugar ? '<p class="vacio">No hay comentarios abiertos.</p>' : ''}
+	caja.innerHTML = s.resueltosALaVista ? (hs.length ? hs.map((h) => htmlHilo(d, h, null, lugar(h))).join('') : '<p class="vacio">Ninguno.</p>') : `
+		${abiertosAqui.length ? abiertosAqui.map((h) => htmlHilo(d, h, numero(h), lugar(h))).join('') : s.lugar ? '<p class="vacio">No hay comentarios abiertos.</p>' : ''}
 		${resueltos.length ? `<details class="resueltos"><summary>${resueltos.length === 1 ? '1 comentario resuelto' : `${resueltos.length} comentarios resueltos`}</summary>
-			${resueltos.map((h) => htmlHilo(d, h, null, lugar(h), s.versionActual ?? null)).join('')}</details>` : ''}
+			${resueltos.map((h) => htmlHilo(d, h, null, lugar(h))).join('')}</details>` : ''}
 		${s.comentar ? `<form class="peticion-form comentar-form" data-comentar novalidate>
 			<p class="ayuda">${ayuda}</p>
 			<p class="aviso-punto" data-aviso-punto hidden>Comentario en el punto marcado <span class="marca-plano nueva en-linea">+</span> · <button class="enlace" type="button" data-quitar-punto>Quitar el punto</button></p>
-			<label>Comentario<textarea name="texto" rows="2" maxlength="2000" placeholder="${s.tipo === 'plano' ? 'Por ejemplo: esta puerta debería abrir hacia el pasillo.' : s.tipo === 'experiencia' ? 'Por ejemplo: en general, los muebles se ven pequeños.' : 'Por ejemplo: falta la zona de piscina.'}"></textarea></label>
+			<label>Comentario<textarea name="texto" rows="2" maxlength="2000" placeholder="${s.tipo === 'plano' ? 'Por ejemplo: esta puerta debería abrir hacia el pasillo.' : s.tipo === 'experiencia' ? 'Por ejemplo: en general, los muebles se ven pequeños.' : s.tipo === 'personalizacion' ? 'Por ejemplo: el suelo de roble se ve demasiado oscuro.' : 'Por ejemplo: falta la zona de piscina.'}"></textarea></label>
 			<p class="error" role="alert"></p>
 			<div class="acciones">
 				<button class="boton secundario pequeno" type="submit">Comentar</button>
-				${s.tipo === 'experiencia' && s.clave && d.abrir3D ? '<button class="boton secundario pequeno" type="button" data-comentar-3d>Comentar en el 3D</button>' : ''}
+				${(s.tipo === 'experiencia' && s.clave) || s.tipo === 'personalizacion' ? (d.abrir3D ? '<button class="boton secundario pequeno" type="button" data-comentar-3d>Comentar en el 3D</button>' : '') : ''}
 			</div>
 		</form>` : ''}`;
 
@@ -201,7 +215,7 @@ export async function pintarComentarios(caja: HTMLElement, plano: HTMLElement | 
 		});
 	}
 	caja.querySelector('[data-quitar-punto]')?.addEventListener('click', () => ponerPunto(null));
-	caja.querySelector('[data-comentar-3d]')?.addEventListener('click', () => d.abrir3D!(s.clave!, null));
+	caja.querySelector('[data-comentar-3d]')?.addEventListener('click', () => d.abrir3D!(s.clave, null, s.tipo));
 
 	// Repinta todo (plano incluido) y vuelve a conectar: más sencillo que tocar trozos.
 	const recargar = async () => {
@@ -209,7 +223,7 @@ export async function pintarComentarios(caja: HTMLElement, plano: HTMLElement | 
 			const img = plano.querySelector('img')!;
 			const nuevos = await leerHilos(d.sb, s.promocion);
 			const div = document.createElement('div');
-			div.innerHTML = htmlPlanoConMarcas(esc, img.src, img.alt, abiertos(hilosDe(nuevos, s.tipo, s.clave, s.version)), s.comentar);
+			div.innerHTML = htmlPlanoConMarcas(esc, img.src, img.alt, abiertos(hilosDe(nuevos, s.tipo, s.clave, s.version).filter(s.filtro ?? (() => true))), s.comentar);
 			const nuevoPlano = div.firstElementChild as HTMLElement;
 			plano.replaceWith(nuevoPlano);
 			const hs = await pintarComentarios(caja, nuevoPlano, d, s, nuevos);
@@ -231,7 +245,6 @@ export async function pintarComentarios(caja: HTMLElement, plano: HTMLElement | 
 			p_promocion: s.promocion, p_version: s.version, p_tipo: s.tipo, p_clave: s.clave, p_punto: punto, p_texto: texto,
 		});
 		if (e) { error.textContent = d.traducir(e); boton.disabled = false; return; }
-		if (!d.admin) d.alComentar?.();
 		await recargar();
 	});
 
@@ -256,23 +269,21 @@ export async function pintarComentarios(caja: HTMLElement, plano: HTMLElement | 
 				p_promocion: s.promocion, p_version: h.version, p_tipo: h.tipo, p_clave: h.clave, p_punto: null, p_texto: texto, p_padre: id,
 			});
 			if (e) { error.textContent = d.traducir(e); boton.disabled = false; return; }
-			if (!d.admin) d.alComentar?.();
 			await recargar();
 		});
-		const resolver = async (si: boolean) => {
-			const { error: e } = await d.sb.rpc('resolver_comentario', { p_comentario: id, p_resuelto: si, p_version: si ? s.versionActual ?? null : null });
+		art.querySelector('[data-reabrir]')?.addEventListener('click', async () => {
+			if (!confirm('¿Reabrir este comentario? Volverá a estar pendiente para Claude.')) return;
+			const { error: e } = await d.sb.rpc('reabrir_comentario', { p_comentario: id });
 			if (e) { alert(d.traducir(e)); return; }
 			await recargar();
-		};
-		art.querySelector('[data-resolver]')?.addEventListener('click', () => void resolver(true));
-		art.querySelector('[data-reabrir]')?.addEventListener('click', () => void resolver(false));
+		});
 		art.querySelector('[data-borrar]')?.addEventListener('click', async () => {
 			if (!confirm('¿Borrar este comentario?')) return;
 			const { error: e } = await d.sb.rpc('borrar_comentario', { p_comentario: id });
 			if (e) { alert(d.traducir(e)); return; }
 			await recargar();
 		});
-		art.querySelector('[data-ver-3d]')?.addEventListener('click', () => d.abrir3D!(h.clave!, h));
+		art.querySelector('[data-ver-3d]')?.addEventListener('click', () => d.abrir3D!(h.clave, h, h.tipo));
 		art.querySelector('[data-ver-plano]')?.addEventListener('click', async (ev) => {
 			const zona = art.querySelector<HTMLElement>('[data-zona-plano]')!;
 			const boton = ev.currentTarget as HTMLButtonElement;

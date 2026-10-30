@@ -9,7 +9,7 @@
 // de una versión a otra, sus aprobaciones siguen valiendo.
 
 import { alEnviar, esc, sb, traducir } from './comun';
-import { type Hilo, abiertos, hilosDe, htmlPlanoConMarcas, leerHilos, pintarComentarios, textoPedirCambios } from './comentarios';
+import { type Hilo, abiertos, hilosDe, pendientes, htmlPlanoConMarcas, leerHilos, pintarComentarios, textoPedirCambios } from './comentarios';
 import {
 	type Contexto, type Elemento, baseVisita, avance, chipEstado, depsComentarios, faltanTrasAprobar, guardarDecision, htmlPersonas,
 	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, textoPublicando, versionesCon,
@@ -142,10 +142,10 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
 	const recoge = caja.querySelector<HTMLElement>('[data-recoge]');
 	const pintarRecoge = () => {
 		if (!recoge) return;
-		const n = abiertos(hilosPlano).length;
+		const n = pendientes(hilosPlano).length;
 		recoge.hidden = !n;
-		recoge.textContent = n === 1 ? 'Se enviará el comentario abierto de este plano. Si quieres, añade algo más.'
-			: `Se enviarán los ${n} comentarios abiertos de este plano. Si quieres, añade algo más.`;
+		recoge.textContent = n === 1 ? 'Se enviará el comentario pendiente de este plano. Si quieres, añade algo más.'
+			: `Se enviarán los ${n} comentarios pendientes de este plano. Si quieres, añade algo más.`;
 		caja.querySelector<HTMLElement>('[data-etiqueta-pedir]')!.textContent = n ? 'Algo más (opcional)' : 'Qué hay que corregir';
 	};
 	pintarRecoge();
@@ -180,7 +180,7 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
 	const rechazar = caja.querySelector<HTMLFormElement>('[data-rechazar]');
 	if (rechazar) alEnviar(rechazar, async (d) => {
 		const escrito = String(d.get('comentario') ?? '').trim();
-		if (!abiertos(hilosPlano).length && escrito.length < 3) throw new Error('Explica qué hay que corregir, o marca en el plano lo que hay que cambiar.');
+		if (!pendientes(hilosPlano).length && escrito.length < 3) throw new Error('Explica qué hay que corregir, o marca en el plano lo que hay que cambiar.');
 		const comentario = textoPedirCambios(hilosPlano, escrito);
 		await guardarDecision(id, e.version, 'planos', p.id, { decision: 'rechazado', comentario });
 		alValidar(`Hemos recibido tu petición de cambios en «${p.titulo}». El equipo de MUNE preparará el plano corregido.`);
