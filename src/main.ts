@@ -1569,7 +1569,8 @@ async function iniciar() {
 	const esperarQuieto = async () => {
 
 		despertar();
-		for ( let i = 0; i < 240 && quietos < 24; i ++ ) await new Promise( requestAnimationFrame );
+		const hasta = performance.now() + 5000;
+		while ( quietos < 24 && performance.now() < hasta ) await new Promise( requestAnimationFrame );
 
 	};
 	for ( const ev of [ 'pointerdown', 'wheel', 'keydown', 'click', 'resize' ] ) addEventListener( ev, despertar, { passive: true } );
