@@ -1061,6 +1061,11 @@ async function iniciar() {
 	if ( profesional ) {
 
 		$( '#salir-comprador' ).textContent = 'Salir del modo profesional';
+		// el equipo de la promotora ve la personalización del comprador, no «la suya»
+		$( '#configurador .cabecera h2' ).textContent = 'Personalización de la vivienda';
+		$( '#configurador' ).setAttribute( 'aria-label', 'Personalización de la vivienda' );
+		$( '#configurador .resumen-seleccion strong' ).textContent = 'Selección del comprador';
+		$( '#configurador [data-texto-total]' ).textContent = 'Total de la personalización';
 		const lista = $<HTMLSelectElement>( '#elegir-vivienda' );
 		for ( const v of PROMOCION.viviendas ) lista.add( new Option( nombreVivienda( v ), v.ref, false, v.ref === fichaVivienda.ref ) );
 		lista.addEventListener( 'change', () => {

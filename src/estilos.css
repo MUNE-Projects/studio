@@ -671,3 +671,4 @@ body.marcando-comentario #lienzo canvas { cursor: crosshair; }
 .panel-comentario .cancelar { border: 0; background: none; color: var(--tinta-2); text-decoration: underline; cursor: pointer; font: inherit; }
 @media (max-width: 640px) { .panel-comentario { top: auto; bottom: 150px; right: 12px; left: 12px; width: auto; max-height: 45%; } }
 .marca-comentario.interna { background: #5b4bb7; }
+@media (min-width: 641px) { body[data-modo="personalizar"] .panel-comentario { right: calc(var(--cajon) + 32px); } }
