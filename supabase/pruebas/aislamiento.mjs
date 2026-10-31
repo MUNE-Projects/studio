@@ -2238,7 +2238,7 @@ await exigir( guardarModelo( robot, { ...MODELO, 'promocion.json': JSON.stringif
 	{ ref: 'Bajo B', tipologia: 'A', espejo: true, planta: 'Baja', portal: 1 },
 ] } ) } ), 'el robot guarda una tabla de viviendas' );
 
-await caso( DEBE_FALLAR, '53. Viviendas de referencia: otra promotora, alguien sin la capacidad «Documentación», sin sesión o el robot la eligen o la leen; una vivienda de otra tipología; la tabla se lee directamente', async () => {
+await caso( DEBE_FALLAR, '54. Viviendas de referencia: otra promotora, alguien sin la capacidad «Documentación», sin sesión o el robot la eligen o la leen; una vivienda de otra tipología; la tabla se lee directamente', async () => {
 
 	const elegir = ( sb, unidad = 'a', ref = 'Bajo A', promocion = 'prueba-a' ) => sb.rpc( 'elegir_vivienda_referencia', { p_promocion: promocion, p_unidad: unidad, p_ref: ref } );
 	const r = {
