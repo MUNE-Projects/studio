@@ -22,11 +22,13 @@
 - Si una fuente no responde, guarda el resto y lo dice en **Avisos**; se puede volver a generar más tarde.
 - Para probar sin Supabase: `node herramientas/entorno.mjs prueba --referencia <RC>`.
 
-## En el 3D
-- Al **preparar la versión siguiente** (`publicacion.mjs preparar`), el entorno entra en ella (`entorno/` dentro de la web, sin la referencia catastral ni las coordenadas). Si no se ha generado, la versión sale sin entorno y sin casilla.
-- En la Experiencia 3D (MUNE Studio, MUNE Portal y la pública) aparece la casilla **Entorno real**, sin marcar al abrir. Al marcarla se descarga y la vivienda se ve en su sitio de la parcela, con los edificios de alrededor, los árboles, el relieve y la foto aérea; también desde dentro, por las ventanas. Al desmarcarla, vuelve a verse sola.
-- El sitio de cada unidad (posición, giro y altura de su suelo) se apunta en `promocion.json` → `situacion` al interpretar la documentación (receta 1). Si falta, «preparar» lo avisa y la vivienda se ve en el centro de la parcela, en planta baja.
-- Los renders HD y la descarga por lotes salen con el entorno si la casilla está marcada.
+## En el 3D (decisión 66)
+- Al **preparar la versión siguiente** (`publicacion.mjs preparar`), el entorno entra en ella (`entorno/` dentro de la web, sin la referencia catastral ni las coordenadas). Si no se ha generado, la versión sale sin entorno.
+- **Tipología:** desde fuera, la vivienda sigue aislada. Desde dentro, por las ventanas se ve lo que hay alrededor de su **vivienda de referencia** (la urbanización en un bajo, el entorno en una planta alta). Se descarga la primera vez que se entra en la vivienda.
+- **Vivienda de referencia:** la elige la promotora en MUNE Portal (*Documentación → Viviendas de referencia*), una por tipología y variante. En MUNE Studio se ve debajo del plano del entorno, con el botón **Pedir a la promotora que las elija** (le llega un email). Si falta alguna, «preparar» se detiene y se lo pide por email.
+- El sitio de cada vivienda de referencia (posición, giro y altura de su suelo) se apunta en `promocion.json` → `situacion` al interpretar la documentación (receta 1).
+- **Promoción completa:** con la casilla **Entorno real**, sin marcar al abrir (llega con la propuesta de la promoción completa).
+- Los renders HD y la descarga por lotes de las vistas de dentro salen con el entorno.
 
 ## Garantías
 - Solo fuentes públicas y gratuitas, con su licencia y atribución (la visita las enseña).
