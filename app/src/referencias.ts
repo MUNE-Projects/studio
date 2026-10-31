@@ -4,7 +4,8 @@
 // Desde dentro de cada tipología, por las ventanas se ve lo que hay de verdad
 // alrededor, según dónde esté la vivienda. La promotora elige una vivienda
 // concreta de cada tipología (y variante) en MUNE Portal, en Documentación; en
-// MUNE Studio se ve lo elegido y se le puede pedir por email lo que falta.
+// MUNE Studio se ve lo elegido, se puede elegir como ayuda y se le puede pedir
+// por email lo que falta.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -41,14 +42,14 @@ export async function pintarReferencias(zona: HTMLElement, d: DepsReferencias, p
 		<h3>Viviendas de referencia para el 3D</h3>
 		<p class="ayuda">${promotora
 			? 'Cada tipología se repite en varias plantas y portales. Elige una vivienda concreta de cada una: desde dentro de la Experiencia 3D, por sus ventanas se verá lo que hay alrededor de esa vivienda (la urbanización en un bajo, o el entorno en una planta alta).'
-			: 'La promotora elige en MUNE Portal (Documentación) una vivienda concreta de cada tipología: desde dentro de la Experiencia 3D, por sus ventanas se ve lo que hay alrededor de esa vivienda. Si falta alguna, «preparar» no sigue.'}</p>
+			: 'La promotora elige en MUNE Portal (Documentación) una vivienda concreta de cada tipología: desde dentro de la Experiencia 3D, por sus ventanas se ve lo que hay alrededor de esa vivienda. Si falta alguna, «preparar» no sigue. También puedes elegirla aquí, como ayuda (queda registrado).'}</p>
 		${!unidades.length ? `<p class="vacio">${promotora
 			? 'Aparecerá cuando el equipo de MUNE haya pasado tu tabla de viviendas a la plataforma.'
 			: 'Todavía no hay tabla de viviendas en los datos de la promoción.'}</p>`
 		: `${faltan ? `<p class="aviso">${faltan === 1 ? 'Falta elegir 1 vivienda de referencia' : `Faltan ${faltan} viviendas de referencia`}.</p>` : '<p class="ok">Todas elegidas.</p>'}
 		<ul class="lista-referencias">${unidades.map((u) => `<li data-unidad="${esc(u.unidad)}">
 			<span class="referencia-tipo">${esc(nombreUnidad(u))}</span>
-			${promotora
+			${u.viviendas.length
 				? `<select data-elegir="${esc(u.unidad)}" aria-label="Vivienda de referencia de ${esc(nombreUnidad(u))}">
 					${u.elegida ? '' : '<option value="" selected disabled>Elige una vivienda…</option>'}
 					${u.viviendas.map((v) => `<option value="${esc(v.ref)}" ${v.ref === u.elegida ? 'selected' : ''}>${esc(nombreVivienda(v))}</option>`).join('')}
