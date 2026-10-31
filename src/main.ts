@@ -1081,7 +1081,9 @@ async function iniciar() {
 		camara.far = entornoActivo ? 3000 : 200;
 		camara.updateProjectionMatrix();
 		atribucionEntorno.hidden = ! entornoActivo;
-		atribucionEntorno.textContent = entornoActivo && datosEntorno ? `Entorno: ${ datosEntorno.datos.atribucion.join( ' · ' ) }. Edificios de alrededor en maqueta, con su altura aproximada.` : '';
+		atribucionEntorno.textContent = entornoActivo ? 'Entorno: © Catastro · © OpenStreetMap · IGN (CC BY 4.0)' : '';
+		// la atribución completa de cada fuente, al pasar por encima
+		atribucionEntorno.title = entornoActivo && datosEntorno ? `${ datosEntorno.datos.atribucion.join( ' · ' ) }. Edificios de alrededor en maqueta, con su altura aproximada.` : '';
 		if ( antes !== entornoActivo || entornoGrupo?.visible !== entornoActivo ) {
 
 			mostrarPlantas();
