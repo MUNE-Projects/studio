@@ -3,7 +3,8 @@
 //
 //   node herramientas/documentos.mjs novedades [--desde AAAA-MM-DD]   (receta 13: qué ha pasado; por defecto, últimos 7 días)
 //   node herramientas/documentos.mjs pendientes [promoción]           (documentos por revisar)
-//   node herramientas/documentos.mjs bajar <id>                       (descarga a salida/documentos/ y comprueba la huella)
+//   node herramientas/documentos.mjs bajar <id>                       (descarga a salida/documentos/, sin metadatos, y comprueba la huella)
+//   node herramientas/documentos.mjs opciones                         (opciones pedidas por las promotoras; baja sus adjuntos a salida/opciones/)
 //   node herramientas/documentos.mjs estado <id> vigente|rechazado [--nota "Texto"]
 //   node herramientas/documentos.mjs comentarios <promoción> [resolver <ids> --version vN]   (comentarios visuales enviados, 038)
 //
@@ -16,8 +17,11 @@
 // Permisos del robot (005_portal.sql): leer requisitos, documentos y
 // entregables, y cambiar solo el estado y la nota de un documento. Cada cambio
 // de estado queda en el registro de actividad automáticamente.
+// Los archivos no se descargan directamente: los entrega la función de Supabase
+// «archivo-robot» sin metadatos (GPS, autor, programa, XMP…), antes de que
+// salgan hacia Claude (041_archivos_robot.sql, decisión 66). Lo que se ve en el
+// documento (un cajetín con nombres, una firma) llega igual.
 
-import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -76,6 +80,34 @@ async function entrar() {
 
 }
 
+/** Un archivo de la documentación o de una opción, sin metadatos (función «archivo-robot»). */
+async function archivoLimpio( token, almacen, ruta ) {
+
+	const r = await fetch( process.env.ARCHIVO_ROBOT_URL ?? `${ SUPABASE_URL }/functions/v1/archivo-robot`, {
+		method: 'POST',
+		headers: { apikey: SUPABASE_CLAVE_PUBLICA, Authorization: `Bearer ${ token }`, 'Content-Type': 'application/json' },
+		body: JSON.stringify( { accion: 'archivo', almacen, ruta } ),
+	} );
+	if ( ! r.ok ) {
+
+		const texto = await r.text();
+		let mensaje = texto;
+		try {
+
+			mensaje = JSON.parse( texto ).error ?? texto;
+
+		} catch { /* texto tal cual */ }
+		return { error: `${ r.status }: ${ String( mensaje ).slice( 0, 300 ) }` };
+
+	}
+	return {
+		contenido: Buffer.from( await r.arrayBuffer() ),
+		huellaOriginal: r.headers.get( 'x-huella-original' ),
+		quitado: JSON.parse( decodeURIComponent( r.headers.get( 'x-limpieza' ) ?? '%5B%5D' ) ),
+	};
+
+}
+
 const anotar = ( token, accion, detalle ) => pedir( '/rest/v1/registro', { metodo: 'POST', token, cuerpo: { accion, detalle }, prefer: 'return=minimal' } );
 const fecha = ( iso ) => iso.slice( 0, 16 ).replace( 'T', ' ' );
 const tamano = ( b ) => b >= 1048576 ? `${ ( b / 1048576 ).toFixed( 1 ) } MB` : `${ Math.max( 1, Math.round( b / 1024 ) ) } KB`;
@@ -106,8 +138,9 @@ async function bajar( token, id ) {
 	if ( ! /^\d+$/.test( id ?? '' ) ) fallo( 'Indica el número del documento, por ejemplo: 12' );
 	const [ d ] = await pedir( `/rest/v1/documentos?select=${ CAMPOS }&id=eq.${ id }`, { token } );
 	if ( ! d ) fallo( `No existe el documento #${ id } (o el robot no tiene permiso)` );
-	const contenido = await pedir( `/storage/v1/object/authenticated/documentos/${ d.ruta.split( '/' ).map( encodeURIComponent ).join( '/' ) }`, { token, crudo: true } );
-	const huella = createHash( 'sha256' ).update( contenido ).digest( 'hex' );
+	const archivo = await archivoLimpio( token, 'documentos', d.ruta );
+	if ( archivo.error ) fallo( `No se ha podido bajar el documento #${ id } (${ archivo.error })` );
+	const { contenido, huellaOriginal: huella, quitado } = archivo;
 	const carpeta = join( SALIDA, d.promocion_id );
 	mkdirSync( carpeta, { recursive: true } );
 	const destino = join( carpeta, `${ d.id }-v${ d.version }-${ d.nombre.replace( /[^\w.\- ]+/g, '_' ) }` );
@@ -115,8 +148,9 @@ async function bajar( token, id ) {
 	console.log( `✓ ${ destino.slice( destino.indexOf( 'salida' ) ) }` );
 	console.log( `  ${ d.requisitos?.bloque } › ${ d.requisitos?.elemento } · v${ d.version } · ${ tamano( contenido.length ) }` );
 	if ( incluye( d ).length ) console.log( `  También incluye: ${ incluye( d ).join( ', ' ) }` );
-	console.log( huella === d.huella ? '  ✓ La huella coincide: es exactamente el archivo que subió la promotora.'
-		: `  ✗ ¡La huella NO coincide! (registrada ${ d.huella.slice( 0, 12 ) }…, descargada ${ huella.slice( 0, 12 ) }…). Avisa a la administradora.` );
+	console.log( huella === d.huella ? '  ✓ La huella coincide: es el archivo que subió la promotora (sin metadatos).'
+		: `  ✗ ¡La huella NO coincide! (registrada ${ d.huella.slice( 0, 12 ) }…, en el almacén ${ String( huella ).slice( 0, 12 ) }…). Avisa a la administradora.` );
+	console.log( quitado.length ? `  Metadatos quitados: ${ quitado.join( '; ' ) }.` : '  No llevaba metadatos.' );
 	await anotar( token, 'robot descarga un documento', { promocion: d.promocion_id, documento: d.id } );
 
 }
@@ -219,6 +253,36 @@ async function comentarios( token, promocion, accion ) {
 
 }
 
+/** Opciones que han pedido las promotoras (029), con sus adjuntos sin metadatos en salida/opciones/. */
+async function opciones( token ) {
+
+	const lista = await pedir( '/rest/v1/rpc/opciones_pedidas_pendientes', { metodo: 'POST', token, cuerpo: {} } );
+	if ( ! lista.length ) return console.log( 'No hay opciones pedidas por preparar.' );
+	for ( const op of lista ) {
+
+		console.log( `\n#${ op.id } · ${ op.promocion_id } · ${ op.categoria_nombre } › ${ op.nombre }${ op.precio != null ? ` · ${ op.precio } €` : '' }` );
+		if ( op.descripcion ) console.log( `  «${ op.descripcion }»` );
+		for ( const a of op.archivos ?? [] ) {
+
+			const archivo = await archivoLimpio( token, 'documentos', a.ruta );
+			if ( archivo.error ) {
+
+				console.log( `  ✗ ${ a.nombre }: ${ archivo.error }` );
+				continue;
+
+			}
+			const carpeta = join( SALIDA, '..', 'opciones', String( op.id ) );
+			mkdirSync( carpeta, { recursive: true } );
+			const destino = join( carpeta, ( a.nombre || a.ruta.split( '/' ).pop() ).replace( /[^\w.\- ]+/g, '_' ) );
+			writeFileSync( destino, archivo.contenido );
+			console.log( `  ✓ ${ destino.slice( destino.indexOf( 'salida' ) ) }${ archivo.quitado.length ? ` (sin: ${ archivo.quitado.join( '; ' ) })` : '' }` );
+
+		}
+
+	}
+
+}
+
 const [ orden, a, b ] = posicionales;
 const token = await entrar();
 switch ( orden ) {
@@ -228,6 +292,7 @@ switch ( orden ) {
 	case 'bajar': await bajar( token, a ); break;
 	case 'estado': await cambiarEstado( token, a, b ); break;
 	case 'comentarios': await comentarios( token, a, b ); break;
-	default: fallo( 'Orden desconocida. Usa: novedades | pendientes | bajar | estado | comentarios' );
+	case 'opciones': await opciones( token ); break;
+	default: fallo( 'Orden desconocida. Usa: novedades | pendientes | bajar | estado | comentarios | opciones' );
 
 }
