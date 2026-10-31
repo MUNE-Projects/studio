@@ -2358,8 +2358,8 @@ await caso( DEBE_FALLAR, '54. Viviendas de referencia: otra promotora, alguien s
 	const r = {
 		otraPromotoraElige: await elegir( aprobB ),
 		otraPromotoraLee: await aprobB.rpc( 'viviendas_para_referencia', { p_promocion: 'prueba-a' } ),
-		sinCapacidadElige: await elegir( soloCompradores ),
-		sinCapacidadLee: await soloCompradores.rpc( 'viviendas_para_referencia', { p_promocion: 'prueba-a' } ),
+		sinCapacidadElige: await elegir( soloCompradores.sb ),
+		sinCapacidadLee: await soloCompradores.sb.rpc( 'viviendas_para_referencia', { p_promocion: 'prueba-a' } ),
 		anonimoElige: await elegir( anonimo ),
 		anonimoLee: await anonimo.rpc( 'viviendas_para_referencia', { p_promocion: 'prueba-a' } ),
 		robotElige: await elegir( robot ),
@@ -2375,7 +2375,7 @@ await caso( DEBE_FALLAR, '54. Viviendas de referencia: otra promotora, alguien s
 
 await caso( DEBE_FUNCIONAR, 'Viviendas de referencia: quien administra la promoción la elige y la cambia; MUNE Studio y el robot la leen', async () => {
 
-	await exigir( adminPromA.rpc( 'elegir_vivienda_referencia', { p_promocion: 'prueba-a', p_unidad: 'a', p_ref: 'Bajo A' } ), 'elige' );
+	await exigir( adminPromA.sb.rpc( 'elegir_vivienda_referencia', { p_promocion: 'prueba-a', p_unidad: 'a', p_ref: 'Bajo A' } ), 'elige' );
 	await exigir( aprobA.rpc( 'elegir_vivienda_referencia', { p_promocion: 'prueba-a', p_unidad: 'a', p_ref: '2º A' } ), 'cambia' );
 	const lista = await exigir( robot.rpc( 'viviendas_para_referencia', { p_promocion: 'prueba-a' } ), 'el robot la lee' );
 	const deAdmin = await exigir( admin.rpc( 'viviendas_para_referencia', { p_promocion: 'prueba-a' } ), 'MUNE la lee' );
