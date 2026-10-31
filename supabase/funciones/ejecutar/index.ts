@@ -29,6 +29,8 @@ const ORIGENES = [
 const PROCESO = 'https://api.github.com/repos/MUNE-Projects/studio/actions/workflows/publicar.yml/dispatches';
 // «retirar» (037): después de borrar una promoción, vuelve a enviar la web a Cloudflare sin ella
 const DESPLEGAR = 'https://api.github.com/repos/MUNE-Projects/studio/actions/workflows/desplegar.yml/dispatches';
+// «entorno» (039): genera el entorno real de una promoción (entorno.yml, con la cuenta «ejecutor»)
+const ENTORNO = 'https://api.github.com/repos/MUNE-Projects/studio/actions/workflows/entorno.yml/dispatches';
 const REVISION = Deno.env.get('REVISION_ESCAPARATE') ?? 'https://revision-experience.mune-projects.workers.dev';
 const PARTES = {
 	planos: { que: 'los planos comerciales', archivo: 'planos/planos.json' },
@@ -77,7 +79,7 @@ Deno.serve(async (req) => {
 	const promocion = String(cuerpo.promocion ?? '');
 	const version = String(cuerpo.version ?? '');
 	const motivo = String(cuerpo.motivo ?? '').trim();
-	if (accion !== 'aprobar' && accion !== 'volver' && accion !== 'retirar') return responder(400, { error: 'Acción no válida' });
+	if (!['aprobar', 'volver', 'retirar', 'entorno'].includes(accion)) return responder(400, { error: 'Acción no válida' });
 	if (!/^[a-z0-9-]{1,60}$/.test(promocion)) return responder(400, { error: 'Promoción no válida' });
 
 	const llaveA = Deno.env.get('GITHUB_EJECUTOR');
@@ -96,6 +98,16 @@ Deno.serve(async (req) => {
 		const r = await lanzar(DESPLEGAR, { destino: 'ambas' });
 		if (!r.ok) return responder(502, { error: `GitHub no ha aceptado la orden (${r.status}). ${(await r.text()).slice(0, 200)}` });
 		await sb.from('registro').insert({ accion: 'retira de la web una promoción borrada', detalle: { promocion } });
+		return responder(202, { ok: true });
+	}
+	// Generar el entorno real a partir de la referencia catastral de la ficha
+	if (accion === 'entorno') {
+		const { data: ficha } = await sb.from('promociones').select('referencia_catastral').eq('id', promocion).maybeSingle();
+		if (!ficha) return responder(404, { error: 'No existe esa promoción' });
+		if (!ficha.referencia_catastral) return responder(409, { error: 'Pon antes la referencia catastral en la ficha de la promoción.' });
+		const r = await lanzar(ENTORNO, { promocion, referencia: '' });
+		if (!r.ok) return responder(502, { error: `GitHub no ha aceptado la orden (${r.status}). ${(await r.text()).slice(0, 200)}` });
+		await sb.from('registro').insert({ accion: 'pide generar el entorno', detalle: { promocion } });
 		return responder(202, { ok: true });
 	}
 	// «aprobar»: la versión revisada en la vista previa (el ejecutor comprueba que sigue siendo esa)

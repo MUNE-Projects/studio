@@ -2113,6 +2113,55 @@ await caso( DEBE_FUNCIONAR, 'Comentarios visuales: pendiente → enviado al pedi
 
 } );
 
+// ─── Entorno real (039_entorno.sql) ─────────────────────────────────────────
+
+const ENTORNO = Buffer.from( JSON.stringify( { formato: 1, parcela: [] } ) );
+const subirEntorno = ( sb, ruta, opciones = {} ) => sb.storage.from( 'entornos' ).upload( ruta, ENTORNO, { contentType: 'application/json', ...opciones } );
+
+await caso( DEBE_FALLAR, '52. Entorno real: la promotora, el robot o alguien sin sesión lo guardan o lo leen; rutas inventadas; la promotora lee la ficha para el entorno o apunta uno', async () => {
+
+	await exigir( subirEntorno( ejecutor, 'prueba-a/entorno.json', { upsert: true } ), 'el ejecutor guarda el entorno' );
+	const r = {
+		promotoraSube: await subirEntorno( aprobA, 'prueba-a/entorno.json', { upsert: true } ),
+		robotSube: await subirEntorno( robot, 'prueba-a/entorno.json', { upsert: true } ),
+		anonimoSube: await subirEntorno( anonimo, 'prueba-a/entorno.json' ),
+		rutaInventada: await subirEntorno( ejecutor, 'prueba-a/otro.json' ),
+		promocionInventada: await subirEntorno( ejecutor, 'no-existe/entorno.json' ),
+		promotoraBaja: await aprobA.storage.from( 'entornos' ).download( 'prueba-a/entorno.json' ),
+		otraPromotoraBaja: await aprobB.storage.from( 'entornos' ).download( 'prueba-a/entorno.json' ),
+		anonimoBaja: await anonimo.storage.from( 'entornos' ).download( 'prueba-a/entorno.json' ),
+		promotoraFicha: await aprobA.rpc( 'ficha_para_entorno', { p_promocion: 'prueba-a' } ),
+		promotoraApunta: await aprobA.rpc( 'entorno_generado', { p_promocion: 'prueba-a', p_resumen: {} } ),
+		robotApunta: await robot.rpc( 'entorno_generado', { p_promocion: 'prueba-a', p_resumen: {} } ),
+		promotoraTabla: await aprobA.from( 'entornos' ).select( 'promocion_id' ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Entorno real: la cuenta «ejecutor» lee la ficha, guarda y rehace el entorno y lo apunta; MUNE Studio y el robot lo leen; se borra con la promoción', async () => {
+
+	const ficha = await exigir( ejecutor.rpc( 'ficha_para_entorno', { p_promocion: 'prueba-a' } ), 'ficha' );
+	await exigir( subirEntorno( ejecutor, 'prueba-a/entorno.json', { upsert: true } ), 'rehace el entorno' );
+	await exigir( ejecutor.storage.from( 'entornos' ).upload( 'prueba-a/orto.jpg', Buffer.from( 'jpg' ), { contentType: 'image/jpeg', upsert: true } ), 'ortofoto' );
+	await exigir( ejecutor.rpc( 'entorno_generado', { p_promocion: 'prueba-a', p_resumen: { edificios: 3 } } ), 'apunta' );
+	const fila = await exigir( admin.from( 'entornos' ).select( 'resumen' ).eq( 'promocion_id', 'prueba-a' ), 'MUNE ve la fila' );
+	const adminBaja = await exigir( admin.storage.from( 'entornos' ).download( 'prueba-a/entorno.json' ), 'MUNE lo baja' );
+	const robotBaja = await exigir( robot.storage.from( 'entornos' ).download( 'prueba-a/orto.jpg' ), 'el robot lo baja' );
+	const archivos = await exigir( admin.rpc( 'archivos_de_promocion', { p_id: 'prueba-a' } ), 'archivos de la promoción' );
+	const mal = Object.entries( {
+		ficha: ficha && 'referencia_catastral' in ficha,
+		fila: fila[ 0 ]?.resumen?.edificios === 3,
+		baja: ( await adminBaja.text() ).includes( 'formato' ) && ( await robotBaja.text() ) === 'jpg',
+		borrado: archivos.some( ( a ) => a.bucket === 'entornos' && a.nombre === 'prueba-a/entorno.json' ),
+	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
+	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) }` );
+	return true;
+
+} );
+
 // ─── Resumen ────────────────────────────────────────────────────────────────
 
 const fallidos = resultados.filter( ( r ) => ! r.ok );
