@@ -215,8 +215,8 @@ async function iniciar() {
 	escena.add( ...Object.values( c ), suelo!, luzSol, luzSol.target );
 	const lucesVentana = new THREE.Group();
 	escena.add( lucesVentana );
-	// entorno real (decisiones 64 y 66): se ve desde la vivienda (dentro o en sus
-	// exteriores), no en la vista general; se descarga la primera vez
+	// entorno real (decisiones 64 y 66): se ve desde dentro de la vivienda, por las
+	// ventanas; se descarga la primera vez
 	let entornoActivo = false;
 	let enLaVivienda = false;
 	let entornoGrupo: THREE.Group | null = null;
@@ -608,8 +608,9 @@ async function iniciar() {
 	cam.alLlegar = ( v ) => {
 
 		nav.configurar( modo === 'plano' ? 'planta' : v.interior ? 'interior' : 'exterior' );
-		// en la vivienda (dentro o en su terraza, jardín…), el entorno real; en la vista general, no (decisión 66)
-		enLaVivienda = !! ( v.interior || v.estancia );
+		// desde dentro, por las ventanas, el entorno real; en la terraza, el jardín o la vista
+		// general, no: ahí hace falta el edificio, que llega con la promoción completa (decisión 66)
+		enLaVivienda = !! v.interior;
 		void actualizarEntorno();
 
 	};
