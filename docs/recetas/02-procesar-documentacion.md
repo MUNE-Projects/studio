@@ -5,7 +5,7 @@
 
 ## Requisitos
 - El robot de Claude con sus credenciales en el entorno (`ROBOT_EMAIL`, `ROBOT_CLAVE`).
-- Permisos del robot (aprobados el 6/10/2026): leer requisitos, documentos y entregables, y cambiar solo el estado y la nota de un documento.
+- Permisos del robot (aprobados el 6/10/2026; ajustados el 31/10/2026, decisión 65): leer requisitos, documentos, entregables y validaciones, y cambiar solo el estado y la nota de un documento. De la ficha de la promoción, solo los campos técnicos (`ficha_para_robot`); en los comentarios, el papel de quien escribe en lugar de su nombre; no ve quién aprueba.
 
 ## Pasos
 1. Claude anuncia: «Receta 2 · Procesar documentación · Residencial X».
