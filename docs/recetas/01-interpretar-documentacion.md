@@ -33,7 +33,7 @@ Los `supuesto` no son un error, pero se enumeran en el informe final y, en los a
 
 ## Pasos
 1. Claude anuncia: «Receta 1 · Interpretar la documentación · Residencial X».
-2. **Baja los documentos vigentes** con `node herramientas/documentos.mjs bajar <id>` (comprueba la huella de cada uno).
+2. **Baja los documentos vigentes** con `node herramientas/documentos.mjs bajar <id>` (llegan sin metadatos, decisión 67; comprueba la huella de cada uno).
 3. **Lee todo antes de escribir nada** y anota las contradicciones entre documentos (por ejemplo, una superficie del plano que no cuadra con el cuadro oficial, o un número de viviendas distinto en la tabla y en la ficha).
 4. Rellena los datos siguiendo la **lista de comprobación** de abajo, apartado por apartado.
 5. **Comprobaciones automáticas** (las mismas que hace «preparar», sin crear versión ni tocar la vista previa):
