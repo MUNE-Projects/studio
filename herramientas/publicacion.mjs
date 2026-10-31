@@ -470,6 +470,67 @@ async function guardarDatosPrivados( id, version ) {
 
 }
 
+// ---------------------------------------------------------------- entorno real (decisión 64)
+
+/**
+ * El entorno real de la promoción (almacén privado «entornos», lo genera MUNE
+ * Studio): null si no lo hay. Va dentro de la versión (entorno/), solo con lo
+ * que dibuja el 3D: sin la referencia catastral ni las coordenadas, y sin los
+ * edificios que hoy hay dentro de la parcela.
+ */
+async function bajarEntorno( robot, id ) {
+
+	const pedir = ( archivo ) => fetch( `${ SUPABASE_URL }/storage/v1/object/authenticated/entornos/${ encodeURIComponent( id ) }/${ archivo }`, { headers: robot } );
+	const r = await pedir( 'entorno.json' );
+	if ( r.status === 400 || r.status === 404 ) return null;
+	if ( ! r.ok ) throw new Error( `Supabase respondió ${ r.status } al leer el entorno` );
+	const e = await r.json();
+	let orto = null;
+	if ( e.orto ) {
+
+		const f = await pedir( e.orto.archivo );
+		if ( f.ok ) orto = Buffer.from( await f.arrayBuffer() );
+
+	}
+	const datos = {
+		formato: e.formato, generado: e.generado, radio: e.radio, parcela: e.parcela,
+		edificios: ( e.edificios ?? [] ).filter( ( b ) => ! b.enParcela ).map( ( { contorno, plantas, altura } ) => ( { contorno, plantas, altura } ) ),
+		arboles: e.arboles ?? [], relieve: e.relieve ?? null,
+		orto: orto ? { archivo: 'orto.jpg', recuadro: e.orto.recuadro } : null,
+		atribucion: e.atribucion ?? [],
+	};
+	return { datos, orto };
+
+}
+
+/**
+ * Con el entorno real, cada tipología (unidad) necesita su vivienda de
+ * referencia (la elige la promotora en MUNE Portal, 041) y su sitio en la
+ * parcela (promocion.json → situacion, receta 1). Si falta alguna referencia,
+ * se le pide por email (función «avisar-promotora») y no se sigue.
+ */
+async function comprobarReferencias( robot, id ) {
+
+	const r = await fetch( `${ SUPABASE_URL }/rest/v1/rpc/viviendas_para_referencia`, { method: 'POST', headers: robot, body: JSON.stringify( { p_promocion: id } ) } );
+	if ( ! r.ok ) fallo( `No se han podido leer las viviendas de referencia (Supabase respondió ${ r.status }; ¿falta pegar 041_viviendas_referencia.sql?)` );
+	const unidades = await r.json();
+	const nombre = ( u ) => `${ u.tipologia.toUpperCase() }${ u.espejo ? ' (espejo)' : '' }`;
+	const faltan = unidades.filter( ( u ) => ! u.elegida );
+	if ( faltan.length ) {
+
+		const a = await fetch( `${ SUPABASE_URL }/functions/v1/avisar-promotora`, { method: 'POST', headers: robot, body: JSON.stringify( { tipo: 'referencias', promocion: id } ) } )
+			.then( ( x ) => x.json() ).catch( () => null );
+		const pedido = a?.enviado ? 'Se lo acabamos de pedir a la promotora por email.' : a?.motivo === 'Este aviso ya se había enviado' ? 'Ya se le había pedido a la promotora por email.' : 'No se ha podido avisar a la promotora: pídeselo desde MUNE Studio (Ficha y datos → Entorno real).';
+		fallo( `Falta la vivienda de referencia de: ${ faltan.map( nombre ).join( ', ' ) }. La elige la promotora en MUNE Portal (Documentación). ${ pedido }` );
+
+	}
+	const p = JSON.parse( readFileSync( join( TRABAJO, id, 'promocion.json' ), 'utf8' ) );
+	const mal = unidades.filter( ( u ) => p.situacion?.[ u.unidad ]?.referencia !== u.elegida );
+	if ( mal.length ) fallo( `Falta el sitio en la parcela de la vivienda de referencia de: ${ mal.map( ( u ) => `${ nombre( u ) } → ${ u.elegida }` ).join( ', ' ) }. Apúntalo en promocion.json → situacion.<unidad> (con «referencia», «pos», «cota» y, si hace falta, «giro»), a partir de las plantas generales (receta 1), y vuelve a subir los datos.` );
+	ok( `Viviendas de referencia: ${ unidades.map( ( u ) => `${ nombre( u ) } → ${ u.elegida }` ).join( ', ' ) }` );
+
+}
+
 async function preparar( id ) {
 
 	comprobarPromocion( id );
@@ -511,7 +572,19 @@ async function preparar( id ) {
 	process.env.FUENTE_LOCAL = '1';
 	// la web sabe su versión: con ella pide al entrar el comprador los datos privados de esa versión
 	process.env.VERSION_PUBLICA = version;
+	// el entorno real (si MUNE Studio lo ha generado), dentro de la versión
+	const entorno = await bajarEntorno( robot, id ).catch( ( e ) => fallo( `No se ha podido leer el entorno real: ${ e.message }` ) );
+	process.env.ENTORNO_REAL = entorno ? '1' : '';
+	if ( entorno ) await comprobarReferencias( robot, id );
 	const { destino } = construir( id );
+	if ( entorno ) {
+
+		mkdirSync( join( destino, 'entorno' ), { recursive: true } );
+		escribirJSON( join( destino, 'entorno', 'entorno.json' ), entorno.datos );
+		if ( entorno.orto ) writeFileSync( join( destino, 'entorno', 'orto.jpg' ), entorno.orto );
+		ok( `Entorno real dentro de la versión: ${ entorno.datos.edificios.length } edificios, ${ entorno.datos.arboles.length } árboles${ entorno.datos.relieve ? ', relieve' : '' }${ entorno.orto ? ', foto aérea' : '' } (se ve desde dentro de cada tipología, por las ventanas)` );
+
+	} else ok( 'Entorno real: no hay (se genera en MUNE Studio → Ficha y datos → Entorno real)' );
 	const tipografia = marca?.marca.tipografia ?? JSON.parse( readFileSync( join( TRABAJO, id, 'promocion.json' ), 'utf8' ) ).marca?.tipografia;
 	ok( `Tipografía dentro de la versión: ${ await guardarFuente( destino, tipografia ) }${ tipografia?.archivos?.length ? ' (propia)' : ' (Google Fonts)' }` );
 	// planos comerciales de esta versión, para que la promotora los valide (Etapa 4)

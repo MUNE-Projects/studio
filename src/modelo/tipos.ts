@@ -333,4 +333,13 @@ export interface Promocion {
 	promotora?: { acceso: string };
 	/** Packs de personalización, en el orden en que se ofrecen. */
 	packs?: Pack[];
+	/**
+	 * Dónde va cada unidad (tipología y variante, o cada vivienda en una
+	 * unifamiliar) en la parcela del entorno real (decisiones 64 y 66): la de su
+	 * vivienda de referencia (`referencia`, la elige la promotora), el origen de su
+	 * plano, su giro (grados, antihorario; 0 = el plano mira al norte; si falta, el
+	 * de `norte` de la tipología) y la altura
+	 * de su suelo sobre la calle. Sale del plano de situación (receta 1).
+	 */
+	situacion?: Record<string, { referencia: string; pos: [ number, number ]; giro?: number; cota?: number; origen?: string }>;
 }

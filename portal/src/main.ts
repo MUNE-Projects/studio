@@ -3,6 +3,7 @@
 // permisos.ts; cada pestaña con lógica propia, en su archivo (documentos.ts,
 // planos.ts, experiencia.ts, equipo.ts, compradores.ts).
 
+import { pintarReferencias } from './referencias';
 import type { Factor } from '@supabase/supabase-js';
 import { textoFase } from './fase';
 import { datosFormalizacion, formFormalizacion, type Formalizacion } from './formalizacion';
@@ -473,6 +474,10 @@ async function pantallaPromocion(id: string, pestana = 'resumen', extra = '', me
 
 	if (actual === 'documentacion') {
 		await pintarDocumentacion(caja, p, requisitos, documentos, (m) => pantallaPromocion(id, 'documentacion', '', m ?? ''), cubre);
+		// la vivienda de referencia de cada tipología, para el entorno del 3D (decisión 66)
+		const zonaRef = Object.assign(document.createElement('section'), { className: 'referencias separado' });
+		caja.append(zonaRef);
+		void pintarReferencias(zonaRef, { sb, esc, traducir, modo: 'promotora' }, id);
 	}
 
 	if (actual === 'planos') {
