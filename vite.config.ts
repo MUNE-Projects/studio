@@ -15,6 +15,8 @@ import { defineConfig, type Plugin } from 'vite';
 //   MARCA=<json>        marca de la promotora (o la propia de la promoción) guardada en
 //                       MUNE Portal (031): nombre, logo, colores, tipografía y contacto;
 //                       la pone «preparar» y sustituye a la de promocion.json
+//   ENTORNO_REAL=1      la versión lleva el entorno real (entorno/entorno.json y orto.jpg,
+//                       los copia «preparar» desde Supabase): el 3D enseña la casilla «Entorno real»
 //   FUENTE_LOCAL=1      la tipografía va dentro de la versión (fuentes/marca.css, la escribe
 //                       «preparar»): la web no pide nada a Google Fonts al visitarla
 //
@@ -207,7 +209,9 @@ export default defineConfig( ( { mode } ) => {
 		base: './',
 		resolve: { alias: { '@promocion': carpeta } },
 		// versión de la web (la pone «publicacion.mjs preparar»): con ella pide el comprador sus datos
-		define: { __STUDIO__: JSON.stringify( studio ), __VERSION__: JSON.stringify( process.env.VERSION_PUBLICA ?? null ) },
+		define: { __STUDIO__: JSON.stringify( studio ), __VERSION__: JSON.stringify( process.env.VERSION_PUBLICA ?? null ),
+			// el entorno real va dentro de la versión (entorno/), lo pone «preparar» (ENTORNO_REAL=1)
+			__ENTORNO__: JSON.stringify( process.env.ENTORNO_REAL === '1' ) },
 		plugins: [ conMarca( marcaDePortal(), process.env.FUENTE_LOCAL === '1' ), conTextosLegales( textosLegales() ), ...( completo ? [] : [ sinDatosDeStudio(), catalogoSinPrecios() ] ) ],
 		build: { target: 'es2022', chunkSizeWarningLimit: 2000, outDir: process.env.SALIDA || 'dist' },
 	};

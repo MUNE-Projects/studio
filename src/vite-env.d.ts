@@ -5,6 +5,8 @@ declare const __STUDIO__: boolean;
 
 /** Versión de la web (la pone «publicacion.mjs preparar»); null en desarrollo. */
 declare const __VERSION__: string | null;
+/** ¿Lleva esta versión el entorno real (entorno/entorno.json)? Lo decide «preparar» (decisión 64). */
+declare const __ENTORNO__: boolean;
 
 // Datos de la promoción que se construye (alias @promocion → trabajo/<id>/, vite.config.ts).
 // No están en GitHub (se bajan de Supabase), así que su forma la da el código que los usa.
