@@ -215,8 +215,10 @@ async function iniciar() {
 	escena.add( ...Object.values( c ), suelo!, luzSol, luzSol.target );
 	const lucesVentana = new THREE.Group();
 	escena.add( lucesVentana );
-	// entorno real (decisión 64): se descarga y se pone al marcar su casilla
+	// entorno real (decisiones 64 y 66): se ve desde la vivienda (dentro o en sus
+	// exteriores), no en la vista general; se descarga la primera vez
 	let entornoActivo = false;
+	let enLaVivienda = false;
 	let entornoGrupo: THREE.Group | null = null;
 
 	// ---------------------------------------------------------------- plantas
@@ -606,7 +608,8 @@ async function iniciar() {
 	cam.alLlegar = ( v ) => {
 
 		nav.configurar( modo === 'plano' ? 'planta' : v.interior ? 'interior' : 'exterior' );
-		// dentro de la vivienda, por las ventanas, el entorno real (decisión 66)
+		// en la vivienda (dentro o en su terraza, jardín…), el entorno real; en la vista general, no (decisión 66)
+		enLaVivienda = !! ( v.interior || v.estancia );
 		void actualizarEntorno();
 
 	};
@@ -1034,11 +1037,11 @@ async function iniciar() {
 		return s ? { pos: s.pos, giro: s.giro ?? modelo.tipologia.norte?.angulo ?? 0, cota: s.cota ?? 0 } : null;
 
 	}
-	/** Pone o quita el entorno según dónde está la cámara (dentro de la vivienda, sí; fuera o en el plano, no). */
+	/** Pone o quita el entorno según la vista (en la vivienda, sí; en la vista general o en el plano, no). */
 	async function actualizarEntorno() {
 
 		const sitio = __ENTORNO__ ? situacionActual() : null;
-		const dentro = !! sitio && modo !== 'plano' && nav.modo === 'interior';
+		const dentro = !! sitio && modo !== 'plano' && enLaVivienda;
 		if ( dentro && ! datosEntorno ) {
 
 			cargaEntorno ??= cargarEntornoReal().then( ( d ) => {
@@ -1073,7 +1076,7 @@ async function iniciar() {
 		}
 		const antes = entornoActivo;
 		// sigue valiendo lo de ahora (la cámara pudo moverse mientras se descargaba)
-		entornoActivo = !! entornoGrupo && modo !== 'plano' && nav.modo === 'interior';
+		entornoActivo = !! entornoGrupo && modo !== 'plano' && enLaVivienda;
 		camara.far = entornoActivo ? 3000 : 200;
 		camara.updateProjectionMatrix();
 		atribucionEntorno.hidden = ! entornoActivo;
