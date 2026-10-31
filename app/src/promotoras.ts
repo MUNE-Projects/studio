@@ -163,6 +163,25 @@ function formFiscal(d: DatosFiscales & { contacto?: string | null }, conContacto
 	</form>`;
 }
 
+// Ficha y datos: cada apartado plegado, con su título y de qué trata, para
+// encontrarlo de un vistazo. Se recuerda cuáles estaban abiertos al volver.
+const apartadosAbiertos = new Set<string>();
+
+function apartado(clave: string, titulo: string, resumen: string, cuerpo: string): string {
+	return `<details class="apartado" data-apartado="${clave}"${apartadosAbiertos.has(clave) ? ' open' : ''}>
+		<summary><span class="apartado-titulo">${esc(titulo)}</span><span class="apartado-resumen">${esc(resumen)}</span></summary>
+		<div class="apartado-cuerpo">${cuerpo}</div>
+	</details>`;
+}
+
+function conectarApartados(raiz: HTMLElement): void {
+	raiz.querySelectorAll<HTMLDetailsElement>('details[data-apartado]').forEach((d) => {
+		d.addEventListener('toggle', () => {
+			if (d.open) apartadosAbiertos.add(d.dataset.apartado!); else apartadosAbiertos.delete(d.dataset.apartado!);
+		});
+	});
+}
+
 function formFicha(p: Ficha): string {
 	const num = (n: number | null) => n === null ? '' : String(n);
 	return `<form class="peticion-form" data-ficha novalidate>
@@ -722,25 +741,30 @@ export async function pantallaPromocion(destino: HTMLElement, id: string, pestan
 	if (actual === 'documentacion') await pintarDocumentacion(caja, p);
 
 	if (actual === 'ficha') {
+		const ref = (p as unknown as { referencia_catastral?: string | null }).referencia_catastral ?? null;
 		caja.innerHTML = `
-			<h2>Ficha de la promoción</h2>
-			<p class="ayuda">Normalmente la rellena la promotora en MUNE Portal; aquí puedes revisarla o completarla.</p>
-			${formFicha(p)}
-			<h2 class="separado">Datos fiscales de la promoción</h2>
-			<p class="ayuda">La sociedad de esta promoción (puede ser distinta de la de la promotora).</p>
-			${formFiscal(p, false, false)}
-			<p class="ok" data-guardado-fiscal role="status"></p>
-			<h2 class="separado">Formalización de la personalización</h2>
-			<p class="ayuda">A quién envía el comprador su documento firmado y los datos para la transferencia. Normalmente lo rellena la promotora en MUNE Portal; solo lo ven los compradores con código.</p>
-			${formFormalizacion(p.formalizacion)}
-			<h2 class="separado">Solicitar información</h2>
-			<p class="ayuda">El botón «Solicitar información» de la experiencia pública: lleva a la web de la promotora o a un email, o abre su formulario encima del 3D. Normalmente lo pone la promotora en MUNE Portal. Se aplica al momento.</p>
-			${formSolicitar(p, esc)}
-			<h2 class="separado">Textos legales</h2>
-			<p class="ayuda">Los escribe la promotora en MUNE Portal. Se aplican en la próxima versión que prepares: se revisan en la vista previa y se publican con ella.</p>
-			${formTextosLegales(p.textos_legales ?? {})}
-			<section data-entorno></section>`;
-		void pintarEntorno(caja.querySelector<HTMLElement>('[data-entorno]')!, id, (p as unknown as { referencia_catastral?: string | null }).referencia_catastral ?? null);
+			<h2>Ficha y datos</h2>
+			<p class="ayuda">Abre el apartado que necesites.</p>
+			${apartado('ficha', 'Ficha de la promoción', 'Dirección, referencia catastral, viviendas, plantas y fechas', `
+				<p class="ayuda">Normalmente la rellena la promotora en MUNE Portal; aquí puedes revisarla o completarla.</p>
+				${formFicha(p)}`)}
+			${apartado('fiscal', 'Datos fiscales de la promoción', 'La sociedad de esta promoción', `
+				<p class="ayuda">La sociedad de esta promoción (puede ser distinta de la de la promotora).</p>
+				${formFiscal(p, false, false)}
+				<p class="ok" data-guardado-fiscal role="status"></p>`)}
+			${apartado('formalizacion', 'Formalización de la personalización', 'A quién envía el comprador su documento y datos para la transferencia', `
+				<p class="ayuda">A quién envía el comprador su documento firmado y los datos para la transferencia. Normalmente lo rellena la promotora en MUNE Portal; solo lo ven los compradores con código.</p>
+				${formFormalizacion(p.formalizacion)}`)}
+			${apartado('solicitar', 'Solicitar información', 'El botón de contacto de la experiencia pública', `
+				<p class="ayuda">El botón «Solicitar información» de la experiencia pública: lleva a la web de la promotora o a un email, o abre su formulario encima del 3D. Normalmente lo pone la promotora en MUNE Portal. Se aplica al momento.</p>
+				${formSolicitar(p, esc)}`)}
+			${apartado('legales', 'Textos legales', 'Los avisos de planos, renders, 3D y personalización', `
+				<p class="ayuda">Los escribe la promotora en MUNE Portal. Se aplican en la próxima versión que prepares: se revisan en la vista previa y se publican con ella.</p>
+				${formTextosLegales(p.textos_legales ?? {})}`)}
+			${apartado('entorno', 'Entorno real', 'Edificios, calles, relieve y foto aérea de alrededor', '<section data-entorno></section>')}`;
+		conectarApartados(caja);
+		const zonaEntorno = caja.querySelector<HTMLElement>('[data-entorno]')!;
+		void pintarEntorno(zonaEntorno, id, ref);
 		const form = caja.querySelector<HTMLFormElement>('[data-formalizacion]')!;
 		alEnviar(form, async (d) => {
 			const { error: e } = await sb.rpc('guardar_formalizacion', datosFormalizacion(id, d));
@@ -765,6 +789,8 @@ export async function pantallaPromocion(destino: HTMLElement, id: string, pestan
 			if (e) throw e;
 			ficha.querySelector<HTMLElement>('[data-guardado]')!.textContent = '✓ Ficha guardada.';
 			ficha.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled = false;
+			const nueva = String(d.get('referencia_catastral') ?? '').trim() || null;
+			if (nueva !== ref) void pintarEntorno(zonaEntorno, id, nueva);
 		});
 		const fiscal = caja.querySelector<HTMLFormElement>('[data-fiscal]')!;
 		alEnviar(fiscal, async (d) => {
