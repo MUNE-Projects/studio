@@ -10,7 +10,7 @@
 ## Pasos
 1. Claude anuncia: «Receta 2 · Procesar documentación · Residencial X».
 2. `node herramientas/documentos.mjs pendientes <promoción>`: lista lo que espera revisión.
-3. `node herramientas/documentos.mjs bajar <id>` para cada documento: lo descarga a `salida/documentos/` y **comprueba la huella** (que es exactamente el archivo que subió la promotora). Si no coincide, se detiene y avisa.
+3. `node herramientas/documentos.mjs bajar <id>` para cada documento: lo descarga a `salida/documentos/` **sin metadatos** (la función `archivo-robot` le quita autor, GPS, programa…: decisión 67) y **comprueba la huella** del original (que es el archivo que subió la promotora). Si no coincide, se detiene y avisa. Limpia PDF, fotos, Word, Excel, PowerPoint, LibreOffice, DXF, IFC, ZIP y texto. Si es un DWG, una foto HEIC, un TIFF, un formato propio de un programa (RVT, SKP…) o un PDF con contraseña, no se entrega: se pide a la promotora en DXF, PDF o JPG (sin marcar nada como rechazado sin el OK de la administradora).
 4. Claude lee cada documento y comprueba:
    - que es lo que se pidió en ese punto de la lista (por ejemplo, que el plano de tipología está **acotado**);
    - que es legible y está completo;
