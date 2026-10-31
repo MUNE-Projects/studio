@@ -42,6 +42,7 @@ import { ACABADOS } from './promocion/acabados';
 import { generarPDF } from './documento/pdf';
 import { planoPDF, planoPNG, type DatosPlano } from './documento/plano';
 import { RenderHD } from './escena/renderHD';
+import { cargarEntornoReal, construirEntornoReal, liberarEntornoReal, type Situacion } from './escena/entornoReal';
 import './estilos.css';
 
 const $ = <T extends HTMLElement>( s: string ) => document.querySelector( s ) as T;
@@ -214,6 +215,11 @@ async function iniciar() {
 	escena.add( ...Object.values( c ), suelo!, luzSol, luzSol.target );
 	const lucesVentana = new THREE.Group();
 	escena.add( lucesVentana );
+	// entorno real (decisiones 64 y 66): se ve desde dentro de la vivienda, por las
+	// ventanas; se descarga la primera vez
+	let entornoActivo = false;
+	let enLaVivienda = false;
+	let entornoGrupo: THREE.Group | null = null;
 
 	// ---------------------------------------------------------------- plantas
 	// Viviendas en varias plantas: en el plano se ve solo la planta elegida; en
@@ -228,15 +234,19 @@ async function iniciar() {
 		const multi = esMultiplanta( vivienda );
 		const enPlano = document.body.dataset.modo === 'plano';
 		// en un sótano, el terreno de alrededor se aparta para verlo (desde dentro, se queda)
-		suelo!.visible = cotaActiva() >= 0 || ( aPie && ! enPlano );
+		// con el entorno real (desde dentro), su suelo y sus árboles sustituyen a los de la vivienda
+		const conEntorno = entornoActivo && !! entornoGrupo && ! enPlano;
+		suelo!.visible = ! conEntorno && ( cotaActiva() >= 0 || ( aPie && ! enPlano ) );
+		if ( entornoGrupo ) entornoGrupo.visible = conEntorno;
 		for ( const g of [ c.muros, c.suelos, c.techos, c.volumenes, c.carpinterias, c.barandilla, c.fijo, c.mobiliario, lucesVentana ] ) {
 
 			for ( const h of g.children ) {
 
 				const p = h.userData.planta ?? 0;
 				const oculta = multi && ( enPlano ? p !== plantaActiva : p > plantaActiva && ! aPie );
-				h.userData.oculta = oculta;
-				h.visible = ! oculta;
+				// oculta: no se enseña (otra planta, o el paisaje inventado cuando está el real)
+				h.userData.oculta = oculta || ( conEntorno && !! h.userData.paisaje );
+				h.visible = ! h.userData.oculta;
 
 			}
 
@@ -434,7 +444,7 @@ async function iniciar() {
 			e.fijo.add( Object.assign( construirMecanismos( pv ), { userData: { x: 6 } } ) );
 			subir( capas.luces, construirLucesVentana( pv ), i, planta.cota );
 			// paisaje de zonas comunes: va con el mobiliario para que no aparezca en el plano
-			if ( i === plantaCalle( vivienda ) ) e.mobiliario.add( Object.assign( construirPaisaje( pv ), { userData: { x: 13 } } ) );
+			if ( i === plantaCalle( vivienda ) ) e.mobiliario.add( Object.assign( construirPaisaje( pv ), { userData: { x: 13, paisaje: true } } ) );
 			subir( capas.fijo, e.fijo, i, planta.cota );
 			subir( capas.mobiliario, e.mobiliario, i, planta.cota );
 
@@ -595,7 +605,15 @@ async function iniciar() {
 	const cam = new Camarografo( camara, ctrl, $( '#velo' ) );
 	cam.reducido = est.reducido;
 	// al terminar cada transición se ajusta la navegación a la vista
-	cam.alLlegar = ( v ) => nav.configurar( modo === 'plano' ? 'planta' : v.interior ? 'interior' : 'exterior' );
+	cam.alLlegar = ( v ) => {
+
+		nav.configurar( modo === 'plano' ? 'planta' : v.interior ? 'interior' : 'exterior' );
+		// desde dentro, por las ventanas, el entorno real; en la terraza, el jardín o la vista
+		// general, no: ahí hace falta el edificio, que llega con la promoción completa (decisión 66)
+		enLaVivienda = !! v.interior;
+		void actualizarEntorno();
+
+	};
 	type Modo = 'plano' | 'vivienda' | 'personalizar';
 	let modo: Modo = 'vivienda';
 	// comentarios visuales y descarga por lotes, en modo profesional (se conectan más abajo)
@@ -804,6 +822,7 @@ async function iniciar() {
 		$( '#configurador' ).hidden = m !== 'personalizar';
 		actualizarEtiquetas();
 		mostrarPlantas();
+		void actualizarEntorno();
 		if ( m === 'plano' ) {
 
 			( modelo.tipologia.vistas as Record<string, Vista> ).planta = encajePlanta();
@@ -996,8 +1015,81 @@ async function iniciar() {
 		const informe = reconstruir();
 		if ( alternativa ) panel.informe( 'distribucion', [ alternativa.descripcion, ...informe ] );
 		panel.resumen();
+		// el entorno, alrededor de esta vivienda (cada unidad tiene su sitio en la parcela)
+		void actualizarEntorno();
 
 	};
+
+	// ---------------------------------------------------------------- entorno real
+	// Decisión 66: en la tipología, desde fuera la vivienda sigue aislada; desde
+	// dentro, por las ventanas se ve lo que hay alrededor de su vivienda de
+	// referencia (la elige la promotora; su sitio va en promocion.json →
+	// situacion). El entorno se descarga la primera vez que se entra.
+	const atribucionEntorno = $( '#atribucion-entorno' );
+	let datosEntorno: Awaited<ReturnType<typeof cargarEntornoReal>> | null = null;
+	let cargaEntorno: Promise<void> | null = null;
+	/** unidad para la que está construido el entorno */
+	let entornoDe = '';
+	/** Dónde va la vivienda que se enseña (su vivienda de referencia); null si no se sabe. */
+	function situacionActual(): Situacion | null {
+
+		const s = PROMOCION.situacion?.[ claveUnidad( fichaVivienda ) ];
+		// sin giro propio, el del norte de la tipología (plano de situación)
+		return s ? { pos: s.pos, giro: s.giro ?? modelo.tipologia.norte?.angulo ?? 0, cota: s.cota ?? 0 } : null;
+
+	}
+	/** Pone o quita el entorno según la vista (en la vivienda, sí; en la vista general o en el plano, no). */
+	async function actualizarEntorno() {
+
+		const sitio = __ENTORNO__ ? situacionActual() : null;
+		const dentro = !! sitio && modo !== 'plano' && enLaVivienda;
+		if ( dentro && ! datosEntorno ) {
+
+			cargaEntorno ??= cargarEntornoReal().then( ( d ) => {
+
+				datosEntorno = d;
+
+			} ).catch( () => {
+
+				cargaEntorno = null; // se reintenta la próxima vez que se entre
+
+			} );
+			await cargaEntorno;
+
+		}
+		const clave = claveUnidad( fichaVivienda );
+		if ( entornoGrupo && entornoDe !== clave ) {
+
+			escena.remove( entornoGrupo );
+			liberarEntornoReal( entornoGrupo );
+			entornoGrupo = null;
+
+		}
+		if ( sitio && datosEntorno && ! entornoGrupo ) {
+
+			// la foto aérea se comparte: cada colocación usa su copia
+			const foto = datosEntorno.foto?.clone() ?? null;
+			if ( foto ) foto.needsUpdate = true;
+			entornoGrupo = construirEntornoReal( datosEntorno.datos, foto, sitio );
+			entornoDe = clave;
+			escena.add( entornoGrupo );
+
+		}
+		const antes = entornoActivo;
+		// sigue valiendo lo de ahora (la cámara pudo moverse mientras se descargaba)
+		entornoActivo = !! entornoGrupo && modo !== 'plano' && enLaVivienda;
+		camara.far = entornoActivo ? 3000 : 200;
+		camara.updateProjectionMatrix();
+		atribucionEntorno.hidden = ! entornoActivo;
+		atribucionEntorno.textContent = entornoActivo && datosEntorno ? `Entorno: ${ datosEntorno.datos.atribucion.join( ' · ' ) }. Edificios de alrededor en maqueta, con su altura aproximada.` : '';
+		if ( antes !== entornoActivo || entornoGrupo?.visible !== entornoActivo ) {
+
+			mostrarPlantas();
+			despertar();
+
+		}
+
+	}
 
 	// ---------------------------------------------------------------- acceso de comprador
 	const dialogoAcceso = $<HTMLDialogElement>( '#acceso' );
@@ -1144,6 +1236,8 @@ async function iniciar() {
 				const est = v?.estancia && vivienda.estancias.find( ( e ) => e.id === v.estancia );
 				if ( est && ( est.planta ?? 0 ) !== plantaActiva ) cambiarPlanta( est.planta ?? 0, false );
 				cam.ir( vista, true );
+				// las vistas de dentro llevan el entorno: que esté descargado antes de la imagen
+				await actualizarEntorno();
 				await esperarQuieto();
 				capturando = true;
 				try {

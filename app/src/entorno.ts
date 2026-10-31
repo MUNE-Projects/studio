@@ -6,6 +6,7 @@
 // 3D al preparar la versión siguiente (etapa 2).
 
 import { esc, fecha, sb, traducir } from './comun';
+import { pintarReferencias } from './referencias';
 
 interface Entorno {
 	generado: string; referencia: string; latlon: [ number, number ]; radio: number;
@@ -54,7 +55,7 @@ export async function pintarEntorno(zona: HTMLElement, id: string, referencia: s
 	}
 	const vecinos = e ? e.edificios.filter((b) => !b.enParcela) : [];
 	zona.innerHTML = `
-		<p class="ayuda">Lo que rodea a la parcela, de fuentes públicas y gratuitas (Catastro, IGN y OpenStreetMap): los edificios de alrededor con sus plantas, las calles, los árboles, el relieve y la foto aérea, en unos ${e?.radio ?? 250} m. Sale de la referencia catastral de la ficha. Revísalo aquí; entrará en el 3D al preparar la versión siguiente.</p>
+		<p class="ayuda">Lo que rodea a la parcela, de fuentes públicas y gratuitas (Catastro, IGN y OpenStreetMap): los edificios de alrededor con sus plantas, las calles, los árboles, el relieve y la foto aérea, en unos ${e?.radio ?? 250} m. Sale de la referencia catastral de la ficha. Revísalo aquí: al preparar la versión siguiente, desde dentro de cada tipología se verá por sus ventanas, según dónde esté su vivienda de referencia.</p>
 		${!referencia ? '<p class="aviso">Pon la referencia catastral en la ficha (arriba) para poder generarlo.</p>' : ''}
 		${e ? `<p class="promo-versiones">Generado el ${esc(fecha(e.generado))} · referencia ${esc(e.referencia)} · ${vecinos.length} edificios alrededor · ${e.calles.length} calles y caminos · ${e.arboles.length} árboles${e.relieve ? ` · cota ${e.relieve.cota} m` : ''}</p>
 			<div class="entorno-plano">${svgEntorno(e, foto)}</div>
@@ -65,7 +66,9 @@ export async function pintarEntorno(zona: HTMLElement, id: string, referencia: s
 			</details>`
 		: fila ? '<p class="error">No se ha podido abrir el entorno guardado. Vuelve a generarlo.</p>' : '<p class="vacio">Todavía no se ha generado.</p>'}
 		${referencia ? `<div class="acciones"><button class="boton ${e ? 'secundario' : ''}" type="button" data-generar-entorno>${e ? 'Volver a generar el entorno' : 'Generar el entorno'}</button></div>` : ''}
-		<p class="aviso" data-estado-entorno role="status" hidden></p>`;
+		<p class="aviso" data-estado-entorno role="status" hidden></p>
+		<section class="referencias separado" data-referencias></section>`;
+	void pintarReferencias(zona.querySelector<HTMLElement>('[data-referencias]')!, { sb, esc, traducir, modo: 'administradora' }, id);
 
 	zona.querySelector<HTMLButtonElement>('[data-generar-entorno]')?.addEventListener('click', async (ev) => {
 		const boton = ev.currentTarget as HTMLButtonElement;

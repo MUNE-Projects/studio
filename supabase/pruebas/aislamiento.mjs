@@ -2345,6 +2345,51 @@ await caso( DEBE_FUNCIONAR, 'Permisos del robot: lee la ficha técnica, las vali
 
 } );
 
+// ─── Viviendas de referencia (041_viviendas_referencia.sql) ─────────────────
+
+await exigir( guardarModelo( robot, { ...MODELO, 'promocion.json': JSON.stringify( { id: 'prueba-a', promocion: { tipo: 'plurifamiliar' }, viviendas: [
+	{ ref: 'Bajo A', tipologia: 'A', planta: 'Baja', portal: 1 }, { ref: '2º A', tipologia: 'A', planta: '2ª', portal: 1 },
+	{ ref: 'Bajo B', tipologia: 'A', espejo: true, planta: 'Baja', portal: 1 },
+] } ) } ), 'el robot guarda una tabla de viviendas' );
+
+await caso( DEBE_FALLAR, '54. Viviendas de referencia: otra promotora, alguien sin la capacidad «Documentación», sin sesión o el robot la eligen o la leen; una vivienda de otra tipología; la tabla se lee directamente', async () => {
+
+	const elegir = ( sb, unidad = 'a', ref = 'Bajo A', promocion = 'prueba-a' ) => sb.rpc( 'elegir_vivienda_referencia', { p_promocion: promocion, p_unidad: unidad, p_ref: ref } );
+	const r = {
+		otraPromotoraElige: await elegir( aprobB ),
+		otraPromotoraLee: await aprobB.rpc( 'viviendas_para_referencia', { p_promocion: 'prueba-a' } ),
+		sinCapacidadElige: await elegir( soloCompradores.sb ),
+		sinCapacidadLee: await soloCompradores.sb.rpc( 'viviendas_para_referencia', { p_promocion: 'prueba-a' } ),
+		anonimoElige: await elegir( anonimo ),
+		anonimoLee: await anonimo.rpc( 'viviendas_para_referencia', { p_promocion: 'prueba-a' } ),
+		robotElige: await elegir( robot ),
+		otraTipologia: await elegir( aprobA, 'a', 'Bajo B' ),
+		inventada: await elegir( aprobA, 'a', 'Ático Z' ),
+		tablaDirecta: await aprobA.from( 'viviendas_referencia' ).select( 'ref' ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Viviendas de referencia: quien administra la promoción la elige y la cambia; MUNE Studio y el robot la leen', async () => {
+
+	await exigir( adminPromA.sb.rpc( 'elegir_vivienda_referencia', { p_promocion: 'prueba-a', p_unidad: 'a', p_ref: 'Bajo A' } ), 'elige' );
+	await exigir( aprobA.rpc( 'elegir_vivienda_referencia', { p_promocion: 'prueba-a', p_unidad: 'a', p_ref: '2º A' } ), 'cambia' );
+	const lista = await exigir( robot.rpc( 'viviendas_para_referencia', { p_promocion: 'prueba-a' } ), 'el robot la lee' );
+	const deAdmin = await exigir( admin.rpc( 'viviendas_para_referencia', { p_promocion: 'prueba-a' } ), 'MUNE la lee' );
+	const a = lista.find( ( u ) => u.unidad === 'a' ), espejo = lista.find( ( u ) => u.unidad === 'a-espejo' );
+	const mal = Object.entries( {
+		dos: lista.length === 2 && deAdmin.length === 2,
+		elegida: a?.elegida === '2º A' && a.viviendas.length === 2,
+		falta: espejo && ! espejo.elegida,
+	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
+	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) }` );
+	return true;
+
+} );
+
 // ─── Archivos para Claude, sin metadatos (042) ─────────────────────────────
 
 const DOC_METADATOS = pdf( 'Planta con cotas 27,40 m2', ' /Author (Autora INVENTADA) /Subject (autora@inventada.test)' );
