@@ -470,6 +470,50 @@ async function guardarDatosPrivados( id, version ) {
 
 }
 
+// ---------------------------------------------------------------- entorno real (decisión 64)
+
+/**
+ * El entorno real de la promoción (almacén privado «entornos», lo genera MUNE
+ * Studio): null si no lo hay. Va dentro de la versión (entorno/), solo con lo
+ * que dibuja el 3D: sin la referencia catastral ni las coordenadas, y sin los
+ * edificios que hoy hay dentro de la parcela.
+ */
+async function bajarEntorno( robot, id ) {
+
+	const pedir = ( archivo ) => fetch( `${ SUPABASE_URL }/storage/v1/object/authenticated/entornos/${ encodeURIComponent( id ) }/${ archivo }`, { headers: robot } );
+	const r = await pedir( 'entorno.json' );
+	if ( r.status === 400 || r.status === 404 ) return null;
+	if ( ! r.ok ) throw new Error( `Supabase respondió ${ r.status } al leer el entorno` );
+	const e = await r.json();
+	let orto = null;
+	if ( e.orto ) {
+
+		const f = await pedir( e.orto.archivo );
+		if ( f.ok ) orto = Buffer.from( await f.arrayBuffer() );
+
+	}
+	const datos = {
+		formato: e.formato, generado: e.generado, radio: e.radio, parcela: e.parcela,
+		edificios: ( e.edificios ?? [] ).filter( ( b ) => ! b.enParcela ).map( ( { contorno, plantas, altura } ) => ( { contorno, plantas, altura } ) ),
+		arboles: e.arboles ?? [], relieve: e.relieve ?? null,
+		orto: orto ? { archivo: 'orto.jpg', recuadro: e.orto.recuadro } : null,
+		atribucion: e.atribucion ?? [],
+	};
+	return { datos, orto };
+
+}
+
+/** Unidades sin su sitio en la parcela: con el entorno real irían al centro de la parcela. */
+function unidadesSinSituacion( id ) {
+
+	const p = JSON.parse( readFileSync( join( TRABAJO, id, 'promocion.json' ), 'utf8' ) );
+	// la misma clave que claveUnidad (src/promocion/promocion.ts)
+	const limpio = ( t ) => t.toLowerCase().normalize( 'NFD' ).replace( /[^a-z0-9]+/g, '-' ).replace( /^-|-$/g, '' );
+	const clave = ( v ) => limpio( p.promocion?.tipo === 'unifamiliar' ? `vivienda-${ v.ref }` : `${ v.tipologia }${ v.espejo ? '-espejo' : '' }` );
+	return [ ...new Set( ( p.viviendas ?? [] ).map( clave ) ) ].filter( ( k ) => ! p.situacion?.[ k ] );
+
+}
+
 async function preparar( id ) {
 
 	comprobarPromocion( id );
@@ -511,7 +555,20 @@ async function preparar( id ) {
 	process.env.FUENTE_LOCAL = '1';
 	// la web sabe su versión: con ella pide al entrar el comprador los datos privados de esa versión
 	process.env.VERSION_PUBLICA = version;
+	// el entorno real (si MUNE Studio lo ha generado), dentro de la versión
+	const entorno = await bajarEntorno( robot, id ).catch( ( e ) => fallo( `No se ha podido leer el entorno real: ${ e.message }` ) );
+	process.env.ENTORNO_REAL = entorno ? '1' : '';
 	const { destino } = construir( id );
+	if ( entorno ) {
+
+		mkdirSync( join( destino, 'entorno' ), { recursive: true } );
+		escribirJSON( join( destino, 'entorno', 'entorno.json' ), entorno.datos );
+		if ( entorno.orto ) writeFileSync( join( destino, 'entorno', 'orto.jpg' ), entorno.orto );
+		ok( `Entorno real dentro de la versión: ${ entorno.datos.edificios.length } edificios, ${ entorno.datos.arboles.length } árboles${ entorno.datos.relieve ? ', relieve' : '' }${ entorno.orto ? ', foto aérea' : '' } (casilla «Entorno real», sin marcar al abrir)` );
+		const sin = unidadesSinSituacion( id );
+		if ( sin.length ) console.warn( `⚠ Sin su sitio en la parcela (promocion.json → situacion): ${ sin.join( ', ' ) }. Con el entorno real se ven en el centro de la parcela.` );
+
+	} else ok( 'Entorno real: no hay (se genera en MUNE Studio → Ficha y datos → Entorno real)' );
 	const tipografia = marca?.marca.tipografia ?? JSON.parse( readFileSync( join( TRABAJO, id, 'promocion.json' ), 'utf8' ) ).marca?.tipografia;
 	ok( `Tipografía dentro de la versión: ${ await guardarFuente( destino, tipografia ) }${ tipografia?.archivos?.length ? ' (propia)' : ' (Google Fonts)' }` );
 	// planos comerciales de esta versión, para que la promotora los valide (Etapa 4)

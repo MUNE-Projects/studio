@@ -62,6 +62,8 @@ export class Navegacion {
 	alcance = 40;
 
 	modo: ModoNavegacion = 'exterior';
+	/** cuánto puede salirse el pivote de la vivienda desde fuera (m) */
+	margen = 3;
 	private muros: Rect[] = [];
 	private muebles: Rect[] = [];
 	private interiores: [ number, number ][][] = [];
@@ -229,6 +231,15 @@ export class Navegacion {
 
 	}
 
+	/** Con el entorno real se puede alejar la cámara y mover el pivote mucho más. */
+	ampliar( si: boolean ) {
+
+		this.alcance = si ? 320 : 40;
+		this.margen = si ? 150 : 3;
+		if ( this.modo === 'exterior' ) this.ctrl.maxDistance = this.alcance;
+
+	}
+
 	/** Configura los controles para un modo. En interior el pivote se pone justo delante de la cámara. */
 	configurar( modo: ModoNavegacion ) {
 
@@ -372,9 +383,9 @@ export class Navegacion {
 
 			const t = this.ctrl.target;
 			const lim = new THREE.Vector3(
-				THREE.MathUtils.clamp( t.x, this.caja[ 0 ] - 3, this.caja[ 2 ] + 3 ),
+				THREE.MathUtils.clamp( t.x, this.caja[ 0 ] - this.margen, this.caja[ 2 ] + this.margen ),
 				THREE.MathUtils.clamp( t.y, 0, 2 ),
-				THREE.MathUtils.clamp( t.z, - this.caja[ 3 ] - 3, - this.caja[ 1 ] + 4 ),
+				THREE.MathUtils.clamp( t.z, - this.caja[ 3 ] - this.margen, - this.caja[ 1 ] + this.margen + 1 ),
 			);
 			if ( ! lim.equals( t ) ) {
 

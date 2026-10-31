@@ -54,6 +54,7 @@ Los `supuesto` no son un error, pero se enumeran en el informe final y, en los a
 - [ ] Viviendas: **todas** las de la tabla, cada una con su referencia, portal, planta, tipología, si es espejo, orientación y superficies oficiales. Que el número total cuadre con la ficha.
 - [ ] Variantes (espejo, bajo, ático…): cada una es la misma tipología con su modificación fija, no una tipología nueva.
 - [ ] Acabados de serie (`acabados`) desde la memoria, apartado G.
+- [ ] **Situación de cada unidad en la parcela** (`situacion`, para el entorno real, decisión 64): por cada unidad (`a`, `a-espejo`… o `vivienda-<ref>` en una unifamiliar), dónde cae el origen de su plano en coordenadas del entorno (metros desde el centro de la parcela, x al este, y al norte; se mide sobre el plano de *Ficha y datos → Entorno real* de MUNE Studio), su `giro` (grados, antihorario; si falta, el del norte de la tipología) y su `cota` (altura de su suelo sobre la calle: 0 en planta baja; la de una vivienda representativa, normalmente la primera de esa tipología en la tabla). Con su `origen`. Sin situación, con el entorno real se ve en el centro de la parcela, en planta baja, y «preparar» lo avisa.
 
 ### B. Promoción completa: urbanización y plantas generales (`entorno/conjunto.json`)
 Se describe en `entorno/conjunto.json` (formato en `src/modelo/conjunto.ts`). Las plantas generales se pasan tal como están dibujadas, con el edificio recto; el plano de urbanización dice dónde va cada edificio y cuánto gira.
