@@ -262,9 +262,10 @@ async function textosLegales( id ) {
 			return null;
 
 		}
-		const p = await fetch( `${ SUPABASE_URL }/rest/v1/promociones?id=eq.${ encodeURIComponent( id ) }&select=textos_legales`, { headers: cabeceras } );
+		// solo los campos técnicos de la ficha (040_permisos_robot.sql)
+		const p = await fetch( `${ SUPABASE_URL }/rest/v1/rpc/ficha_para_robot`, { method: 'POST', headers: cabeceras, body: JSON.stringify( { p_promocion: id } ) } );
 		if ( ! p.ok ) throw new Error( `Supabase respondió ${ p.status } al leer la promoción` );
-		const [ fila ] = await p.json();
+		const fila = await p.json();
 		if ( ! fila ) throw new Error( 'la promoción no está en Supabase' );
 		const textos = {};
 		for ( const k of LEGALES ) {

@@ -1210,7 +1210,7 @@ await caso( DEBE_FUNCIONAR, 'Textos legales: el equipo con «datos» los guarda;
 
 	await exigir( gestorA.rpc( 'guardar_textos_legales', { p_promocion: 'prueba-a', p_planos: 'Superficies orientativas.', p_renders: 'Imágenes no contractuales.', p_experiencia: 'Infografía orientativa.', p_personalizacion: '' } ), 'textos legales' );
 	const ajeno = await aprobB.rpc( 'guardar_textos_legales', { p_promocion: 'prueba-a', p_planos: 'x', p_renders: '', p_experiencia: '', p_personalizacion: '' } );
-	const leidos = ( await robot.from( 'promociones' ).select( 'textos_legales' ).eq( 'id', 'prueba-a' ).single() ).data;
+	const leidos = await exigir( robot.rpc( 'ficha_para_robot', { p_promocion: 'prueba-a' } ), 'ficha del robot' );
 	return falla( ajeno ) && leidos.textos_legales.renders === 'Imágenes no contractuales.' && ! ( 'personalizacion' in leidos.textos_legales );
 
 } );
@@ -2103,6 +2103,8 @@ const comentar = ( sb, extra = {} ) => sb.rpc( 'comentar', { p_promocion: 'prueb
 const comentarioA = await exigir( comentar( aprobA ), 'comentario de la promotora A' );
 const notaMune = await exigir( comentar( admin, { p_tipo: 'version', p_clave: null, p_punto: null, p_texto: 'Nota interna para Claude' } ), 'nota de MUNE' );
 
+const PAPELES = [ 'Equipo de MUNE', 'Equipo de la promotora' ];
+
 await caso( DEBE_FALLAR, '51. Comentarios visuales: otra promotora, el robot o sin sesión comentan o leen los de otra promotora; la promotora ve las notas de MUNE, resuelve, borra lo enviado o lo ajeno, devuelve a Claude o comenta la personalización sin permiso; puntos, sitios o versiones inventados', async () => {
 
 	const paseB = await exigir( abrirPase( aprobB, 'prueba-b' ), 'pase B' );
@@ -2170,12 +2172,79 @@ await caso( DEBE_FUNCIONAR, 'Comentarios visuales: pendiente → enviado al pedi
 		unaVez: aviso2.length === 0,
 		devueltas: devueltas === 1,
 		robotVeNotas: robotLee.some( ( h ) => h.id === notaMune && h.interno && h.enviado_en ),
+		robotSinNombres: robotLee.length > 0 && robotLee.every( ( h ) => PAPELES.includes( h.autor ) && h.respuestas.every( ( r ) => PAPELES.includes( r.autor ) ) )
+			&& robotLee.some( ( h ) => h.autor === 'Equipo de MUNE' ) && robotLee.some( ( h ) => h.autor === 'Equipo de la promotora' ),
+		equipoVeNombres: hilos.some( ( h ) => ! h.de_mune && h.autor && ! PAPELES.includes( h.autor ) ),
 		resueltos: resueltos === 3,
 		reabierto: reabierto && ! reabierto.resuelto_en && ! reabierto.enviado_en,
 		general: hilos.find( ( h ) => h.id === general )?.resuelto_version === 'v100',
 		sinNotas: ! hilos.some( ( h ) => h.interno ),
 		solo3D: desde3D.length === 1 && desde3D[ 0 ].id === personalizacion,
 		bandeja: bandeja.some( ( x ) => x.promocion_id === 'prueba-a' && x.enviados === 1 && x.pendientes === 1 ),
+	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
+	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) }` );
+	return true;
+
+} );
+
+// ─── Permisos del robot: solo lo necesario para producir (040) ─────────────
+
+const EXCLUIDOS_FICHA = [ 'razon_social', 'cif', 'domicilio_fiscal', 'formalizacion', 'solicitar_info', 'solicitar_modo', 'solicitar_formulario', 'promotora_id' ];
+
+await caso( DEBE_FALLAR, '53. Robot de Claude: lee los datos fiscales, bancarios o de contacto de la ficha por cualquier vía (tabla, relaciones, GraphQL) o quién aprueba los planos; otra cuenta usa su ficha', async () => {
+
+	const token = ( await robot.auth.getSession() ).data.session.access_token;
+	const graphql = await ( await fetch( `${ SUPABASE_URL }/graphql/v1`, {
+		method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${ token }`, 'Content-Type': 'application/json' },
+		body: JSON.stringify( { query: '{ promocionesCollection { edges { node { id cif formalizacion } } } }' } ),
+	} ) ).json().catch( () => ( {} ) );
+	const nodos = graphql?.data?.promocionesCollection?.edges ?? [];
+	const relaciones = await Promise.all( [ 'documentos', 'requisitos', 'validaciones', 'entregables', 'versiones_promocion', 'peticiones' ].map( ( t ) =>
+		robot.from( t ).select( 'promociones(cif, razon_social, domicilio_fiscal, formalizacion)' ) ) );
+	const ficha = await exigir( robot.rpc( 'ficha_para_robot', { p_promocion: 'prueba-a' } ), 'ficha del robot' );
+	const mal = Object.entries( {
+		tabla: vacio( await robot.from( 'promociones' ).select( 'id, cif, formalizacion' ) ),
+		tablaUna: vacio( await robot.from( 'promociones' ).select( 'formalizacion' ).eq( 'id', 'prueba-a' ) ),
+		relaciones: relaciones.every( ( r ) => falla( r ) || r.data.every( ( f ) => ! f.promociones ) ),
+		graphql: nodos.length === 0,
+		ficha: ! EXCLUIDOS_FICHA.some( ( k ) => k in ficha ),
+		fichaAjena: falla( await aprobA.rpc( 'ficha_para_robot', { p_promocion: 'prueba-a' } ) ) && falla( await anonimo.rpc( 'ficha_para_robot', { p_promocion: 'prueba-a' } ) ),
+		aprobadores: vacio( await robot.from( 'aprobadores' ).select( '*' ) ),
+		aprobaciones: vacio( await robot.from( 'aprobaciones' ).select( '*' ) ),
+		aprobadoresDe: falla( await robot.rpc( 'aprobadores_de', { p_promocion: 'prueba-a', p_tipo: 'planos' } ) ),
+		validacionDeVersion: falla( await robot.rpc( 'validacion_de_version', { p_promocion: 'prueba-a', p_version: 'v1', p_tipo: 'planos' } ) )
+			&& falla( await robot.rpc( 'validacion_de_version', { p_promocion: 'prueba-a', p_version: 'v1', p_tipo: 'experiencia' } ) ),
+		equipo: vacio( await robot.from( 'miembros' ).select( 'nombre, email' ) ),
+		promotoras: vacio( await robot.from( 'promotoras' ).select( 'cif, contacto' ) ),
+	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
+	if ( mal.length ) throw new Error( `el robot llega a: ${ mal.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Permisos del robot: lee la ficha técnica, las validaciones y los planos; la administradora y la promotora siguen viendo los datos fiscales, la formalización y quién aprueba', async () => {
+
+	await exigir( formalizar( gestorA, 'prueba-a', 'ventas@a.es' ), 'la promotora guarda la formalización' );
+	const codigo = await exigir( generar( gestorA, 'Ático R' ), 'código' );
+	const comprador = ( await exigir( entrarComprador( codigo ), 'el comprador entra' ) ).formalizacion;
+	const ficha = await exigir( robot.rpc( 'ficha_para_robot', { p_promocion: 'prueba-a' } ), 'ficha del robot' );
+	const deAdmin = await exigir( admin.rpc( 'ficha_para_robot', { p_promocion: 'prueba-a' } ), 'ficha de la administradora' );
+	const filaAdmin = ( await exigir( admin.from( 'promociones' ).select( 'formalizacion, cif' ).eq( 'id', 'prueba-a' ), 'admin lee' ) )[ 0 ];
+	const filaGestor = ( await exigir( gestorA.from( 'promociones' ).select( 'formalizacion' ).eq( 'id', 'prueba-a' ), 'promotora lee' ) )[ 0 ];
+	const validaciones = await exigir( robot.from( 'validaciones' ).select( 'decision, comentario, entregables(nombre)' ).eq( 'promocion_id', 'prueba-a' ), 'robot lee validaciones' );
+	const entregables = await exigir( robot.from( 'entregables' ).select( 'id' ).eq( 'promocion_id', 'prueba-a' ), 'robot lee planos' );
+	const quienes = await exigir( aprobA.rpc( 'aprobadores_de', { p_promocion: 'prueba-a', p_tipo: 'planos' } ), 'aprobadores' );
+	const enAdmin = await exigir( admin.rpc( 'aprobadores_de', { p_promocion: 'prueba-a', p_tipo: 'planos' } ), 'aprobadores admin' );
+	const aprobacionesA = await exigir( aprobA.from( 'aprobaciones' ).select( 'aprobadores' ).eq( 'promocion_id', 'prueba-a' ), 'aprobaciones' );
+	const mal = Object.entries( {
+		fichaTecnica: ficha.id === 'prueba-a' && 'referencia_catastral' in ficha && 'municipio' in ficha && 'textos_legales' in ficha && 'modulos' in ficha,
+		admin: deAdmin.id === 'prueba-a' && filaAdmin?.formalizacion?.pago?.iban,
+		promotora: filaGestor?.formalizacion?.pago?.iban === 'ES91 2100 0418 4502 0005 1332',
+		comprador: comprador?.pago?.iban === 'ES91 2100 0418 4502 0005 1332' && comprador?.contacto?.email === 'ventas@a.es',
+		validaciones: validaciones.length > 0 && validaciones.some( ( v ) => v.decision === 'rechazado' && v.comentario ),
+		planos: entregables.length > 0,
+		aprobadores: quienes.length > 0 && quienes.every( ( q ) => q.nombre ) && enAdmin.length === quienes.length,
+		aprobaciones: aprobacionesA.length > 0,
 	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
 	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) }` );
 	return true;
