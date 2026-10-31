@@ -707,11 +707,6 @@ body.marcando-comentario #lienzo canvas { cursor: crosshair; }
 #lotes .acciones { display: flex; gap: 10px; align-items: center; }
 #lotes .cancelar { border: 0; background: none; color: var(--tinta-2); text-decoration: underline; cursor: pointer; font: inherit; font-size: 12.5px; }
 
-/* Entorno real (decisión 64): la casilla en la barra de vistas y las fuentes, abajo */
-.vistas .casilla-entorno { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; height: 32px; border-radius: 8px; font-size: 13px; color: var(--tinta-2); cursor: pointer; white-space: nowrap; user-select: none; }
-.vistas .casilla-entorno:hover { background: rgb(28 28 26 / 0.05); color: var(--tinta); }
-.vistas .casilla-entorno input { width: 15px; height: 15px; margin: 0; accent-color: var(--acento, #2f5d50); cursor: pointer; }
-.vistas .casilla-entorno[data-cargando] span::after { content: '…'; }
-.vistas .casilla-entorno[hidden], body[data-modo="plano"] .vistas .casilla-entorno { display: none; }
+/* Entorno real (decisiones 64 y 66): sus fuentes, abajo, cuando se ve desde dentro */
 .atribucion-entorno { position: fixed; left: 12px; bottom: 6px; z-index: 5; margin: 0; max-width: min(60vw, 520px); font-size: 10.5px; line-height: 1.35; color: rgb(28 28 26 / 0.62); text-shadow: 0 0 3px rgb(255 255 255 / 0.9); pointer-events: none; }
 body[data-modo="plano"] .atribucion-entorno { display: none; }

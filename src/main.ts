@@ -274,7 +274,7 @@ async function iniciar() {
 		const multi = esMultiplanta( vivienda );
 		const enPlano = document.body.dataset.modo === 'plano';
 		// en un sótano, el terreno de alrededor se aparta para verlo (desde dentro, se queda)
-		// con el entorno real, su suelo y sus árboles sustituyen a los de la vivienda
+		// con el entorno real (desde dentro), su suelo y sus árboles sustituyen a los de la vivienda
 		const conEntorno = entornoActivo && !! entornoGrupo && ! enPlano;
 		suelo!.visible = ! conEntorno && ( cotaActiva() >= 0 || ( aPie && ! enPlano ) );
 		if ( entornoGrupo ) entornoGrupo.visible = conEntorno;
@@ -647,7 +647,13 @@ async function iniciar() {
 	const cam = new Camarografo( camara, ctrl, $( '#velo' ) );
 	cam.reducido = est.reducido;
 	// al terminar cada transición se ajusta la navegación a la vista
-	cam.alLlegar = ( v ) => nav.configurar( modo === 'plano' ? 'planta' : v.interior ? 'interior' : 'exterior' );
+	cam.alLlegar = ( v ) => {
+
+		nav.configurar( modo === 'plano' ? 'planta' : v.interior ? 'interior' : 'exterior' );
+		// dentro de la vivienda, por las ventanas, el entorno real (decisión 66)
+		void actualizarEntorno();
+
+	};
 	type Modo = 'plano' | 'vivienda' | 'personalizar' | 'promocion';
 	let modo: Modo = 'vivienda';
 	// comentarios visuales y descarga por lotes, en modo profesional (se conectan más abajo)
@@ -857,6 +863,7 @@ async function iniciar() {
 		$( '#configurador' ).hidden = m !== 'personalizar';
 		actualizarEtiquetas();
 		mostrarPlantas();
+		void actualizarEntorno();
 		if ( m === 'plano' ) {
 
 			( modelo.tipologia.vistas as Record<string, Vista> ).planta = encajePlanta();
@@ -1125,87 +1132,80 @@ async function iniciar() {
 		if ( alternativa ) panel.informe( 'distribucion', [ alternativa.descripcion, ...informe ] );
 		panel.resumen();
 		// el entorno, alrededor de esta vivienda (cada unidad tiene su sitio en la parcela)
-		if ( entornoActivo ) colocarEntorno();
+		void actualizarEntorno();
 
 	};
 
 	// ---------------------------------------------------------------- entorno real
-	// Decisión 64: casilla «Entorno real» (sin marcar al abrir). Al marcarla se
-	// descarga entorno/ de la versión y la vivienda aparece en su sitio de la
-	// parcela, entre los edificios de alrededor y sobre la foto aérea.
-	const casillaEntorno = $<HTMLInputElement>( '#entorno-real' );
-	const etiquetaEntorno = casillaEntorno.closest( 'label' ) as HTMLElement;
+	// Decisión 66: en la tipología, desde fuera la vivienda sigue aislada; desde
+	// dentro, por las ventanas se ve lo que hay alrededor de su vivienda de
+	// referencia (la elige la promotora; su sitio va en promocion.json →
+	// situacion). El entorno se descarga la primera vez que se entra.
 	const atribucionEntorno = $( '#atribucion-entorno' );
 	let datosEntorno: Awaited<ReturnType<typeof cargarEntornoReal>> | null = null;
-	etiquetaEntorno.hidden = ! __ENTORNO__;
-	/** Dónde va la vivienda que se enseña: su unidad en promocion.json o, si falta, en el centro de la parcela. */
-	function situacionActual(): Situacion {
+	let cargaEntorno: Promise<void> | null = null;
+	/** unidad para la que está construido el entorno */
+	let entornoDe = '';
+	/** Dónde va la vivienda que se enseña (su vivienda de referencia); null si no se sabe. */
+	function situacionActual(): Situacion | null {
 
 		const s = PROMOCION.situacion?.[ claveUnidad( fichaVivienda ) ];
 		// sin giro propio, el del norte de la tipología (plano de situación)
-		return { pos: s?.pos ?? [ 0, 0 ], giro: s?.giro ?? modelo.tipologia.norte?.angulo ?? 0, cota: s?.cota ?? 0 };
+		return s ? { pos: s.pos, giro: s.giro ?? modelo.tipologia.norte?.angulo ?? 0, cota: s.cota ?? 0 } : null;
 
 	}
-	function colocarEntorno() {
+	/** Pone o quita el entorno según dónde está la cámara (dentro de la vivienda, sí; fuera o en el plano, no). */
+	async function actualizarEntorno() {
 
-		if ( entornoGrupo ) {
+		const sitio = __ENTORNO__ ? situacionActual() : null;
+		const dentro = !! sitio && modo !== 'plano' && nav.modo === 'interior';
+		if ( dentro && ! datosEntorno ) {
+
+			cargaEntorno ??= cargarEntornoReal().then( ( d ) => {
+
+				datosEntorno = d;
+
+			} ).catch( () => {
+
+				cargaEntorno = null; // se reintenta la próxima vez que se entre
+
+			} );
+			await cargaEntorno;
+
+		}
+		const clave = claveUnidad( fichaVivienda );
+		if ( entornoGrupo && entornoDe !== clave ) {
 
 			escena.remove( entornoGrupo );
 			liberarEntornoReal( entornoGrupo );
 			entornoGrupo = null;
 
 		}
-		if ( entornoActivo && datosEntorno ) {
+		if ( sitio && datosEntorno && ! entornoGrupo ) {
 
-			// la foto aérea se comparte entre colocaciones: no se libera con el grupo
+			// la foto aérea se comparte: cada colocación usa su copia
 			const foto = datosEntorno.foto?.clone() ?? null;
 			if ( foto ) foto.needsUpdate = true;
-			entornoGrupo = construirEntornoReal( datosEntorno.datos, foto, situacionActual(), limites( modelo.vivienda ) );
+			entornoGrupo = construirEntornoReal( datosEntorno.datos, foto, sitio );
+			entornoDe = clave;
 			escena.add( entornoGrupo );
 
 		}
-		nav.ampliar( entornoActivo && !! entornoGrupo );
-		camara.far = entornoGrupo ? 3000 : 200;
+		const antes = entornoActivo;
+		// sigue valiendo lo de ahora (la cámara pudo moverse mientras se descargaba)
+		entornoActivo = !! entornoGrupo && modo !== 'plano' && nav.modo === 'interior';
+		camara.far = entornoActivo ? 3000 : 200;
 		camara.updateProjectionMatrix();
-		atribucionEntorno.hidden = ! entornoGrupo;
-		atribucionEntorno.textContent = entornoGrupo && datosEntorno ? `Entorno: ${ datosEntorno.datos.atribucion.join( ' · ' ) }. Edificios de alrededor en maqueta, con su altura aproximada.` : '';
-		mostrarPlantas();
-		despertar();
+		atribucionEntorno.hidden = ! entornoActivo;
+		atribucionEntorno.textContent = entornoActivo && datosEntorno ? `Entorno: ${ datosEntorno.datos.atribucion.join( ' · ' ) }. Edificios de alrededor en maqueta, con su altura aproximada.` : '';
+		if ( antes !== entornoActivo || entornoGrupo?.visible !== entornoActivo ) {
 
-	}
-	casillaEntorno.addEventListener( 'change', async () => {
-
-		entornoActivo = casillaEntorno.checked;
-		if ( entornoActivo && ! datosEntorno ) {
-
-			etiquetaEntorno.dataset.cargando = '';
-			casillaEntorno.disabled = true;
-			try {
-
-				datosEntorno = await cargarEntornoReal();
-
-			} catch {
-
-				entornoActivo = casillaEntorno.checked = false;
-				etiquetaEntorno.title = 'No se ha podido cargar el entorno. Inténtalo de nuevo en un momento.';
-
-			}
-			delete etiquetaEntorno.dataset.cargando;
-			casillaEntorno.disabled = false;
+			mostrarPlantas();
+			despertar();
 
 		}
-		colocarEntorno();
-		// al marcarla, desde fuera, una vista de lejos para ver dónde está la vivienda
-		const aerea = ( modelo.tipologia.vistas as Record<string, Vista> ).aerea;
-		if ( entornoGrupo && modo !== 'plano' && nav.modo === 'exterior' && aerea ) {
 
-			const o = new THREE.Vector3( ...aerea.obj ), d = new THREE.Vector3( ...aerea.pos ).sub( o ).setY( 0 ).normalize();
-			const lejos = o.clone().addScaledVector( d, 95 ).setY( o.y + 70 );
-			irVista( { nombre: 'Entorno', pos: lejos.toArray() as [ number, number, number ], obj: aerea.obj, fov: aerea.fov } );
-
-		} else if ( ! entornoActivo && modo !== 'plano' && nav.modo === 'exterior' ) irVista( 'aerea' );
-
-	} );
+	}
 
 	// ---------------------------------------------------------------- acceso de comprador
 	const dialogoAcceso = $<HTMLDialogElement>( '#acceso' );
@@ -1352,6 +1352,8 @@ async function iniciar() {
 				const est = v?.estancia && vivienda.estancias.find( ( e ) => e.id === v.estancia );
 				if ( est && ( est.planta ?? 0 ) !== plantaActiva ) cambiarPlanta( est.planta ?? 0, false );
 				cam.ir( vista, true );
+				// las vistas de dentro llevan el entorno: que esté descargado antes de la imagen
+				await actualizarEntorno();
 				await esperarQuieto();
 				capturando = true;
 				try {

@@ -391,3 +391,11 @@ details.apartado > summary:focus-visible { outline: 2px solid var(--acento, #2f5
 .apartado-titulo { font-weight: 600; font-size: 16px; }
 .apartado-resumen { color: var(--tinta-2); font-size: 14px; }
 .apartado-cuerpo { padding: 0 16px 16px; border-top: 1px solid var(--linea, #e2dfd8); padding-top: 14px; }
+
+/* Viviendas de referencia (decisión 66) */
+.lista-referencias { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.lista-referencias li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 10px 12px; border: 1px solid var(--linea); border-radius: 10px; }
+.lista-referencias .referencia-tipo { font-weight: 600; min-width: 170px; }
+.lista-referencias select { flex: 1 1 220px; max-width: 360px; }
+.lista-referencias .pendiente-texto { color: var(--tinta-2); font-style: italic; }
+.lista-referencias [data-guardada]:empty { display: none; }

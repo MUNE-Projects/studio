@@ -375,3 +375,11 @@ label.nombre-categoria input { padding: 6px 8px; font-size: 17px; font-weight: 6
 .marca-plano { position: absolute; transform: translate(-50%, -50%); cursor: pointer; }
 .marca-plano.nueva { background: var(--acento); cursor: default; }
 .marca-plano.en-linea { position: static; transform: none; vertical-align: middle; }
+
+/* Viviendas de referencia (decisión 66) */
+.lista-referencias { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.lista-referencias li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 10px 12px; border: 1px solid var(--linea); border-radius: 10px; }
+.lista-referencias .referencia-tipo { font-weight: 600; min-width: 170px; }
+.lista-referencias select { flex: 1 1 220px; max-width: 360px; }
+.lista-referencias .pendiente-texto { color: var(--tinta-2); font-style: italic; }
+.lista-referencias [data-guardada]:empty { display: none; }

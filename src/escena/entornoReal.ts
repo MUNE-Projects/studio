@@ -1,9 +1,9 @@
 // Entorno real de la promoción en el 3D (decisión 64, etapa 2): lo que rodea a
 // la parcela, de fuentes públicas (Catastro, IGN y OpenStreetMap), alrededor de
 // la vivienda. Lo genera MUNE Studio (herramientas/entorno.mjs) y «preparar» lo
-// mete en cada versión (entorno/entorno.json y entorno/orto.jpg). En el 3D sale
-// con la casilla «Entorno real», sin marcar al abrir; solo se descarga al
-// marcarla.
+// mete en cada versión (entorno/entorno.json y entorno/orto.jpg). En la
+// tipología se ve solo desde dentro, por las ventanas (desde fuera la vivienda
+// sigue aislada); se descarga la primera vez que se entra en la vivienda.
 //
 //  · el suelo es el relieve del IGN con la foto aérea del PNOA encima;
 //  · los edificios de alrededor, en maqueta neutra, con su altura aproximada
@@ -11,9 +11,10 @@
 //  · los árboles de OpenStreetMap, en volúmenes sencillos.
 //
 // Coordenadas del entorno: metros, x hacia el este, y hacia el norte, con el
-// origen en el centro de la parcela. La vivienda se coloca con su «situación»
-// (promocion.json): dónde cae el origen de su plano en la parcela, cuánto gira
-// (grados, antihorario) y a qué altura sobre la calle está su suelo.
+// origen en el centro de la parcela. La vivienda se coloca con la «situación»
+// de su vivienda de referencia (promocion.json, decisión 66; la elige la
+// promotora en MUNE Portal): dónde cae el origen de su plano en la parcela,
+// cuánto gira (grados, antihorario) y a qué altura sobre la calle está su suelo.
 
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -214,25 +215,11 @@ function arboles( e: EntornoReal ): THREE.Group {
 
 }
 
-/** Un volumen neutro bajo una vivienda que no está en planta baja: el resto del edificio hasta el suelo. */
-function zocalo( caja: [ number, number, number, number ], cota: number ): THREE.Mesh | null {
-
-	if ( cota < 0.5 ) return null;
-	const [ x0, y0, x1, y1 ] = caja;
-	const g = new THREE.BoxGeometry( x1 - x0, cota, y1 - y0 ).translate( ( x0 + x1 ) / 2, - cota / 2 - 0.3, - ( y0 + y1 ) / 2 );
-	const malla = new THREE.Mesh( g, new THREE.MeshStandardMaterial( { color: NEUTRO, roughness: 0.92 } ) );
-	malla.name = 'entorno-zocalo';
-	malla.receiveShadow = true;
-	return malla;
-
-}
-
 /**
  * El entorno colocado alrededor de la vivienda: un grupo en coordenadas del 3D
  * de la vivienda (x del plano, y hacia arriba, z = −y del plano).
- * `caja` es la planta de la vivienda en coordenadas de su plano [x0, y0, x1, y1].
  */
-export function construirEntornoReal( e: EntornoReal, foto: THREE.Texture | null, s: Situacion, caja: [ number, number, number, number ] ): THREE.Group {
+export function construirEntornoReal( e: EntornoReal, foto: THREE.Texture | null, s: Situacion ): THREE.Group {
 
 	const cota = s.cota ?? 0;
 	// el entorno, en sus coordenadas, con el suelo bajo la vivienda justo por debajo del suyo
@@ -254,8 +241,6 @@ export function construirEntornoReal( e: EntornoReal, foto: THREE.Texture | null
 	const todo = new THREE.Group();
 	todo.name = 'entorno-real';
 	todo.add( girado );
-	const z = zocalo( caja, cota );
-	if ( z ) todo.add( z );
 	return todo;
 
 }
