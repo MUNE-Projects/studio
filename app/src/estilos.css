@@ -375,3 +375,19 @@ label.nombre-categoria input { padding: 6px 8px; font-size: 17px; font-weight: 6
 .marca-plano { position: absolute; transform: translate(-50%, -50%); cursor: pointer; }
 .marca-plano.nueva { background: var(--acento); cursor: default; }
 .marca-plano.en-linea { position: static; transform: none; vertical-align: middle; }
+
+/* Entorno real (entorno.ts) */
+.entorno-plano { max-width: 640px; margin: 10px 0; border: 1px solid var(--linea); border-radius: 10px; overflow: hidden; background: #fff; }
+.plano-entorno { display: block; width: 100%; height: auto; }
+
+/* Ficha y datos: apartados plegables */
+details.apartado { border: 1px solid var(--linea, #e2dfd8); border-radius: 10px; background: var(--superficie); margin: 0 0 10px; }
+details.apartado > summary { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 14px 44px 14px 16px; position: relative; }
+details.apartado > summary::-webkit-details-marker { display: none; }
+details.apartado > summary::after { content: ""; position: absolute; right: 18px; top: 50%; width: 8px; height: 8px; border-right: 2px solid var(--tinta-2); border-bottom: 2px solid var(--tinta-2); transform: translateY(-70%) rotate(45deg); transition: transform .15s; }
+details.apartado[open] > summary::after { transform: translateY(-30%) rotate(-135deg); }
+details.apartado > summary:hover { background: rgba(0, 0, 0, .025); border-radius: 10px; }
+details.apartado > summary:focus-visible { outline: 2px solid var(--acento, #2f5d50); outline-offset: 2px; border-radius: 10px; }
+.apartado-titulo { font-weight: 600; font-size: 16px; }
+.apartado-resumen { color: var(--tinta-2); font-size: 14px; }
+.apartado-cuerpo { padding: 0 16px 16px; border-top: 1px solid var(--linea, #e2dfd8); padding-top: 14px; }
