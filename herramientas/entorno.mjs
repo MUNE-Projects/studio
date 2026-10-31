@@ -263,7 +263,9 @@ export async function montarEntorno( rc ) {
 			const centro = centroide( p );
 			return { contorno: p, plantas: e.plantas, altura: Math.round( e.plantas * 3.1 * 10 ) / 10, enParcela: dentro( centro, parcelaLocal ) };
 
-		} ).filter( ( e ) => Math.abs( area( e.contorno ) ) >= 4 );
+		} ).filter( ( e ) => Math.abs( area( e.contorno ) ) >= 4
+			// el Catastro puede devolver partes de edificio de fuera del recuadro pedido
+			&& e.contorno.some( ( [ x, y ] ) => Math.abs( x ) <= RADIO && Math.abs( y ) <= RADIO ) );
 		ok( `Edificios del Catastro: ${ listaEdificios.length } (${ listaEdificios.filter( ( e ) => e.enParcela ).length } dentro de la parcela, que no se dibujan)` );
 
 	} catch ( e ) {

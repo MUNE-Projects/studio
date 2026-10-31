@@ -438,7 +438,7 @@ Sustituye al orden de pasos 0–5 anterior (los pasos 0, 2 y 3 de equipos y vali
 10. Comentarios visuales en planos y Experience, unidos a su versión (no dependen del 9). Hecho: en el plano, en el 3D y de toda la versión, con el punto opcional; la personalización aparte; «Pedir cambios» los envía juntos y Claude marca los que resuelve cada versión (decisión 62).
 11. Generación de materiales por lotes (depende del 6). Hecho: planos comerciales vigentes y renders de las vistas, en un ZIP con una carpeta por tipología (decisión 63).
 12. Analítica del uso de MUNE, agregada y por contexto (importes de selecciones cerradas, opciones más elegidas, tipologías y vistas más vistas…).
-13. Entorno real (ubicación, orientación, parcela, vistas), sin soleamiento.
+13. Entorno real (ubicación, orientación, parcela, vistas), sin soleamiento. En tres etapas (decisión 64): 1, generarlo desde Catastro, IGN y OpenStreetMap y revisarlo en MUNE Studio; 2, el entorno en el 3D; 3, horizonte y vistas.
 14. «Solicitar información» más específico, solo si hace falta.
 
 ### D. I+D
