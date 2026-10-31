@@ -5,12 +5,15 @@
 //   { tipo: 'publicada', promocion, version }   versión publicada (MUNE Studio)
 //   { tipo: 'rechazado', documento_id }         documento rechazado, con su nota
 //                                               (MUNE Studio o robot de Claude)
+//   { tipo: 'referencias', promocion }          faltan viviendas de referencia de
+//                                               alguna tipología (041; MUNE Studio o
+//                                               robot de Claude, al preparar)
 //
 // A quién (decisión 40): planos y Experiencia 3D, solo a las personas que
 // tienen que validarlos (sus aprobadores). Si la promotora aún no los ha
 // definido, a quien administra la promoción, para que los defina. Versión
 // publicada: a todo el equipo de la promoción. Documento rechazado: a quien
-// tiene la capacidad «Documentación» o administra.
+// tiene la capacidad «Documentación» o administra. Viviendas de referencia: igual.
 //
 // 1. Comprueba quién llama: la administradora (con el código del móvil) o, solo
 //    para «rechazado», el robot de Claude.
@@ -77,10 +80,10 @@ Deno.serve(async (req) => {
 		return responder(400, { error: 'Orden no válida' });
 	}
 	const tipo = String(cuerpo.tipo ?? '');
-	if (!['planos', 'experiencia', 'publicada', 'rechazado'].includes(tipo)) return responder(400, { error: 'Tipo de aviso no válido' });
+	if (!['planos', 'experiencia', 'publicada', 'rechazado', 'referencias'].includes(tipo)) return responder(400, { error: 'Tipo de aviso no válido' });
 
 	const [{ data: esAdmin }, { data: esRobot }] = await Promise.all([sb.rpc('es_admin'), sb.rpc('es_robot')]);
-	if (esAdmin !== true && !(tipo === 'rechazado' && esRobot === true)) return responder(403, { error: 'Sin permiso' });
+	if (esAdmin !== true && !((tipo === 'rechazado' || tipo === 'referencias') && esRobot === true)) return responder(403, { error: 'Sin permiso' });
 
 	// deno-lint-ignore no-explicit-any
 	let servicio: SupabaseClient<any> | null = null;
@@ -175,6 +178,27 @@ Deno.serve(async (req) => {
 		asunto = `${promo.nombre} · documento por corregir: ${elemento}`;
 		texto = `El equipo de MUNE ha revisado ${archivo} (${elemento}, versión ${doc!.version}) de ${promo.nombre} y necesita una corrección:\n\n«${doc!.nota ?? ''}»\n\n`
 			+ 'Sube una versión nueva desde MUNE Portal, en Documentación.';
+		enlace = `${PORTAL}#/promocion/${promocion}/documentacion`;
+		para = equipo.filter((m) => m.administra || (m.capacidades ?? []).includes('documentacion')).map((m) => m.email);
+	}
+
+	if (tipo === 'referencias') {
+		// las que faltan, con la sesión de quien llama (la administradora o el robot)
+		const { data: unidades, error: eU } = await sb.rpc('viviendas_para_referencia', { p_promocion: promocion });
+		if (eU) {
+			console.error('viviendas_para_referencia', eU);
+			return responder(500, { error: 'No se han podido leer las viviendas (falta pegar 041_viviendas_referencia.sql)' });
+		}
+		const faltan = ((unidades ?? []) as { unidad: string; tipologia: string; espejo: boolean; elegida: string | null }[]).filter((u) => !u.elegida);
+		if (!faltan.length) return responder(409, { error: 'Ya están elegidas todas las viviendas de referencia' });
+		// una vez por cada conjunto de tipologías que faltan
+		claveAviso = `referencias/${promocion}/${faltan.map((u) => u.unidad).sort().join(',')}`.slice(0, 300);
+		const nombre = (u: { tipologia: string; espejo: boolean }) => `Tipología ${u.tipologia.toUpperCase()}${u.espejo ? ' (espejo)' : ''}`;
+		asunto = `${promo.nombre} · elige la vivienda de referencia de cada tipología`;
+		texto = `Para que desde dentro de cada tipología se vea por las ventanas lo que hay de verdad alrededor (la urbanización en los bajos, o el entorno en las plantas altas), el equipo de MUNE necesita saber qué vivienda concreta representa a cada tipología.\n\n`
+			+ `Elige en MUNE Portal (Documentación → Viviendas de referencia) una vivienda de ${faltan.length === 1 ? 'esta tipología' : 'cada una de estas tipologías'}:\n`
+			+ faltan.slice(0, 40).map((u) => `· ${nombre(u)}`).join('\n')
+			+ '\n\nHasta que no estén elegidas, el equipo de MUNE no puede preparar la Experiencia 3D.';
 		enlace = `${PORTAL}#/promocion/${promocion}/documentacion`;
 		para = equipo.filter((m) => m.administra || (m.capacidades ?? []).includes('documentacion')).map((m) => m.email);
 	}

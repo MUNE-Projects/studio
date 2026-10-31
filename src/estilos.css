@@ -691,3 +691,7 @@ body.marcando-comentario #lienzo canvas { cursor: crosshair; }
 #lotes .progreso { margin: 0 0 8px; font-size: 12.5px; color: var(--acento); }
 #lotes .acciones { display: flex; gap: 10px; align-items: center; }
 #lotes .cancelar { border: 0; background: none; color: var(--tinta-2); text-decoration: underline; cursor: pointer; font: inherit; font-size: 12.5px; }
+
+/* Entorno real (decisiones 64 y 66): sus fuentes, abajo, cuando se ve desde dentro */
+.atribucion-entorno { position: fixed; left: 12px; bottom: 6px; z-index: 5; margin: 0; max-width: min(60vw, 520px); font-size: 10.5px; line-height: 1.35; color: rgb(28 28 26 / 0.62); text-shadow: 0 0 3px rgb(255 255 255 / 0.9); pointer-events: none; }
+body[data-modo="plano"] .atribucion-entorno { display: none; }
