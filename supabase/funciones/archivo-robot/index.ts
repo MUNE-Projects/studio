@@ -13,8 +13,17 @@
 //    notas, archivos adjuntos dentro del PDF ni metadatos de las fotos que lleve
 //    dentro. Las páginas, el texto, los vectores, las cotas y la escala, igual:
 //    no se convierte en imagen.
-//  · cualquier otro formato (DWG, Word, Excel, HEIC…): no se entrega. Hay que
-//    pedirlo a la promotora en PDF (o la administradora lo mira por su cuenta).
+//  · Word, Excel, PowerPoint y LibreOffice: sin la ficha (autor, último en
+//    guardar, empresa…), sin el nombre de quien comenta o hace cambios y sin los
+//    metadatos de sus fotos; el contenido, igual.
+//  · DXF: sin «último en guardar» ni las propiedades del dibujo (título, autor,
+//    comentarios…). IFC (BIM): sin autores, organización, personas, direcciones,
+//    teléfonos ni emails. La geometría, igual.
+//  · ZIP: cada archivo de dentro, limpio; lo que no se puede limpiar se queda fuera.
+//  · texto (CSV, TXT, SVG…): no lleva datos ocultos (del SVG se quita su ficha).
+//  · DWG, HEIC, TIFF y formatos propios de programas (RVT, SKP…), y los PDF o
+//    ZIP con contraseña: no se entregan. Se piden a la promotora en DXF, PDF o
+//    JPG (la promotora puede subir lo que quiera: esto es solo lo que llega a Claude).
 // La limpieza quita metadatos, no lo que se ve: un cajetín con nombres o una
 // firma siguen en el plano.
 //
@@ -27,6 +36,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, PDFRef } from 'npm:pdf-lib@1.17.1';
+import { unzipSync, zipSync, type Zippable } from 'npm:fflate@0.8.2';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? 'https://iowtdenlkxjqzlpwizgb.supabase.co';
 const CLAVE_PUBLICA = Deno.env.get('CLAVE_PUBLICA') ?? 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR';
@@ -252,13 +262,177 @@ export async function limpiarPDF(b: Uint8Array): Promise<Limpio> {
 	return { datos, tipo: 'application/pdf', quitado: [...quitado] };
 }
 
+const texto = (b: Uint8Array) => new TextDecoder().decode(b);
+const bytes = (t: string) => new TextEncoder().encode(t);
+const PAPEL = 'Autor';
+
+/** Archivos de Office (Word, Excel, PowerPoint): ficha, autores de comentarios y cambios, y fotos de dentro. */
+async function limpiarOffice(partes: Record<string, Uint8Array>, quitado: Set<string>) {
+	for (const nombre of Object.keys(partes)) {
+		const n = nombre.toLowerCase();
+		if (n === 'docprops/core.xml') {
+			partes[nombre] = bytes('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"/>');
+			quitado.add('ficha del documento (autor, último en guardar, título, fechas…)');
+		} else if (n === 'docprops/app.xml') {
+			const t = texto(partes[nombre]);
+			const limpio = t.replace(/<(Company|Manager|HyperlinkBase|Template)>[\s\S]*?<\/\1>|<(Company|Manager|HyperlinkBase|Template)\/>/g, '');
+			if (limpio !== t) quitado.add('empresa, responsable y plantilla');
+			partes[nombre] = bytes(limpio);
+		} else if (n === 'docprops/custom.xml') {
+			partes[nombre] = bytes('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"/>');
+			quitado.add('propiedades personalizadas');
+		} else if (n.endsWith('.xml') || n.endsWith('.rels')) {
+			const t = texto(partes[nombre]);
+			let limpio = t
+				// autores de comentarios y de cambios (Word), iniciales
+				.replace(/\b(w|w15|w16cex|w16du):(author|initials)="[^"]*"/g, (_, ns, a) => `${ns}:${a}="${a === 'author' ? PAPEL : ''}"`)
+				// comentarios de Excel
+				.replace(/<author>[^<]*<\/author>/g, `<author>${PAPEL}</author>`);
+			// listas de personas (Word, Excel y PowerPoint)
+			if (/(people|persons?|authors|commentauthors)\.xml$/.test(n)) {
+				limpio = limpio.replace(/\b((?:\w+:)?(?:author|displayName|name|initials|userId|providerId))="[^"]*"/g, (_, a) => `${a}="${/initials|userId|providerId/.test(a) ? '' : PAPEL}"`);
+			}
+			if (limpio !== t) { quitado.add('autores de comentarios y cambios'); partes[nombre] = bytes(limpio); }
+		} else await limpiarImagenDentro(partes, nombre, quitado);
+	}
+}
+
+/** Archivos de LibreOffice / OpenDocument: ficha, autores de notas y cambios, y fotos de dentro. */
+async function limpiarOpenDocument(partes: Record<string, Uint8Array>, quitado: Set<string>) {
+	for (const nombre of Object.keys(partes)) {
+		if (nombre === 'meta.xml') {
+			const t = texto(partes[nombre]);
+			partes[nombre] = bytes(t.replace(/<office:meta>[\s\S]*<\/office:meta>/, '<office:meta/>'));
+			quitado.add('ficha del documento (autor, fechas, programa…)');
+		} else if (nombre.endsWith('.xml')) {
+			const t = texto(partes[nombre]);
+			const limpio = t.replace(/<(dc:creator|meta:initial-creator|meta:creator-initials)>[^<]*<\/\1>/g, (_, e) => `<${e}>${e === 'meta:creator-initials' ? '' : PAPEL}</${e}>`);
+			if (limpio !== t) { quitado.add('autores de notas y cambios'); partes[nombre] = bytes(limpio); }
+		} else await limpiarImagenDentro(partes, nombre, quitado);
+	}
+}
+
+async function limpiarImagenDentro(partes: Record<string, Uint8Array>, nombre: string, quitado: Set<string>) {
+	const b = partes[nombre];
+	if (!(b[0] === 0xff && b[1] === 0xd8) && latin(b, 0, 4) !== '\x89PNG') return;
+	try {
+		const r = await limpiar(b);
+		if (r.quitado.length) { partes[nombre] = r.datos; quitado.add('metadatos de las fotos de dentro'); }
+	} catch { /* imagen que no se entiende: se deja */ }
+}
+
+/** ZIP: Office, OpenDocument o una carpeta comprimida (cada archivo, limpio; lo que no se puede limpiar, fuera). */
+export async function limpiarZip(b: Uint8Array): Promise<Limpio> {
+	let partes: Record<string, Uint8Array>;
+	try {
+		partes = unzipSync(b);
+	} catch {
+		throw new Error('ZIP dañado o protegido con contraseña');
+	}
+	const quitado = new Set<string>(['datos del archivo comprimido (fechas, programa)']);
+	const mime = partes['mimetype'] ? texto(partes['mimetype']).trim() : '';
+	if (partes['[Content_Types].xml']) {
+		await limpiarOffice(partes, quitado);
+		return { datos: comprimir(partes), tipo: 'application/vnd.openxmlformats-officedocument', quitado: [...quitado] };
+	}
+	if (mime.startsWith('application/vnd.oasis.opendocument')) {
+		await limpiarOpenDocument(partes, quitado);
+		// «mimetype», el primero y sin comprimir (lo exige el formato)
+		const { mimetype, ...resto } = partes;
+		return { datos: comprimir({ mimetype: [mimetype, { level: 0 }], ...resto }), tipo: mime, quitado: [...quitado] };
+	}
+	const fuera: string[] = [];
+	for (const nombre of Object.keys(partes)) {
+		if (nombre.endsWith('/')) continue;
+		try {
+			const r = await limpiar(partes[nombre]);
+			partes[nombre] = r.datos;
+			r.quitado.forEach((q) => quitado.add(q));
+		} catch (e) {
+			delete partes[nombre];
+			fuera.push(`${nombre} (${(e as Error).message})`);
+		}
+	}
+	if (fuera.length) quitado.add(`no incluidos: ${fuera.join(', ')}`);
+	return { datos: comprimir(partes), tipo: 'application/zip', quitado: [...quitado] };
+}
+
+// sin fechas reales de los archivos ni datos del ordenador de origen
+const comprimir = (partes: Zippable) => zipSync(partes, { level: 6, mtime: new Date('2000-01-01T00:00:00Z') });
+
+/** DXF (AutoCAD en texto): «último en guardar» y las propiedades del dibujo (título, autor, comentarios…). */
+export function limpiarDXF(b: Uint8Array): Limpio {
+	const t = texto(b);
+	const fin = t.includes('\r\n') ? '\r\n' : '\n';
+	const l = t.split(/\r?\n/);
+	const quitado = new Set<string>();
+	for (let i = 0; i + 1 < l.length; i += 2) {
+		const codigo = l[i].trim();
+		// cabecera: $LASTSAVEDBY y la base de los hipervínculos
+		if (codigo === '9' && ['$LASTSAVEDBY', '$HYPERLINKBASE'].includes(l[i + 1].trim()) && i + 3 < l.length && l[i + 3] !== '') {
+			l[i + 3] = '';
+			quitado.add('último en guardar');
+		}
+		// propiedades del dibujo (DWGPROPS): título, asunto, autor, comentarios, palabras clave, último en guardar, revisión y las personalizadas
+		if (codigo === '1' && l[i + 1].trim() === 'DWGPROPS COOKIE') {
+			for (let k = i + 2; k + 1 < l.length && l[k].trim() !== '0'; k += 2) {
+				const c = Number(l[k].trim());
+				if ([2, 3, 4, 6, 7, 8, 9].includes(c) || (c >= 300 && c <= 309) || c === 1) { if (l[k + 1] !== '') { l[k + 1] = ''; quitado.add('propiedades del dibujo (título, autor, comentarios…)'); } }
+			}
+		}
+	}
+	return { datos: bytes(l.join(fin)), tipo: 'image/vnd.dxf', quitado: [...quitado] };
+}
+
+/** IFC (BIM): autores y organización de la cabecera, y personas, direcciones, teléfonos y emails. */
+export function limpiarIFC(b: Uint8Array): Limpio {
+	const t = texto(b);
+	const quitado = new Set<string>();
+	const cadena = /'(?:[^']|'')*'/g;
+	let limpio = t.replace(/FILE_NAME\s*\(([\s\S]*?)\);/, (todo) => {
+		// FILE_NAME('nombre','fecha',(autores),(organizaciones),'preprocesador','programa','autorización')
+		const partes = todo.match(/\((?:[^()']|'(?:[^']|'')*')*\)|'(?:[^']|'')*'|\$/g) ?? [];
+		if (partes.length < 7) return todo;
+		quitado.add('autores y organización del archivo');
+		return `FILE_NAME(${partes[0]},${partes[1]},(''),(''),${partes[4]},${partes[5]},'');`;
+	});
+	limpio = limpio.replace(/^(#\d+\s*=\s*IFC(?:PERSON|ORGANIZATION|POSTALADDRESS|TELECOMADDRESS)\s*\()([\s\S]*?)(\);)/gim, (_, a, medio, z) => {
+		quitado.add('personas, direcciones, teléfonos y emails');
+		return a + medio.replace(cadena, "''") + z;
+	});
+	return { datos: bytes(limpio), tipo: 'application/x-step', quitado: [...quitado] };
+}
+
+/** Texto (CSV, TXT, XML, SVG…): no lleva datos ocultos; del SVG, su ficha (<metadata>). */
+function limpiarTexto(b: Uint8Array): Limpio {
+	const t = new TextDecoder('utf-8', { fatal: true }).decode(b);
+	if (/<svg[\s>]/i.test(t.slice(0, 4096))) {
+		const limpio = t.replace(/<metadata[\s\S]*?<\/metadata>/gi, '').replace(/\s(?:sodipodi|inkscape):[\w-]+="[^"]*"/g, '');
+		return { datos: bytes(limpio), tipo: 'image/svg+xml', quitado: limpio !== t ? ['ficha del dibujo (autor, programa)'] : [] };
+	}
+	return { datos: b, tipo: 'text/plain; charset=utf-8', quitado: [] };
+}
+
 /** Limpia según lo que el archivo es de verdad (no según su nombre). */
 export async function limpiar(b: Uint8Array): Promise<Limpio> {
+	const inicio = latin(b, 0, Math.min(b.length, 1024));
 	if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return limpiarJPEG(b);
-	if (latin(b, 0, 8) === '\x89PNG\r\n\x1a\n') return limpiarPNG(b);
-	if (latin(b, 0, 4) === 'RIFF' && latin(b, 8, 12) === 'WEBP') return limpiarWebP(b);
-	if (latin(b, 0, Math.min(b.length, 1024)).includes('%PDF-')) return await limpiarPDF(b);
-	throw new Error('formato que no se puede limpiar');
+	if (inicio.startsWith('\x89PNG\r\n\x1a\n')) return limpiarPNG(b);
+	if (inicio.startsWith('RIFF') && inicio.slice(8, 12) === 'WEBP') return limpiarWebP(b);
+	if (inicio.includes('%PDF-')) return await limpiarPDF(b);
+	if (inicio.startsWith('PK\x03\x04')) return await limpiarZip(b);
+	if (/^AC10\d\d/.test(inicio)) throw new Error('es un DWG: pide a la promotora el mismo plano en DXF (o en PDF)');
+	if (inicio.startsWith('AutoCAD Binary DXF')) throw new Error('es un DXF binario: pide a la promotora el DXF en texto (ASCII)');
+	if (inicio.slice(4, 12) === 'ftypheic' || inicio.slice(4, 12) === 'ftypheix' || inicio.slice(4, 12) === 'ftypmif1') throw new Error('es una foto HEIC: pídela en JPG');
+	if (inicio.startsWith('II*\0') || inicio.startsWith('MM\0*')) throw new Error('es un TIFF: pídelo en PDF, JPG o PNG');
+	if (inicio.trimStart().startsWith('ISO-10303-21;')) return limpiarIFC(b);
+	if (/^\s*0\r?\n\s*SECTION\r?\n/.test(inicio)) return limpiarDXF(b);
+	if (!inicio.includes('\0')) {
+		try {
+			return limpiarTexto(b);
+		} catch { /* no es texto */ }
+	}
+	throw new Error('formato que no se puede limpiar (como RVT, SKP o un programa propio): pide a la promotora el documento en PDF, DXF o IFC');
 }
 
 // ─── Servicio ────────────────────────────────────────────────────────────────
@@ -318,7 +492,7 @@ if (typeof Deno !== 'undefined' && typeof Deno.serve === 'function') Deno.serve(
 	try {
 		limpio = await limpiar(original);
 	} catch (e) {
-		return responder(415, { error: `No se entrega: ${(e as Error).message}. Pide a la promotora el documento en PDF (o la foto en JPG o PNG).` });
+		return responder(415, { error: `No se entrega: ${(e as Error).message}.` });
 	}
 	return new Response(limpio.datos, {
 		status: 200,

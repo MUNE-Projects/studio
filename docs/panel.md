@@ -99,7 +99,7 @@ Panel (botón) → función «ejecutar» de Supabase → GitHub Actions «public
 
 | Pieza | Dónde | Qué comprueba o permite |
 |---|---|---|
-| Función `archivo-robot` | `supabase/funciones/archivo-robot/index.ts`, en Supabase → Edge Functions | Que quien llama es el robot de Claude (`es_robot()`); solo documentación, adjuntos de opciones y fotos de referencia; los entrega sin metadatos y con la huella del original (decisión 67). Nunca entrega un formato que no sepa limpiar |
+| Función `archivo-robot` | `supabase/funciones/archivo-robot/index.ts`, en Supabase → Edge Functions | Que quien llama es el robot de Claude (`es_robot()`); solo documentación, adjuntos de opciones y fotos de referencia; los entrega sin metadatos y con la huella del original (decisión 67). Limpia PDF, fotos, Office, LibreOffice, DXF, IFC, ZIP y texto; nunca entrega un formato que no sepa limpiar (DWG, HEIC, TIFF, RVT…) |
 | Función `ejecutar` | `supabase/funciones/ejecutar/index.ts`, en Supabase → Edge Functions | Que quien pulsa es administradora con doble verificación (`es_admin()`); valida la orden; para publicar exige `validacion_lista` = `listos` en planos comerciales y Experiencia 3D (salvo versiones sin esa parte en la vista previa); anota en el registro |
 | Llave A `GITHUB_EJECUTOR` | Secreto de Supabase (Edge Functions → Secrets) | Solo arrancar procesos del almacén `taller` (Actions: lectura y escritura). Caduca el 7/10/2027: aviso en Inicio y por email un mes antes (receta 19) |
 | Proceso `publicar.yml` | `.github/workflows/publicar.yml` | Ejecuta `herramientas/publicacion.mjs aprobar` o `volver`; uno detrás de otro, nunca dos a la vez |
