@@ -54,7 +54,6 @@ export async function pintarEntorno(zona: HTMLElement, id: string, referencia: s
 	}
 	const vecinos = e ? e.edificios.filter((b) => !b.enParcela) : [];
 	zona.innerHTML = `
-		<h2 class="separado">Entorno real</h2>
 		<p class="ayuda">Lo que rodea a la parcela, de fuentes públicas y gratuitas (Catastro, IGN y OpenStreetMap): los edificios de alrededor con sus plantas, las calles, los árboles, el relieve y la foto aérea, en unos ${e?.radio ?? 250} m. Sale de la referencia catastral de la ficha. Revísalo aquí; entrará en el 3D al preparar la versión siguiente.</p>
 		${!referencia ? '<p class="aviso">Pon la referencia catastral en la ficha (arriba) para poder generarlo.</p>' : ''}
 		${e ? `<p class="promo-versiones">Generado el ${esc(fecha(e.generado))} · referencia ${esc(e.referencia)} · ${vecinos.length} edificios alrededor · ${e.calles.length} calles y caminos · ${e.arboles.length} árboles${e.relieve ? ` · cota ${e.relieve.cota} m` : ''}</p>
