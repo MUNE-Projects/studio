@@ -115,7 +115,52 @@ function codigoTotp( secreto ) {
 }
 
 const huella = ( buf ) => createHash( 'sha256' ).update( buf ).digest( 'hex' );
-const pdf = ( texto ) => Buffer.from( `%PDF-1.4\n% ${ texto }\n%%EOF\n` );
+// PDF de una página con el texto (y, si se indica, más datos en su ficha)
+const pdf = ( texto, ficha = '' ) => {
+
+	const flujo = `BT /F1 12 Tf 20 100 Td (${ texto.replace( /[()\\]/g, '' ) }) Tj ET`;
+	return Buffer.from( `%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n`
+		+ `3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R >> endobj\n`
+		+ `4 0 obj << /Length ${ flujo.length } >> stream\n${ flujo }\nendstream endobj\n`
+		+ `5 0 obj << /Producer (Pruebas de MUNE)${ ficha } >> endobj\ntrailer << /Root 1 0 R /Info 5 0 R >>\n%%EOF\n` );
+
+};
+// JPEG con EXIF inventado: autora, GPS y orientación 6 (girada)
+function jpegConExif() {
+
+	const autor = Buffer.from( 'Autora INVENTADA\0', 'latin1' );
+	const tiff = Buffer.alloc( 8 + 2 + 3 * 12 + 4 + 26 );
+	tiff.write( 'MM\0*', 0, 'latin1' ); tiff.writeUInt32BE( 8, 4 ); tiff.writeUInt16BE( 3, 8 );
+	const gps = 8 + 2 + 3 * 12 + 4;
+	const entrada = ( i, etiqueta, tipo, n, valor ) => {
+
+		const e = 10 + i * 12;
+		tiff.writeUInt16BE( etiqueta, e ); tiff.writeUInt16BE( tipo, e + 2 ); tiff.writeUInt32BE( n, e + 4 );
+		if ( tipo === 3 ) tiff.writeUInt16BE( valor, e + 8 ); else tiff.writeUInt32BE( valor, e + 8 );
+
+	};
+	entrada( 0, 0x0112, 3, 1, 6 );
+	entrada( 1, 0x013B, 2, autor.length, tiff.length );
+	entrada( 2, 0x8825, 4, 1, gps );
+	tiff.writeUInt16BE( 1, gps ); tiff.writeUInt16BE( 1, gps + 2 ); tiff.writeUInt16BE( 2, gps + 4 ); tiff.writeUInt32BE( 2, gps + 6 ); tiff.write( 'N\0', gps + 10, 'latin1' );
+	const cuerpo = Buffer.concat( [ Buffer.from( 'Exif\0\0', 'latin1' ), tiff, autor ] );
+	return Buffer.concat( [ Buffer.from( [ 0xFF, 0xD8, 0xFF, 0xE0, 0, 16 ] ), Buffer.from( 'JFIF\0', 'latin1' ), Buffer.from( [ 1, 1, 0, 0, 1, 0, 1, 0, 0 ] ),
+		Buffer.from( [ 0xFF, 0xE1, ( cuerpo.length + 2 ) >> 8, ( cuerpo.length + 2 ) & 255 ] ), cuerpo,
+		Buffer.from( [ 0xFF, 0xDA, 0, 8, 1, 1, 0, 0, 0x3F, 0, 0x12, 0x34, 0x56, 0xFF, 0xD9 ] ) ] );
+
+}
+// función «archivo-robot» (042): lo que Claude recibe de los archivos, sin metadatos
+const ARCHIVO_ROBOT = process.env.ARCHIVO_ROBOT_URL ?? `${ SUPABASE_URL }/functions/v1/archivo-robot`;
+async function archivoRobot( sb, orden ) {
+
+	const token = sb ? ( await sb.auth.getSession() ).data.session?.access_token : null;
+	return fetch( ARCHIVO_ROBOT, {
+		method: 'POST',
+		headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${ token ?? SUPABASE_ANON_KEY }`, 'Content-Type': 'application/json' },
+		body: JSON.stringify( orden ),
+	} );
+
+}
 
 async function exigir( promesa, que ) {
 
@@ -547,10 +592,10 @@ await caso( DEBE_FALLAR, '21. Cambiar o repetir una validación ya registrada', 
 await caso( DEBE_FUNCIONAR, 'El robot lee los documentos y marca uno como vigente, con nota', async () => {
 
 	const docs = await robot.from( 'documentos' ).select( 'id' );
-	const archivo = await robot.storage.from( 'documentos' ).download( docB.ruta );
+	const archivo = await archivoRobot( robot, { accion: 'archivo', almacen: 'documentos', ruta: docB.ruta } );
 	await exigir( robot.from( 'documentos' ).update( { estado: 'vigente', nota: 'Correcto' } ).eq( 'id', docB.data.id ), 'marcar vigente' );
 	const fila = await filaDe( 'documentos', docB.data.id );
-	return docs.data.length >= 3 && ! archivo.error && fila.estado === 'vigente' && fila.revisado_por === robotId;
+	return docs.data.length >= 3 && archivo.ok && archivo.headers.get( 'x-huella-original' ) === fila.huella && fila.estado === 'vigente' && fila.revisado_por === robotId;
 
 } );
 
@@ -1719,7 +1764,7 @@ await caso( DEBE_FUNCIONAR, 'Catálogo: la promotora cambia un precio de un pack
 	const trasRetirar = await exigir( gestorA.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ), 'tras retirar' );
 	const compradorNoVe = await exigir( anonimo.rpc( 'entrar_comprador', { p_promocion: 'prueba-a', p_codigo: codigo, p_version: 'v95' } ), 'comprador sin lo nuevo' );
 	const robotLee = await exigir( robot.rpc( 'opciones_pedidas_pendientes' ), 'robot lee pendientes' );
-	const robotDescarga = await robot.storage.from( 'documentos' ).download( ruta );
+	const robotDescarga = await archivoRobot( robot, { accion: 'archivo', almacen: 'documentos', ruta } );
 	const pendientes = await exigir( admin.rpc( 'opciones_pedidas_pendientes' ), 'pendientes' );
 	await exigir( admin.rpc( 'atender_opcion', { p_id: id, p_estado: 'hecha', p_nota: 'Añadida en la v96' } ), 'atender' );
 	const despues = await exigir( gestorA.rpc( 'catalogo_de_promocion', { p_promocion: 'prueba-a' } ), 'ver catálogo después' );
@@ -1743,7 +1788,7 @@ await caso( DEBE_FUNCIONAR, 'Catálogo: la promotora cambia un precio de un pack
 			&& trasRetirar.pedidas.find( ( x ) => x.id === aerotermia.id )?.categoria_nueva === 'Clima'
 			&& ! compradorNoVe.datos.packs.some( ( x ) => x.id === 'confort' ),
 		foto: despues.pedidas.find( ( x ) => x.id === id )?.archivos?.[ 0 ]?.ruta === ruta && ! adminVeFoto.error,
-		robot: robotLee.some( ( x ) => x.categoria === 'climatizacion' && x.categoria_nombre === 'Clima' && x.categoria_nueva && x.pack?.id === 'confort' && x.tipologias?.join() === 'a' ) && ! robotDescarga.error,
+		robot: robotLee.some( ( x ) => x.categoria === 'climatizacion' && x.categoria_nombre === 'Clima' && x.categoria_nueva && x.pack?.id === 'confort' && x.tipologias?.join() === 'a' ) && robotDescarga.ok,
 	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
 	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) } (${ JSON.stringify( { piscina, suelo: entra.datos.tipologia.opciones.suelo, lanzadas: vista.lanzadas, conserva, otro: otroElige.error?.message, packs: conPacks.datos.packs, trasRetirar: { packs: trasRetirar.packs, en_preparacion: trasRetirar.en_preparacion }, faltaNueva: faltaNueva.error?.message } ) })` );
 	return true;
@@ -2339,6 +2384,73 @@ await caso( DEBE_FUNCIONAR, 'Viviendas de referencia: quien administra la promoc
 		dos: lista.length === 2 && deAdmin.length === 2,
 		elegida: a?.elegida === '2º A' && a.viviendas.length === 2,
 		falta: espejo && ! espejo.elegida,
+	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
+	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) }` );
+	return true;
+
+} );
+
+// ─── Archivos para Claude, sin metadatos (042) ─────────────────────────────
+
+const DOC_METADATOS = pdf( 'Planta con cotas 27,40 m2', ' /Author (Autora INVENTADA) /Subject (autora@inventada.test)' );
+const rutaDocMetadatos = `${ pA.id }/prueba-a/${ req[ 'prueba-a' ] }/metadatos.pdf`;
+await exigir( gestorA.storage.from( 'documentos' ).upload( rutaDocMetadatos, DOC_METADATOS, { contentType: 'application/pdf', upsert: true } ), 'documento con metadatos' );
+await exigir( gestorA.from( 'documentos' ).insert( { promocion_id: 'prueba-a', requisito_id: req[ 'prueba-a' ], nombre: 'metadatos.pdf', ruta: rutaDocMetadatos,
+	tipo: 'application/pdf', tamano: DOC_METADATOS.length, huella: huella( DOC_METADATOS ) } ), 'fila del documento' );
+const FOTO = jpegConExif();
+const [ { id: peticionFoto } ] = await exigir( admin.from( 'peticiones' ).insert( { promocion_id: 'prueba-a', texto: 'Cocina como la de la foto' } ).select( 'id' ), 'petición con foto' );
+await exigir( admin.storage.from( 'referencias' ).upload( `${ peticionFoto }/cocina.jpg`, FOTO, { contentType: 'image/jpeg' } ), 'foto de referencia' );
+const RUTA_OPCION = `${ pA.id }/prueba-a/opciones/ficha-metadatos.pdf`;
+await exigir( gestorA.storage.from( 'documentos' ).upload( RUTA_OPCION, DOC_METADATOS, { contentType: 'application/pdf', upsert: true } ), 'adjunto de una opción' );
+
+await caso( DEBE_FALLAR, '55. Archivos para Claude: el robot baja los originales directamente (documentación, adjuntos de opciones o fotos de referencia) o lista las fotos; la función entrega algo a quien no es el robot, otra carpeta o una ruta inventada', async () => {
+
+	const r = {
+		robotDocumento: await robot.storage.from( 'documentos' ).download( rutaDocMetadatos ),
+		robotOpcion: await robot.storage.from( 'documentos' ).download( RUTA_OPCION ),
+		robotFoto: await robot.storage.from( 'referencias' ).download( `${ peticionFoto }/cocina.jpg` ),
+		robotListaFotos: await robot.storage.from( 'referencias' ).list( String( peticionFoto ) ),
+	};
+	const funcion = {
+		promotora: await archivoRobot( gestorA, { accion: 'archivo', almacen: 'documentos', ruta: rutaDocMetadatos } ),
+		admin: await archivoRobot( admin, { accion: 'archivo', almacen: 'documentos', ruta: rutaDocMetadatos } ),
+		sinSesion: await archivoRobot( null, { accion: 'archivo', almacen: 'documentos', ruta: rutaDocMetadatos } ),
+		promotoraFotos: await archivoRobot( gestorA, { accion: 'fotos', peticion: String( peticionFoto ) } ),
+		marca: await archivoRobot( robot, { accion: 'archivo', almacen: 'documentos', ruta: `${ pA.id }/marca/tipografia.woff2` } ),
+		versiones: await archivoRobot( robot, { accion: 'archivo', almacen: 'versiones', ruta: 'prueba-a/v1/sitio.tar.gz' } ),
+		subeCarpetas: await archivoRobot( robot, { accion: 'archivo', almacen: 'referencias', ruta: `${ peticionFoto }/../x.jpg` } ),
+		inventada: await archivoRobot( robot, { accion: 'archivo', almacen: 'documentos', ruta: `${ pA.id }/prueba-a/${ req[ 'prueba-a' ] }/no-existe.pdf` } ),
+	};
+	const noFallan = [ ...Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) ),
+		...Object.keys( funcion ).filter( ( k ) => funcion[ k ].ok ) ];
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Archivos para Claude: el robot recibe la documentación, los adjuntos y las fotos sin metadatos (con la huella del original y lo que se ve, igual); la administradora y la promotora, el original', async () => {
+
+	const doc = await archivoRobot( robot, { accion: 'archivo', almacen: 'documentos', ruta: rutaDocMetadatos } );
+	const docLimpio = Buffer.from( await doc.arrayBuffer() );
+	const opcion = await archivoRobot( robot, { accion: 'archivo', almacen: 'documentos', ruta: RUTA_OPCION } );
+	const opcionLimpia = Buffer.from( await opcion.arrayBuffer() );
+	const lista = await archivoRobot( robot, { accion: 'fotos', peticion: String( peticionFoto ) } );
+	const fotos = lista.ok ? ( await lista.json() ).fotos : [];
+	const foto = await archivoRobot( robot, { accion: 'archivo', almacen: 'referencias', ruta: fotos[ 0 ]?.ruta ?? '' } );
+	const fotoLimpia = Buffer.from( await foto.arrayBuffer() );
+	const original = Buffer.from( await ( await exigir( gestorA.storage.from( 'documentos' ).download( rutaDocMetadatos ), 'la promotora lo baja' ) ).arrayBuffer() );
+	const fotoAdmin = Buffer.from( await ( await exigir( admin.storage.from( 'referencias' ).download( `${ peticionFoto }/cocina.jpg` ), 'la administradora la baja' ) ).arrayBuffer() );
+	const texto = ( b ) => b.toString( 'latin1' );
+	const mal = Object.entries( {
+		documento: doc.ok && doc.headers.get( 'content-type' ) === 'application/pdf' && doc.headers.get( 'x-huella-original' ) === huella( DOC_METADATOS ),
+		documentoSinFicha: ! /INVENTADA|inventada\.test/.test( texto( docLimpio ) ) && texto( docLimpio ).includes( 'Planta con cotas 27,40 m2' ),
+		quitado: JSON.parse( decodeURIComponent( doc.headers.get( 'x-limpieza' ) ?? '%5B%5D' ) ).length > 0,
+		opcion: opcion.ok && ! /INVENTADA/.test( texto( opcionLimpia ) ),
+		listaFotos: fotos.length === 1 && fotos[ 0 ].nombre === 'cocina.jpg',
+		foto: foto.ok && foto.headers.get( 'content-type' ) === 'image/jpeg' && ! /INVENTADA/.test( texto( fotoLimpia ) )
+			&& fotoLimpia.includes( Buffer.from( [ 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, 6 ] ) ) && fotoLimpia.includes( Buffer.from( [ 0x12, 0x34, 0x56 ] ) ),
+		originalPromotora: original.equals( DOC_METADATOS ),
+		originalAdmin: fotoAdmin.equals( FOTO ),
 	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
 	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) }` );
 	return true;
