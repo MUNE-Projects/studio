@@ -15,7 +15,7 @@
 // registro. No puede borrar, crear peticiones, publicar ni cambiar reglas.
 // Las fotos no las descarga directamente: se las entrega la función de Supabase
 // «archivo-robot» sin metadatos (GPS, autor, dispositivo…), antes de que salgan
-// hacia Claude (041_archivos_robot.sql, decisión 66).
+// hacia Claude (042_archivos_robot.sql, decisión 67).
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';

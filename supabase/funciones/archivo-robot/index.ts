@@ -1,5 +1,5 @@
 // Función «archivo-robot» de Supabase: los archivos que lee Claude, sin metadatos
-// (decisión 66, 041_archivos_robot.sql).
+// (decisión 67, 042_archivos_robot.sql).
 //
 // El robot de Claude ya no descarga los originales de las promotoras (documentos,
 // adjuntos de las opciones pedidas) ni las fotos de referencia de las peticiones:

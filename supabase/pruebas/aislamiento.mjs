@@ -149,7 +149,7 @@ function jpegConExif() {
 		Buffer.from( [ 0xFF, 0xDA, 0, 8, 1, 1, 0, 0, 0x3F, 0, 0x12, 0x34, 0x56, 0xFF, 0xD9 ] ) ] );
 
 }
-// función «archivo-robot» (041): lo que Claude recibe de los archivos, sin metadatos
+// función «archivo-robot» (042): lo que Claude recibe de los archivos, sin metadatos
 const ARCHIVO_ROBOT = process.env.ARCHIVO_ROBOT_URL ?? `${ SUPABASE_URL }/functions/v1/archivo-robot`;
 async function archivoRobot( sb, orden ) {
 
@@ -2345,7 +2345,7 @@ await caso( DEBE_FUNCIONAR, 'Permisos del robot: lee la ficha técnica, las vali
 
 } );
 
-// ─── Archivos para Claude, sin metadatos (041) ─────────────────────────────
+// ─── Archivos para Claude, sin metadatos (042) ─────────────────────────────
 
 const DOC_METADATOS = pdf( 'Planta con cotas 27,40 m2', ' /Author (Autora INVENTADA) /Subject (autora@inventada.test)' );
 const rutaDocMetadatos = `${ pA.id }/prueba-a/${ req[ 'prueba-a' ] }/metadatos.pdf`;
@@ -2358,7 +2358,7 @@ await exigir( admin.storage.from( 'referencias' ).upload( `${ peticionFoto }/coc
 const RUTA_OPCION = `${ pA.id }/prueba-a/opciones/ficha-metadatos.pdf`;
 await exigir( gestorA.storage.from( 'documentos' ).upload( RUTA_OPCION, DOC_METADATOS, { contentType: 'application/pdf', upsert: true } ), 'adjunto de una opción' );
 
-await caso( DEBE_FALLAR, '54. Archivos para Claude: el robot baja los originales directamente (documentación, adjuntos de opciones o fotos de referencia) o lista las fotos; la función entrega algo a quien no es el robot, otra carpeta o una ruta inventada', async () => {
+await caso( DEBE_FALLAR, '55. Archivos para Claude: el robot baja los originales directamente (documentación, adjuntos de opciones o fotos de referencia) o lista las fotos; la función entrega algo a quien no es el robot, otra carpeta o una ruta inventada', async () => {
 
 	const r = {
 		robotDocumento: await robot.storage.from( 'documentos' ).download( rutaDocMetadatos ),

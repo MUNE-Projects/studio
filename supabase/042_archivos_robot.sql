@@ -1,6 +1,6 @@
--- Archivos para Claude, sin metadatos (decisión 66).
+-- Archivos para Claude, sin metadatos (decisión 67).
 --
--- Se ejecuta una vez en Supabase → SQL Editor, después de 040. Es repetible.
+-- Se ejecuta una vez en Supabase → SQL Editor, después de 040 (y de 041, si ya está). Es repetible.
 -- Antes, crear la función «archivo-robot» (supabase/funciones/archivo-robot):
 -- sin ella, Claude no puede leer la documentación.
 --

@@ -19,7 +19,7 @@
 // de estado queda en el registro de actividad automáticamente.
 // Los archivos no se descargan directamente: los entrega la función de Supabase
 // «archivo-robot» sin metadatos (GPS, autor, programa, XMP…), antes de que
-// salgan hacia Claude (041_archivos_robot.sql, decisión 66). Lo que se ve en el
+// salgan hacia Claude (042_archivos_robot.sql, decisión 67). Lo que se ve en el
 // documento (un cajetín con nombres, una firma) llega igual.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
