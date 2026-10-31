@@ -375,3 +375,7 @@ label.nombre-categoria input { padding: 6px 8px; font-size: 17px; font-weight: 6
 .marca-plano { position: absolute; transform: translate(-50%, -50%); cursor: pointer; }
 .marca-plano.nueva { background: var(--acento); cursor: default; }
 .marca-plano.en-linea { position: static; transform: none; vertical-align: middle; }
+
+/* Entorno real (entorno.ts) */
+.entorno-plano { max-width: 640px; margin: 10px 0; border: 1px solid var(--linea); border-radius: 10px; overflow: hidden; background: #fff; }
+.plano-entorno { display: block; width: 100%; height: auto; }

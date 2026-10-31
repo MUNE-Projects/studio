@@ -25,6 +25,7 @@ import { pintarPersonalizacion } from './personalizacion';
 import { pintarCatalogo } from './catalogo';
 import { pintarMarca } from './marca';
 import { conectarSolicitar, formSolicitar } from './solicitar';
+import { pintarEntorno } from './entorno';
 import { pintarEstados } from './estado';
 import { ADMIN_PROMOCION, ADMIN_PROMOTORA, TODAS_LAS_CAPACIDADES, conectarPersonas, formAcceso, insignias, invitar, leerAccesos, tablaPersonas } from './equipo';
 
@@ -737,7 +738,9 @@ export async function pantallaPromocion(destino: HTMLElement, id: string, pestan
 			${formSolicitar(p, esc)}
 			<h2 class="separado">Textos legales</h2>
 			<p class="ayuda">Los escribe la promotora en MUNE Portal. Se aplican en la próxima versión que prepares: se revisan en la vista previa y se publican con ella.</p>
-			${formTextosLegales(p.textos_legales ?? {})}`;
+			${formTextosLegales(p.textos_legales ?? {})}
+			<section data-entorno></section>`;
+		void pintarEntorno(caja.querySelector<HTMLElement>('[data-entorno]')!, id, (p as unknown as { referencia_catastral?: string | null }).referencia_catastral ?? null);
 		const form = caja.querySelector<HTMLFormElement>('[data-formalizacion]')!;
 		alEnviar(form, async (d) => {
 			const { error: e } = await sb.rpc('guardar_formalizacion', datosFormalizacion(id, d));
