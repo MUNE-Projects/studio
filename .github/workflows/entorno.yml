@@ -1,0 +1,104 @@
+# Generar el entorno real de una promoción (decisión 64; herramientas/entorno.mjs).
+#
+# Descarga de fuentes públicas y gratuitas lo que rodea a la parcela (Catastro,
+# IGN y OpenStreetMap), a partir de la referencia catastral de su ficha, y lo
+# guarda en el almacén privado «entornos» de Supabase con la cuenta «ejecutor».
+# Lo lanza la administradora desde MUNE Studio (Ficha y datos → Entorno →
+# «Generar el entorno») o aquí: Actions → «Generar el entorno» → Run workflow.
+# Gratis. No cambia ninguna versión: el entorno entra en el 3D al preparar la
+# siguiente.
+#
+# En cada propuesta que cambia la herramienta, la prueba descarga el entorno
+# de una referencia de ejemplo (sin Supabase) para comprobar que las fuentes
+# siguen respondiendo como se espera.
+
+name: Generar el entorno
+run-name: entorno ${{ inputs.promocion || 'prueba' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      promocion:
+        description: identificador de la promoción (por ejemplo, residencial-demo)
+        required: true
+        type: string
+      referencia:
+        description: referencia catastral (solo si no está en la ficha o es otra)
+        required: false
+        type: string
+  pull_request:
+    paths:
+      - herramientas/entorno.mjs
+      - herramientas/tiff.mjs
+      - .github/workflows/entorno.yml
+
+permissions:
+  contents: read
+
+jobs:
+  generar:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Comprobar la orden
+        env:
+          PROMOCION: ${{ inputs.promocion }}
+          REFERENCIA: ${{ inputs.referencia }}
+        run: |
+          [[ "$PROMOCION" =~ ^[a-z0-9-]{1,60}$ ]] || { echo "::error::Promoción no válida"; exit 1; }
+          [[ -z "$REFERENCIA" || "$REFERENCIA" =~ ^[0-9A-Za-z\ ]{14,24}$ ]] || { echo "::error::Referencia catastral no válida"; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Descargar y guardar el entorno
+        env:
+          EJECUTOR_CLAVE: ${{ secrets.EJECUTOR_CLAVE }}
+          PROMOCION: ${{ inputs.promocion }}
+          REFERENCIA: ${{ inputs.referencia }}
+        run: |
+          if [[ -n "$REFERENCIA" ]]; then
+            node herramientas/entorno.mjs generar "$PROMOCION" --referencia "$REFERENCIA"
+          else
+            node herramientas/entorno.mjs generar "$PROMOCION"
+          fi
+
+  prueba:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Entorno de una referencia de ejemplo (sin Supabase)
+        run: node herramientas/entorno.mjs prueba --referencia 9872023VH5797S --salida salida/entorno/prueba
+
+      - name: Resumen
+        run: |
+          node -e "
+            const e = require('./salida/entorno/prueba/entorno.json');
+            const s = [ '## Entorno de prueba', '', '| | |', '|---|---|',
+              '| Parcela | ' + e.parcela.length + ' vértices |',
+              '| Edificios | ' + e.edificios.length + ' |',
+              '| Calles | ' + e.calles.length + ' |',
+              '| Árboles | ' + e.arboles.length + ' |',
+              '| Relieve | ' + (e.relieve ? e.relieve.ancho + ' × ' + e.relieve.alto + ', cota ' + e.relieve.cota : 'no') + ' |',
+              '| Ortofoto | ' + (e.orto ? 'sí' : 'no') + ' |',
+              '| Avisos | ' + (e.avisos.join(' · ') || 'ninguno') + ' |' ].join('\n');
+            require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, s + '\n');
+            if (!e.edificios.length || !e.relieve || !e.orto) { console.log('::error::Falta alguna capa'); process.exit(1); }
+          "
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: entorno-prueba
+          path: salida/entorno/prueba
+          retention-days: 7
