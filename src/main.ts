@@ -146,6 +146,9 @@ async function iniciar() {
 	const accesoProfesionalInicial = pase ? await resolverProfesional( pase ) : null;
 	const profesional = typeof accesoProfesionalInicial === 'object' ? accesoProfesionalInicial : null;
 	document.body.classList.toggle( 'profesional', !! profesional );
+	// Render HD, plano comercial, descarga por lotes y comentarios: herramientas
+	// profesionales (MUNE Portal con su pase, o el Studio). El público no las ve.
+	if ( ! profesional && ! __STUDIO__ ) for ( const id of [ 'foto', 'plano-comercial', 'descargar-lotes', 'comentar-3d' ] ) document.getElementById( id )!.hidden = true;
 	document.body.classList.toggle( 'perfil-promotora', !! profesional );
 	const pideProfesional = /^#(studio|promotora)/.test( location.hash );
 	const codigoInicial = profesional ? '' : ( pideProfesional ? '' : extraerCodigo( location.hash ) ) || leer( CLAVE_ACCESO ) || '';
