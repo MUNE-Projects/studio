@@ -232,7 +232,7 @@ export async function pintarDocumentacion(caja: HTMLElement, p: Promo, requisito
 	caja.innerHTML = `
 		<h2>Documentación</h2>
 		${htmlFase(fase, historial, 'promotora')}
-		<p class="ayuda">Lo que necesitamos para preparar la promoción. Sube tus archivos tal como los tengas, de hasta 50 MB cada uno: no hace falta adaptarlos a MUNE. Si un mismo archivo contiene varias cosas de la lista (por ejemplo, plantas, alzados y superficies), súbelo una vez y marca en él todo lo que incluye. Para sustituir un archivo, sube una versión nueva: las anteriores se conservan.</p>
+		<p class="ayuda">Lo que necesitamos para preparar la promoción. Sube tus archivos tal como los tengas, de hasta 50 MB cada uno: no hace falta adaptarlos a MUNE. Si un mismo archivo contiene varias cosas de la lista (por ejemplo, plantas, alzados y superficies), súbelo una vez y marca en él todo lo que incluye. Para sustituir un archivo, sube una versión nueva: las anteriores se conservan. Si tus planos están en DWG, súbelos también en DXF (en AutoCAD: Guardar como → DXF): es el formato con el que trabajamos.</p>
 		${htmlDocs || '<p class="vacio">El equipo de MUNE aún no ha preparado la lista de documentos de esta promoción.</p>'}`;
 	conectarFase(caja, sb, p.id, fase, () => recargar('Fase del proyecto guardada.'), (e) => traducir(e, 'cambiar la fase'));
 
@@ -260,7 +260,8 @@ export async function pintarDocumentacion(caja: HTMLElement, p: Promo, requisito
 			const nuevo = document.querySelector<HTMLElement>(`[data-progreso="${requisito}"]`);
 			if (nuevo) {
 				nuevo.hidden = false;
-				nuevo.textContent = `Hemos recibido «${archivo.name}». Lo revisaremos y verás aquí su estado.`;
+				nuevo.textContent = `Hemos recibido «${archivo.name}». Lo revisaremos y verás aquí su estado.`
+					+ (/\.dwg$/i.test(archivo.name) ? ' Si puedes, sube también este plano en DXF (en AutoCAD: Guardar como → DXF): es el formato con el que trabajamos.' : '');
 			}
 		} catch (e) {
 			aviso.classList.add('error');
