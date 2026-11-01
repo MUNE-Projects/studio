@@ -86,4 +86,23 @@ for ( const destino of destinos ) {
 	execFileSync( 'npx', [ '--yes', WRANGLER, ...orden, '--config', join( carpeta, 'wrangler.jsonc' ), '--message', `MUNE: ${ puestas.join( ', ' ) || 'sin promociones' }`.slice( 0, 100 ) ], { cwd: carpeta, stdio: 'inherit', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } } );
 	ok( destino === 'produccion' ? 'Enviada a https://experience.mune-projects.workers.dev' : 'Enviada a https://revision-experience.mune-projects.workers.dev' );
 
+	// Comprobación de verdad: la dirección sirve ya cada versión enviada. Si no
+	// (por ejemplo, la dirección «revision-» sigue unida a otra construcción de
+	// Cloudflare), se para en rojo en lugar de dar por buena una vista previa vieja.
+	const base = destino === 'produccion' ? 'https://experience.mune-projects.workers.dev' : 'https://revision-experience.mune-projects.workers.dev';
+	for ( const puesta of puestas ) {
+
+		const [ id, version ] = puesta.split( ' ' );
+		let sirve = null;
+		for ( let intento = 0; intento < 12 && sirve !== version; intento ++ ) {
+
+			if ( intento ) await new Promise( ( r ) => setTimeout( r, 10000 ) );
+			sirve = await fetch( `${ base }/${ id }/version.json?c=${ Date.now() }`, { cache: 'no-store' } ).then( ( r ) => ( r.ok ? r.json() : null ) ).then( ( d ) => d?.version ?? null ).catch( () => null );
+
+		}
+		if ( sirve !== version ) fallo( `${ base }/${ id }/ sigue sirviendo ${ sirve ?? 'otra cosa' } en lugar de la ${ version }. Revisa en Cloudflare que el Worker «experience» no siga unido a un almacén de GitHub (Configuración → Compilaciones → Desconectar).` );
+		ok( `Comprobado: ${ base }/${ id }/ sirve la ${ version }` );
+
+	}
+
 }
