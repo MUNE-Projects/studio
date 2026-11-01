@@ -10,8 +10,9 @@
 //  · producción (experience.mune-projects.workers.dev): la publicada;
 //  · vista previa (revision-experience.mune-projects.workers.dev): la que está en
 //    revisión o, si no hay ninguna, la publicada.
-// Después la envía con wrangler: «deploy» a producción y «versions upload
-// --preview-alias revision» a la vista previa. Con --solo-montar no envía nada.
+// Después la envía con wrangler: «deploy» al Worker experience (producción) y
+// «deploy» al Worker revision-experience (vista previa), y comprueba que cada
+// dirección sirve la versión enviada. Con --solo-montar no envía nada.
 //
 // Lo lanzan avisar.yml (vista previa, al preparar una versión) y publicar.yml
 // (las dos, al publicar o volver atrás), en GitHub Actions.
@@ -82,7 +83,11 @@ for ( const destino of destinos ) {
 	ok( `${ destino === 'produccion' ? 'Producción' : 'Vista previa' }: ${ puestas.length ? puestas.join( ', ' ) : 'ninguna promoción' } (en ${ relative( RAIZ, carpeta ) }/)` );
 	if ( soloMontar ) continue;
 
-	const orden = destino === 'produccion' ? [ 'deploy' ] : [ 'versions', 'upload', '--preview-alias', 'revision' ];
+	// La vista previa es su propio Worker, «revision-experience», en la misma
+	// dirección (revision-experience.mune-projects.workers.dev): Cloudflare no
+	// movía la etiqueta «revision» del Worker experience a cada versión nueva
+	// (la v13 se quedó en la v12, 1/11/2026). Así cada envío la sustituye entera.
+	const orden = destino === 'produccion' ? [ 'deploy' ] : [ 'deploy', '--name', 'revision-experience' ];
 	execFileSync( 'npx', [ '--yes', WRANGLER, ...orden, '--config', join( carpeta, 'wrangler.jsonc' ), '--message', `MUNE: ${ puestas.join( ', ' ) || 'sin promociones' }`.slice( 0, 100 ) ], { cwd: carpeta, stdio: 'inherit', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } } );
 	ok( destino === 'produccion' ? 'Enviada a https://experience.mune-projects.workers.dev' : 'Enviada a https://revision-experience.mune-projects.workers.dev' );
 
