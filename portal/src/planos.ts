@@ -8,6 +8,7 @@
 // la persona, el momento y la huella del archivo exacto. Si un plano no cambia
 // de una versión a otra, sus aprobaciones siguen valiendo.
 
+import { chipVigencia, deElemento, htmlMarca, leerActualizaciones } from './vigencia';
 import { alEnviar, esc, sb, traducir } from './comun';
 import { Zip } from './zip';
 import { type Hilo, abiertos, hilosDe, pendientes, htmlPlanoConMarcas, leerHilos, pintarComentarios, textoPedirCambios } from './comentarios';
@@ -43,9 +44,15 @@ async function ultimaValidada(id: string, versiones: string[]): Promise<string |
 	return null;
 }
 
+/** La versión de los planos vigentes: la publicada o, si aún no hay, la última con todos validados. */
+async function versionVigente(id: string, versiones: string[]): Promise<string | null> {
+	const publicada = await versionPublicada(id);
+	return publicada && versiones.includes(publicada) ? publicada : ultimaValidada(id, versiones);
+}
+
 /** Lista de planos de una versión: siempre a mano para consultarlos y descargarlos, y para validarlos si toca. */
 export async function htmlLista(id: string, version: string, versiones: string[], ctx: Contexto): Promise<string> {
-	const planos = await leerPlanos(id, version);
+	const [planos, marcas, enVigor] = await Promise.all([leerPlanos(id, version), leerActualizaciones(sb, id), versionVigente(id, versiones)]);
 	const urls = await miniaturas(planos);
 	const actual = version === versiones[0];
 	const aprobados = planos.filter((p) => p.estado === 'aprobado').length;
@@ -53,6 +60,9 @@ export async function htmlLista(id: string, version: string, versiones: string[]
 	const todos = planos.length > 0 && aprobados === planos.length;
 	// Si la versión más reciente aún se está validando, los últimos validados siguen a mano.
 	const anteriorValidada = actual && !todos ? await ultimaValidada(id, versiones.slice(1)) : null;
+	// vigencia (decisión 69): los de la versión vigente; lo marcado, en la vigente y en la que se valida
+	const vigente = version === enVigor;
+	const marcaDe = (p: Elemento) => (actual || vigente ? deElemento(marcas, 'plano', p.clave) : null);
 	return `
 		<h2>Planos comerciales · ${esc(version)}</h2>
 		${!actual ? '<p class="ayuda">Es una versión anterior: puedes consultarla y descargar sus planos.</p>'
@@ -67,7 +77,8 @@ export async function htmlLista(id: string, version: string, versiones: string[]
 			return `<div class="plano-fila">
 			${urls.get(p.miniatura ?? '') ? `<a href="#/promocion/${esc(id)}/planos/${p.id}"><img class="plano-mini" src="${esc(urls.get(p.miniatura!)!)}" alt="Miniatura del plano ${esc(p.titulo)}"></a>` : '<span class="plano-mini"></span>'}
 			<div class="plano-info">
-				<div class="plano-titulo"><span class="requisito-nombre">${esc(p.titulo)}</span>${chipEstado(p, 'planos')}</div>
+				<div class="plano-titulo"><span class="requisito-nombre">${esc(p.titulo)}</span>${chipVigencia(esc, p.estado, marcaDe(p), vigente, chipEstado(p, 'planos'))}</div>
+				${htmlMarca(esc, marcaDe(p), 'promotora')}
 				<p class="promo-lugar">${esc(p.detalle ?? '')}${p.viviendas ? ` · ${esc(p.viviendas)}` : ''}</p>
 				${avance(p, 'planos') ? `<p class="avance">${avance(p, 'planos')}</p>` : ''}
 				${htmlPersonas(p, version)}
@@ -92,8 +103,9 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
 		caja.innerHTML = `<a class="enlace volver" href="#/promocion/${esc(id)}/planos">← Todos los planos</a><p class="vacio">No encontramos este plano. Vuelve a la lista y ábrelo desde allí.</p>`;
 		return;
 	}
-	const [urls, hilos] = await Promise.all([miniaturas([p]), leerHilos(sb, id).catch(() => [] as Hilo[])]);
+	const [urls, hilos, marcas, enVigor] = await Promise.all([miniaturas([p]), leerHilos(sb, id).catch(() => [] as Hilo[]), leerActualizaciones(sb, id), versionVigente(id, versiones)]);
 	const actual = e.version === versiones[0];
+	const marca = actual || e.version === enVigor ? deElemento(marcas, 'plano', p.clave) : null;
 	const aqui = hilosDe(hilos, 'plano', p.clave, e.version);
 	const voto = miVoto(p, ctx);
 	const puede = actual && p.estado !== 'aprobado' && !!voto;
@@ -102,7 +114,8 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
 
 	caja.innerHTML = `
 		<a class="enlace volver" href="#/promocion/${esc(id)}/planos${actual ? '' : `/${esc(e.version)}`}">← Todos los planos</a>
-		<div class="plano-titulo separado"><h2>${esc(p.titulo)} · ${esc(e.version)}</h2>${chipEstado(p, 'planos')}</div>
+		<div class="plano-titulo separado"><h2>${esc(p.titulo)} · ${esc(e.version)}</h2>${chipVigencia(esc, p.estado, marca, e.version === enVigor, chipEstado(p, 'planos'))}</div>
+		${htmlMarca(esc, marca, 'promotora')}
 		<p class="promo-lugar">${esc(p.detalle ?? '')}${p.viviendas ? ` · ${esc(p.viviendas)}` : ''}</p>
 		${avance(p, 'planos') ? `<p class="avance">${avance(p, 'planos')}</p>` : ''}
 		${htmlPersonas(p, e.version)}
@@ -196,7 +209,7 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
  */
 export async function conectarDescargaVigentes(caja: HTMLElement, id: string, nombrePromocion: string, versiones: string[]): Promise<void> {
 	const publicada = await versionPublicada(id);
-	const vigente = publicada && versiones.includes(publicada) ? publicada : await ultimaValidada(id, versiones);
+	const vigente = await versionVigente(id, versiones);
 	if (!vigente) return;
 	caja.insertAdjacentHTML('afterbegin', `<div class="aviso descarga-vigentes">
 		<p>Planos comerciales vigentes: los de la ${esc(vigente)}${publicada === vigente ? ', la versión publicada' : ''}, todos validados.</p>

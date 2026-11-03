@@ -11,6 +11,7 @@
 // personalización con precios y lo que ha elegido cada comprador; renders y
 // plano comercial. Con «Gestionar personalizaciones», también elegir en su nombre.
 
+import { type Actualizacion, chipVigencia, deElemento, htmlMarca, leerActualizaciones } from './vigencia';
 import { ESCAPARATE, REVISION, alEnviar, esc, sb } from './comun';
 import { type Hilo, abiertos, hilosDe, pendientes as sinEnviar, leerHilos, pintarComentarios, textoPedirCambios } from './comentarios';
 import {
@@ -50,12 +51,17 @@ export async function pintarExperiencia(caja: HTMLElement, promo: Promocion3D, e
 	}
 	const version = versiones.includes(extra) ? extra : versiones[0];
 	const actual = version === versiones[0];
-	const [unidades, base, hilos] = await Promise.all([leerValidacion(id, version, 'experiencia'), baseVisita(id, version),
-		leerHilos(sb, id).catch(() => [] as Hilo[])]);
+	const [unidades, base, hilos, marcas] = await Promise.all([leerValidacion(id, version, 'experiencia'), baseVisita(id, version),
+		leerHilos(sb, id).catch(() => [] as Hilo[]), leerActualizaciones(sb, id)]);
 	const supuestos = await leerSupuestos(base, id);
 	const aprobadas = unidades.filter((u) => u.estado === 'aprobado').length;
 	const todas = unidades.length > 0 && aprobadas === unidades.length;
 	const pendientes = unidades.filter((u) => u.estado !== 'aprobado').map(tituloUnidad);
+	// vigencia (decisión 69): la versión publicada o, si aún no hay, la última toda validada;
+	// lo marcado, en la vigente y en la que se valida
+	const enVigor = publicada && versiones.includes(publicada) ? publicada : await ultimaValidada(id, versiones);
+	const vigente = version === enVigor;
+	const marcaDe = (u: Elemento) => (actual || vigente ? deElemento(marcas, 'experiencia', u.clave) : null);
 
 	caja.innerHTML = `${cabecera}
 		<h2 class="separado">${todas ? 'Tipologías' : 'Validación'} · ${esc(version)}</h2>
@@ -66,7 +72,7 @@ export async function pintarExperiencia(caja: HTMLElement, promo: Promocion3D, e
 		${actual ? htmlSupuestos(id, supuestos) : ''}
 		${todas ? '' : `<p class="promo-versiones">${aprobadas} de ${unidades.length} aprobadas${pendientes.length && aprobadas ? ` · Pendiente: ${esc(pendientes.join(', '))}` : ''}</p>
 		<progress class="progreso" value="${aprobadas}" max="${Math.max(1, unidades.length)}" aria-hidden="true"></progress>`}
-		${unidades.map((u) => htmlUnidad(id, u, version, actual, base, ctx, abiertos(hilosDe(hilos, 'experiencia', u.clave, version)).length)).join('')}
+		${unidades.map((u) => htmlUnidad(id, u, version, actual, base, ctx, abiertos(hilosDe(hilos, 'experiencia', u.clave, version)).length, marcaDe(u), vigente)).join('')}
 		${versiones.length > 1 ? `<p class="ayuda separado">Otras versiones: ${versiones.filter((v) => v !== version)
 			.map((v) => `<a class="enlace" href="#/promocion/${esc(id)}/experiencia/${esc(v)}">${esc(v)}</a>`).join(' · ')}</p>` : ''}`;
 	abrirProfesional(caja, id);
@@ -140,12 +146,23 @@ function htmlSupuestos(id: string, supuestos: Supuesto[]): string {
 	</div>`;
 }
 
-function htmlUnidad(id: string, u: Elemento, version: string, actual: boolean, base: string, ctx: Contexto, hilosAbiertos: number): string {
+/** La versión más reciente (de las dadas) con todas sus tipologías validadas. */
+async function ultimaValidada(id: string, versiones: string[]): Promise<string | null> {
+	for (const v of versiones) {
+		const { data } = await sb.rpc('validacion_lista', { p_promocion: id, p_version: v, p_tipo: 'experiencia' });
+		if (data === 'listos') return v;
+	}
+	return null;
+}
+
+function htmlUnidad(id: string, u: Elemento, version: string, actual: boolean, base: string, ctx: Contexto, hilosAbiertos: number,
+	marca: Actualizacion | null, vigente: boolean): string {
 	const voto = miVoto(u, ctx);
 	const puede = actual && u.estado !== 'aprobado' && !!voto;
 	const vistas = (u.vistas ?? []).filter((v) => v && v.nombre);
 	return `<article class="unidad" data-unidad="${u.id}">
-		<div class="plano-titulo"><h3>Experiencia 3D · ${esc(tituloUnidad(u))}</h3>${chipEstado(u, 'experiencia')}</div>
+		<div class="plano-titulo"><h3>Experiencia 3D · ${esc(tituloUnidad(u))}</h3>${chipVigencia(esc, u.estado, marca, vigente, chipEstado(u, 'experiencia'))}</div>
+		${htmlMarca(esc, marca, 'promotora')}
 		${u.detalle || u.viviendas ? `<p class="promo-lugar">${esc(u.detalle ?? '')}${u.detalle && u.viviendas ? ' · ' : ''}${esc(u.viviendas ?? '')}</p>` : ''}
 		${avance(u, 'experiencia') ? `<p class="avance">${avance(u, 'experiencia')}</p>` : ''}
 		${htmlPersonas(u, version)}

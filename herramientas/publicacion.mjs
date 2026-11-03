@@ -633,6 +633,16 @@ async function preparar( id ) {
 
 	}
 	ok( `Web de la ${ version } guardada en Supabase y en revisión (${ ( paquete.length / 1048576 ).toFixed( 1 ) } MB, huella ${ huella.slice( 0, 12 ) })` );
+	// lo marcado como «Requiere actualizar» (044_vigencia.sql): se resuelve con lo que incorpora esta versión
+	const abiertas = await fetch( `${ SUPABASE_URL }/rest/v1/actualizaciones?select=id,tipo,clave,nota&promocion_id=eq.${ id }&resuelta_en=is.null&quitada_en=is.null&order=marcada_en`, { headers: robot } )
+		.then( ( r ) => r.ok ? r.json() : [] ).catch( () => [] );
+	if ( abiertas.length ) {
+
+		console.log( `\nMarcado como «Requiere actualizar» en ${ id }:` );
+		for ( const m of abiertas ) console.log( `  #${ m.id } · ${ m.tipo === 'plano' ? 'plano' : '3D' } ${ m.clave }: «${ m.nota }»` );
+		console.log( `Si esta versión lo incorpora: node herramientas/documentos.mjs actualizaciones ${ id } resolver <ids> --version ${ version }` );
+
+	}
 	console.log( `\nFalta lanzar avisar.yml (promoción, versión y cambios): envía la vista previa a Cloudflare y te avisa por email. Se publica al aprobarla en MUNE Studio.\n` );
 
 }

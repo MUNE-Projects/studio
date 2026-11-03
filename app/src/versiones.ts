@@ -10,6 +10,7 @@ import { type Hilo, htmlPlanoConMarcas, leerHilos, pintarComentarios } from './c
 import { leerManifiesto } from './planos';
 import { avisarPromotora } from './avisos';
 import { apuntarSinNadaNuevo, leerExperiencia, leerValidacion, listaParaPublicar, motivoNoPublicar, pintarValidacion, type Validacion } from './validacion';
+import { leerActualizaciones } from './vigencia';
 
 export const ESCAPARATE: string = import.meta.env.VITE_ESCAPARATE ?? 'https://experience.mune-projects.workers.dev';
 export const REVISION: string = import.meta.env.VITE_REVISION ?? 'https://revision-experience.mune-projects.workers.dev';
@@ -103,6 +104,42 @@ async function ejecutar(aviso: HTMLElement, id: string, orden: Record<string, st
 }
 
 /** Bloque de versiones de una promoción: ver, publicar y volver a una anterior. */
+/**
+ * Lo que requiere actualizar en esta promoción (044_vigencia.sql, decisión 69):
+ * lo marca Claude al revisar la documentación nueva; se resuelve al preparar la
+ * versión que lo incorpora. La administradora puede quitar una marca puesta por error.
+ */
+async function pintarActualizar(zona: HTMLElement, id: string): Promise<void> {
+	const marcas = await leerActualizaciones(sb, id);
+	zona.hidden = !marcas.length;
+	if (!marcas.length) return;
+	const { data } = await sb.from('entregables').select('tipo, clave, titulo, nombre, version').eq('promocion_id', id).in('tipo', ['plano', 'experiencia']);
+	const titulo = new Map<string, string>();
+	for (const e of ((data ?? []) as { tipo: string; clave: string; titulo: string | null; nombre: string; version: string }[]).sort((a, b) => Number(a.version.slice(1)) - Number(b.version.slice(1)))) {
+		titulo.set(`${e.tipo}/${e.clave}`, e.titulo || e.nombre);
+	}
+	zona.innerHTML = `
+		<h3>Requiere actualizar</h3>
+		<p class="ayuda">Lo publicado que la documentación nueva de la promotora deja desfasado. Lo marca Claude al revisarla; se resuelve al preparar la versión que lo incorpora. La promotora lo ve en MUNE Portal.</p>
+		<ul class="lista-actualizar">${marcas.map((m) => `<li>
+			<span><strong>${m.tipo === 'plano' ? 'Plano' : 'Experiencia 3D'} · ${esc(titulo.get(`${m.tipo}/${m.clave}`) ?? m.clave)}</strong><br>
+			<span class="promo-lugar">${esc(m.nota)} · desde el ${esc(fecha(m.marcada_en))}</span></span>
+			<button class="boton secundario pequeno" type="button" data-quitar-marca="${m.id}">Quitar (puesta por error)</button>
+		</li>`).join('')}</ul>
+		<p class="error" role="alert" data-error-actualizar></p>`;
+	zona.querySelectorAll<HTMLButtonElement>('[data-quitar-marca]').forEach((b) => b.addEventListener('click', async () => {
+		if (!confirm('¿Quitar esta marca? Volverá a verse como vigente para la promotora.')) return;
+		b.disabled = true;
+		const { error } = await sb.rpc('quitar_actualizacion', { p_id: Number(b.dataset.quitarMarca) });
+		if (error) {
+			zona.querySelector<HTMLElement>('[data-error-actualizar]')!.textContent = traducir(error);
+			b.disabled = false;
+			return;
+		}
+		await pintarActualizar(zona, id);
+	}));
+}
+
 export async function pintarVersiones(destino: HTMLElement, p: { id: string; nombre: string; promotora_id: string; publicacion?: string }): Promise<void> {
 	destino.innerHTML = '<p class="vacio">Comprobando las versiones…</p>';
 	const e = await estadoVersiones(p.id);
@@ -137,6 +174,7 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 		${bloqueo ? `<p class="ayuda">${esc(bloqueo)}</p>` : ''}
 		${pendiente && p.publicacion !== 'manual' && !validacion?.igualQue ? `<p class="ayuda">Esta promoción se publica al aprobar la promotora: cuando valide todo lo enviado, la ${esc(rev!.version)} se publicará sola y te llegará un email.</p>` : ''}
 		<p class="aviso" data-progreso role="status" hidden></p>
+		<section class="actualizar" data-actualizar hidden></section>
 		<div data-validacion></div>
 		${pendiente ? '<section class="comparacion" data-comparacion hidden></section>' : ''}
 		${pendiente ? `<section class="comentarios">
@@ -180,6 +218,7 @@ export async function pintarVersiones(destino: HTMLElement, p: { id: string; nom
 	const repintar = () => void pintarVersiones(destino, p);
 	anotarEnlaces(destino);
 	if (validacion) void pintarValidacion(destino.querySelector<HTMLElement>('[data-validacion]')!, REVISION, p, validacion, repintar);
+	void pintarActualizar(destino.querySelector<HTMLElement>('[data-actualizar]')!, id);
 	// qué cambia respecto a la publicada (comparacion.ts)
 	if (pendiente) void pintarComparacion(destino.querySelector<HTMLElement>('[data-comparacion]')!, { sb, esc, traducir, base: REVISION, privado: true }, id, rev!.version);
 	// comentarios de la promotora (comentarios.ts): todos, los abiertos primero

@@ -2457,6 +2457,65 @@ await caso( DEBE_FUNCIONAR, 'Archivos para Claude: el robot recibe la documentac
 
 } );
 
+// ─── Vigencia: «Requiere actualizar» (044_vigencia.sql) ─────────────────────
+
+for ( const promocion of [ 'prueba-a', 'prueba-b' ] ) {
+
+	await exigir( admin.from( 'entregables' ).insert( { promocion_id: promocion, version: 'v1', tipo: 'plano', tipologia: 'A', nombre: 'Plano comercial A',
+		ruta: `${ promocion }/v1/planos/vigencia-a.pdf`, huella: huella( Buffer.from( promocion ) ), clave: 'vigencia-a', titulo: 'Tipología A' } ), `plano con clave ${ promocion }` );
+
+}
+const marcar = ( sb, extra = {} ) => sb.rpc( 'marcar_actualizacion', { p_promocion: 'prueba-a', p_tipo: 'plano', p_clave: 'vigencia-a', p_nota: 'La memoria nueva cambia el baño', ...extra } );
+const enRevisionA = ( await servicio.from( 'versiones_promocion' ).select( 'version' ).eq( 'promocion_id', 'prueba-a' ).eq( 'estado', 'en_revision' ) ).data?.[ 0 ]?.version;
+const [ { id: docDeB } ] = await exigir( servicio.from( 'documentos' ).select( 'id' ).eq( 'promocion_id', 'prueba-b' ).limit( 1 ), 'un documento de B' );
+
+await caso( DEBE_FALLAR, '56. Vigencia: la promotora, otra promotora o alguien sin sesión marcan, resuelven, quitan o leen «Requiere actualizar»; el robot quita una marca; planos inventados, documentos de otra promoción, duplicados o versiones sin preparar', async () => {
+
+	const marca = await exigir( marcar( robot ), 'el robot marca' );
+	const r = {
+		promotoraMarca: await marcar( aprobA, { p_nota: 'otra cosa' } ),
+		anonimoMarca: await marcar( anonimo, { p_nota: 'otra cosa' } ),
+		inventado: await marcar( admin, { p_clave: 'no-existe' } ),
+		otraPromotoraMarca: await marcar( aprobB, { p_nota: 'otra cosa' } ),
+		documentoAjeno: await marcar( admin, { p_tipo: 'experiencia', p_nota: 'con documento de B', p_documento: docDeB } ),
+		duplicado: await marcar( admin ),
+		notaVacia: await marcar( admin, { p_tipo: 'experiencia', p_nota: ' ' } ),
+		promotoraResuelve: await aprobA.rpc( 'resolver_actualizaciones', { p_promocion: 'prueba-a', p_version: enRevisionA ?? 'v1', p_ids: [ marca ] } ),
+		versionSinPreparar: await robot.rpc( 'resolver_actualizaciones', { p_promocion: 'prueba-a', p_version: 'v999', p_ids: [ marca ] } ),
+		promotoraQuita: await aprobA.rpc( 'quitar_actualizacion', { p_id: marca } ),
+		robotQuita: await robot.rpc( 'quitar_actualizacion', { p_id: marca } ),
+		otraPromotoraLee: await aprobB.from( 'actualizaciones' ).select( 'id' ).eq( 'promocion_id', 'prueba-a' ),
+		anonimoLee: await anonimo.from( 'actualizaciones' ).select( 'id' ),
+		promotoraEscribe: await aprobA.from( 'actualizaciones' ).update( { quitada_en: new Date().toISOString() } ).eq( 'id', marca ).select( 'id' ),
+		promotoraInserta: await aprobA.from( 'actualizaciones' ).insert( { promocion_id: 'prueba-a', tipo: 'plano', clave: 'vigencia-a', nota: 'x x x' } ).select( 'id' ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	const sigue = await servicio.from( 'actualizaciones' ).select( 'id' ).eq( 'id', marca ).is( 'resuelta_en', null ).is( 'quitada_en', null );
+	if ( ! sigue.data?.length ) noFallan.push( 'la marca ha cambiado' );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Vigencia: el robot marca un plano con la nota y el documento; la promotora y MUNE Studio lo ven; se resuelve al preparar la versión; la administradora quita una puesta por error', async () => {
+
+	const [ { id: docDeA } ] = await exigir( servicio.from( 'documentos' ).select( 'id' ).eq( 'promocion_id', 'prueba-a' ).limit( 1 ), 'un documento de A' );
+	const deLaPromotora = await exigir( aprobA.from( 'actualizaciones' ).select( 'id, clave, nota' ).eq( 'promocion_id', 'prueba-a' ).is( 'resuelta_en', null ), 'la promotora la ve' );
+	const deMune = await exigir( admin.from( 'actualizaciones' ).select( 'id' ).eq( 'promocion_id', 'prueba-a' ).is( 'resuelta_en', null ).is( 'quitada_en', null ), 'MUNE la ve' );
+	const resueltas = enRevisionA ? await exigir( robot.rpc( 'resolver_actualizaciones', { p_promocion: 'prueba-a', p_version: enRevisionA, p_ids: deMune.map( ( m ) => m.id ) } ), 'el robot la resuelve' ) : -1;
+	const otra = await exigir( robot.rpc( 'marcar_actualizacion', { p_promocion: 'prueba-a', p_tipo: 'plano', p_clave: 'vigencia-a', p_nota: 'Marcada otra vez', p_documento: docDeA } ), 'vuelve a marcarse' );
+	await exigir( admin.rpc( 'quitar_actualizacion', { p_id: otra } ), 'la administradora la quita' );
+	const abiertas = await exigir( admin.from( 'actualizaciones' ).select( 'id' ).eq( 'promocion_id', 'prueba-a' ).is( 'resuelta_en', null ).is( 'quitada_en', null ), 'abiertas' );
+	const mal = Object.entries( {
+		laVe: deLaPromotora.length === 1 && deLaPromotora[ 0 ].nota === 'La memoria nueva cambia el baño',
+		resuelta: resueltas === 1,
+		ningunaAbierta: abiertas.length === 0,
+	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
+	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) }` );
+	return true;
+
+} );
+
 // ─── Resumen ────────────────────────────────────────────────────────────────
 
 const fallidos = resultados.filter( ( r ) => ! r.ok );
