@@ -232,7 +232,7 @@ export async function pintarDocumentacion(caja: HTMLElement, p: Promo, requisito
 	caja.innerHTML = `
 		<h2>Documentación</h2>
 		${htmlFase(fase, historial, 'promotora')}
-		<p class="ayuda">Lo que necesitamos para preparar la promoción. Sube tus archivos tal como los tengas, de hasta 50 MB cada uno: no hace falta adaptarlos a MUNE. Si un mismo archivo contiene varias cosas de la lista (por ejemplo, plantas, alzados y superficies), súbelo una vez y marca en él todo lo que incluye. Para sustituir un archivo, sube una versión nueva: las anteriores se conservan. Si tus planos están en DWG, súbelos también en DXF (en AutoCAD: Guardar como → DXF): es el formato con el que trabajamos.</p>
+		<p class="ayuda">Lo que necesitamos para preparar la promoción. Sube tus archivos tal como los tengas, de hasta 50 MB cada uno: no hace falta adaptarlos a MUNE, salvo los planos en DWG. Si un mismo archivo contiene varias cosas de la lista (por ejemplo, plantas, alzados y superficies), súbelo una vez y marca en él todo lo que incluye. Para sustituir un archivo, sube una versión nueva: las anteriores se conservan. <strong>Los planos en DWG no podemos leerlos: súbelos en DXF</strong> (en AutoCAD: Guardar como → DXF), no en DWG.</p>
 		${htmlDocs || '<p class="vacio">El equipo de MUNE aún no ha preparado la lista de documentos de esta promoción.</p>'}`;
 	conectarFase(caja, sb, p.id, fase, () => recargar('Fase del proyecto guardada.'), (e) => traducir(e, 'cambiar la fase'));
 
@@ -260,8 +260,7 @@ export async function pintarDocumentacion(caja: HTMLElement, p: Promo, requisito
 			const nuevo = document.querySelector<HTMLElement>(`[data-progreso="${requisito}"]`);
 			if (nuevo) {
 				nuevo.hidden = false;
-				nuevo.textContent = `Hemos recibido «${archivo.name}». Lo revisaremos y verás aquí su estado.`
-					+ (/\.dwg$/i.test(archivo.name) ? ' Si puedes, sube también este plano en DXF (en AutoCAD: Guardar como → DXF): es el formato con el que trabajamos.' : '');
+				nuevo.textContent = `Hemos recibido «${archivo.name}». Lo revisaremos y verás aquí su estado.`;
 			}
 		} catch (e) {
 			aviso.classList.add('error');
@@ -317,6 +316,8 @@ function nombreSeguro(nombre: string): string {
 }
 
 async function subir(p: Promo, requisito: number, archivo: File, campos: Record<string, unknown>, aviso: HTMLElement): Promise<void> {
+	// los DWG no podemos leerlos: se pide el mismo plano en DXF (decisión 67)
+	if (/\.dwg$/i.test(archivo.name)) throw new Error('Los planos en DWG no podemos leerlos. Guárdalo en DXF (en AutoCAD: Guardar como → DXF) y sube ese archivo.');
 	if (archivo.size > MAX_TAM) throw new Error('El archivo pesa más de 50 MB y no se ha podido subir. Si necesitas enviar uno más grande, escribe al equipo de MUNE.');
 	if (archivo.size === 0) throw new Error('El archivo está vacío. Comprueba que es el correcto y vuelve a subirlo.');
 	aviso.textContent = `Subiendo «${archivo.name}»… Con archivos grandes puede tardar un poco; no cierres la página.`;
