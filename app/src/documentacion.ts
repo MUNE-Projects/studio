@@ -225,7 +225,7 @@ async function pintarRequisitos(p: PromocionMin, destino: HTMLElement, alCambiar
 		<form class="peticion-form" data-plegable="requisito" hidden novalidate>
 			<label>Bloque <input name="bloque" list="bloques-${esc(p.id)}" maxlength="80" required placeholder="Por ejemplo: Planos"></label>
 			<datalist id="bloques-${esc(p.id)}">${bloques.map((b) => `<option value="${esc(b)}">`).join('')}</datalist>
-			<label>Qué tiene que entregar <input name="elemento" maxlength="120" required placeholder="Por ejemplo: Plano de planta de cada tipología (PDF o DWG)"></label>
+			<label>Qué tiene que entregar <input name="elemento" maxlength="120" required placeholder="Por ejemplo: Plano de planta de cada tipología (PDF o DXF)"></label>
 			<label>Explicación para la promotora (opcional) <input name="descripcion" maxlength="1000"></label>
 			<label class="en-linea"><input name="obligatorio" type="checkbox" checked> Obligatorio</label>
 			<label class="en-linea"><input name="varios" type="checkbox" data-varios> Admite varios archivos</label>
