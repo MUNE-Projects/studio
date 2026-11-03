@@ -14,16 +14,17 @@
 4. Claude lee cada documento y comprueba:
    - que es lo que se pidió en ese punto de la lista (por ejemplo, que el plano de tipología está **acotado**);
    - que es legible y está completo;
-   - que cuadra con lo demás (superficies frente al cuadro oficial, número de viviendas frente a la ficha, tipologías frente a la tabla de viviendas).
-5. **Punto de control:** Claude te presenta una tabla con cada documento, su propuesta (vigente o rechazado) y, si rechaza, la nota exacta que verá la promotora. No marca nada sin tu OK.
-6. Con tu OK: `node herramientas/documentos.mjs estado <id> vigente` o `estado <id> rechazado --nota "…"`. Al rechazar, el equipo de la promotora recibe un email con la nota.
+   - que cuadra con lo demás (superficies frente al cuadro oficial, número de viviendas frente a la ficha, tipologías frente a la tabla de viviendas);
+   - si es un **plano nuevo de una tipología ya preparada** (por el nombre y el contenido se sabe cuál): esa tipología pasa a «En actualización». La memoria de calidades cambia materiales y acabados, no distribuciones.
+5. **Punto de control:** Claude te presenta una tabla con cada documento, su propuesta (vigente o rechazado) y, si rechaza, la nota exacta que verá la promotora. Debajo, **qué tipologías pasan a «En actualización»**, con la nota corta que verá la promotora (por ejemplo, «el dormitorio 2 gana 40 cm de ancho»). No marca nada sin tu OK.
+6. Con tu OK: `node herramientas/documentos.mjs estado <id> vigente` o `estado <id> rechazado --nota "…"`. Al rechazar, el equipo de la promotora recibe un email con la nota. Lo que pasa a «En actualización»: `node herramientas/documentos.mjs actualizar <promoción> plano|experiencia <clave> --nota "…" --documento <id>` (decisión 69), para el plano y, si cambia, también para el 3D de esa tipología. La promotora lo ve así en MUNE Portal y puede seguir descargando el anterior. Al preparar la versión que lo incluye, «preparar» lo recuerda y se resuelve con `documentos.mjs actualizaciones <promoción> resolver <ids> --version vN`.
 7. Informe breve en la conversación: qué se marcó, qué falta por entregar y las incoherencias encontradas.
 
 ## Registro
 Cada cambio de estado queda en el registro de actividad automáticamente (con quién lo hizo: el robot), y cada descarga del robot también.
 
 ## Sin Claude
-Lo mismo se hace desde el Panel: promoción → pestaña **Documentación** → *Descargar*, *Marcar como vigente* o *Rechazar…* (con nota).
+Lo mismo se hace desde el Panel: promoción → pestaña **Documentación** → *Descargar*, *Marcar como vigente* o *Rechazar…* (con nota). «En actualización» lo pone Claude; sin Claude, la administradora puede quitar uno puesto por error (*Resumen y versiones*).
 
 ## Errores
 - Documento ilegible o equivocado: se rechaza con una nota clara para la promotora.

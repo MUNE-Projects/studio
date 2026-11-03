@@ -8,6 +8,7 @@
 // la persona, el momento y la huella del archivo exacto. Si un plano no cambia
 // de una versión a otra, sus aprobaciones siguen valiendo.
 
+import { avisoEnRevision, chip, deElemento, estadoDe, frase, leerActualizaciones } from './vigencia';
 import { alEnviar, esc, sb, traducir } from './comun';
 import { Zip } from './zip';
 import { type Hilo, abiertos, hilosDe, pendientes, htmlPlanoConMarcas, leerHilos, pintarComentarios, textoPedirCambios } from './comentarios';
@@ -43,43 +44,57 @@ async function ultimaValidada(id: string, versiones: string[]): Promise<string |
 	return null;
 }
 
+/** La versión de los planos vigentes: la publicada o, si aún no hay, la última con todos validados. */
+async function versionVigente(id: string, versiones: string[]): Promise<string | null> {
+	const publicada = await versionPublicada(id);
+	return publicada && versiones.includes(publicada) ? publicada : ultimaValidada(id, versiones);
+}
+
 /** Lista de planos de una versión: siempre a mano para consultarlos y descargarlos, y para validarlos si toca. */
 export async function htmlLista(id: string, version: string, versiones: string[], ctx: Contexto): Promise<string> {
-	const planos = await leerPlanos(id, version);
-	const urls = await miniaturas(planos);
 	const actual = version === versiones[0];
-	const aprobados = planos.filter((p) => p.estado === 'aprobado').length;
+	const [planos, marcas, enRevision] = await Promise.all([leerPlanos(id, version), leerActualizaciones(sb, id),
+		actual ? avisoEnRevision(sb, esc, id, 'promotora') : Promise.resolve('')]);
+	const urls = await miniaturas(planos);
 	const sinAprobadores = planos.some((p) => p.estado === 'sin_aprobadores');
-	const todos = planos.length > 0 && aprobados === planos.length;
 	// Si la versión más reciente aún se está validando, los últimos validados siguen a mano.
+	const todos = planos.length > 0 && planos.every((p) => p.estado === 'aprobado');
 	const anteriorValidada = actual && !todos ? await ultimaValidada(id, versiones.slice(1)) : null;
 	return `
-		<h2>Planos comerciales · ${esc(version)}</h2>
-		${!actual ? '<p class="ayuda">Es una versión anterior: puedes consultarla y descargar sus planos.</p>'
-			: todos ? '<p class="ayuda">Todos validados. Tenlos siempre a mano aquí para consultarlos y descargarlos.</p>'
-			: '<p class="ayuda">El equipo de MUNE los ha preparado a partir de la documentación que aportaste. Puedes consultarlos y descargarlos cuando quieras. Cada plano queda validado cuando lo aprueban todas las personas elegidas para validarlo; si algo no está bien, pide cambios explicando qué hay que corregir. Lo que se apruebe es lo que se publicará.</p>'}
-		${anteriorValidada ? `<p class="aviso">Mientras se valida ${esc(version)}, los últimos planos validados siguen disponibles: <a class="enlace" href="#/promocion/${esc(id)}/planos/${esc(anteriorValidada)}">planos de ${esc(anteriorValidada)}</a>.</p>` : ''}
+		<h2>Planos comerciales${actual ? '' : ` · ${esc(version)} (anterior)`}</h2>
+		${actual ? `<p class="ayuda">Cada plano lleva su estado: <strong>✅ Al día</strong>, lo puedes usar; <strong>👀 Te toca revisar</strong>; <strong>⏳ Pendiente de validar</strong> por otras personas del equipo; <strong>🔄 En actualización</strong>, el equipo de MUNE está preparando cambios.</p>`
+			: '<p class="ayuda">Es una versión anterior: puedes consultarla y descargar sus planos.</p>'}
+		${enRevision}
 		${actual && sinAprobadores ? htmlSinAprobadores(id, 'planos', ctx) : ''}
-		${todos ? '' : `<p class="promo-versiones">${aprobados} de ${planos.length} aprobados</p>
-		<progress class="progreso" value="${aprobados}" max="${Math.max(1, planos.length)}" aria-hidden="true"></progress>`}
 		${planos.map((p) => {
 			const toca = meToca(p, ctx, actual);
+			const marca = actual ? deElemento(marcas, 'plano', p.clave) : null;
+			const e = estadoDe(p.estado, marca, toca);
 			return `<div class="plano-fila">
 			${urls.get(p.miniatura ?? '') ? `<a href="#/promocion/${esc(id)}/planos/${p.id}"><img class="plano-mini" src="${esc(urls.get(p.miniatura!)!)}" alt="Miniatura del plano ${esc(p.titulo)}"></a>` : '<span class="plano-mini"></span>'}
 			<div class="plano-info">
-				<div class="plano-titulo"><span class="requisito-nombre">${esc(p.titulo)}</span>${chipEstado(p, 'planos')}</div>
-				<p class="promo-lugar">${esc(p.detalle ?? '')}${p.viviendas ? ` · ${esc(p.viviendas)}` : ''}</p>
-				${avance(p, 'planos') ? `<p class="avance">${avance(p, 'planos')}</p>` : ''}
-				${htmlPersonas(p, version)}
+				<div class="plano-titulo"><span class="requisito-nombre">${esc(p.titulo)}</span>${actual ? chip(e) : chipEstado(p, 'planos')}</div>
+				${actual ? frase(esc, e, marca, 'promotora') : ''}
+				${p.detalle || p.viviendas ? `<p class="promo-lugar">${esc(p.detalle ?? '')}${p.detalle && p.viviendas ? ' · ' : ''}${esc(p.viviendas ?? '')}</p>` : ''}
 				<div class="acciones">
-					<a class="boton ${toca ? '' : 'secundario'} pequeno" href="#/promocion/${esc(id)}/planos/${p.id}">${toca ? 'Revisar y validar' : 'Ver'}</a>
+					<a class="boton ${toca ? '' : 'secundario'} pequeno" href="#/promocion/${esc(id)}/planos/${p.id}">${toca ? 'Revisar' : 'Ver'}</a>
 					${pdfBoton(p)}
 				</div>
+				${htmlDetalle(p, version)}
 			</div>
 		</div>`;
 		}).join('')}
-		${versiones.length > 1 ? `<p class="ayuda separado">Planos de otras versiones: ${versiones.filter((v) => v !== version)
+		${anteriorValidada ? `<p class="ayuda separado">Los últimos planos con todo validado son los de la <a class="enlace" href="#/promocion/${esc(id)}/planos/${esc(anteriorValidada)}">${esc(anteriorValidada)}</a>.</p>` : ''}
+		${versiones.length > 1 ? `<p class="ayuda${anteriorValidada ? '' : ' separado'}">Otras versiones: ${versiones.filter((v) => v !== version)
 			.map((v) => `<a class="enlace" href="#/promocion/${esc(id)}/planos/${esc(v)}">${esc(v)}</a>`).join(' · ')}</p>` : ''}`;
+}
+
+/** Quién lo ha aprobado y de qué versión es: plegado, solo para quien lo quiera ver. */
+function htmlDetalle(p: Elemento, version: string): string {
+	return `<details class="detalle-plegable"><summary>Ver detalle</summary>
+		<p class="promo-lugar">Versión ${esc(version)}${avance(p, 'planos') ? ` · ${avance(p, 'planos')}` : ''}</p>
+		${htmlPersonas(p, version)}
+	</details>`;
 }
 
 /** Un plano: verlo en grande, descargarlo y aprobarlo o pedir cambios. */
@@ -92,8 +107,9 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
 		caja.innerHTML = `<a class="enlace volver" href="#/promocion/${esc(id)}/planos">← Todos los planos</a><p class="vacio">No encontramos este plano. Vuelve a la lista y ábrelo desde allí.</p>`;
 		return;
 	}
-	const [urls, hilos] = await Promise.all([miniaturas([p]), leerHilos(sb, id).catch(() => [] as Hilo[])]);
+	const [urls, hilos, marcas] = await Promise.all([miniaturas([p]), leerHilos(sb, id).catch(() => [] as Hilo[]), leerActualizaciones(sb, id)]);
 	const actual = e.version === versiones[0];
+	const marca = actual ? deElemento(marcas, 'plano', p.clave) : null;
 	const aqui = hilosDe(hilos, 'plano', p.clave, e.version);
 	const voto = miVoto(p, ctx);
 	const puede = actual && p.estado !== 'aprobado' && !!voto;
@@ -102,10 +118,10 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
 
 	caja.innerHTML = `
 		<a class="enlace volver" href="#/promocion/${esc(id)}/planos${actual ? '' : `/${esc(e.version)}`}">← Todos los planos</a>
-		<div class="plano-titulo separado"><h2>${esc(p.titulo)} · ${esc(e.version)}</h2>${chipEstado(p, 'planos')}</div>
-		<p class="promo-lugar">${esc(p.detalle ?? '')}${p.viviendas ? ` · ${esc(p.viviendas)}` : ''}</p>
-		${avance(p, 'planos') ? `<p class="avance">${avance(p, 'planos')}</p>` : ''}
-		${htmlPersonas(p, e.version)}
+		<div class="plano-titulo separado"><h2>${esc(p.titulo)}${actual ? '' : ` · ${esc(e.version)} (anterior)`}</h2>${actual ? chip(estadoDe(p.estado, marca, meToca(p, ctx, actual))) : chipEstado(p, 'planos')}</div>
+		${actual ? frase(esc, estadoDe(p.estado, marca, meToca(p, ctx, actual)), marca, 'promotora') : ''}
+		${p.detalle || p.viviendas ? `<p class="promo-lugar">${esc(p.detalle ?? '')}${p.detalle && p.viviendas ? ' · ' : ''}${esc(p.viviendas ?? '')}</p>` : ''}
+		${htmlDetalle(p, e.version)}
 		${actual && p.estado === 'sin_aprobadores' ? htmlSinAprobadores(id, 'planos', ctx) : ''}
 		${urls.get(p.miniatura ?? '') ? htmlPlanoConMarcas(esc, urls.get(p.miniatura!)!, `Plano ${p.titulo}`, abiertos(aqui), actual) : ''}
 		<div class="acciones">
@@ -196,7 +212,7 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
  */
 export async function conectarDescargaVigentes(caja: HTMLElement, id: string, nombrePromocion: string, versiones: string[]): Promise<void> {
 	const publicada = await versionPublicada(id);
-	const vigente = publicada && versiones.includes(publicada) ? publicada : await ultimaValidada(id, versiones);
+	const vigente = await versionVigente(id, versiones);
 	if (!vigente) return;
 	caja.insertAdjacentHTML('afterbegin', `<div class="aviso descarga-vigentes">
 		<p>Planos comerciales vigentes: los de la ${esc(vigente)}${publicada === vigente ? ', la versión publicada' : ''}, todos validados.</p>

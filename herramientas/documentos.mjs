@@ -7,10 +7,13 @@
 //   node herramientas/documentos.mjs opciones                         (opciones pedidas por las promotoras; baja sus adjuntos a salida/opciones/)
 //   node herramientas/documentos.mjs estado <id> vigente|rechazado [--nota "Texto"]
 //   node herramientas/documentos.mjs comentarios <promoción> [resolver <ids> --version vN]   (comentarios visuales enviados, 038)
+//   node herramientas/documentos.mjs actualizar <promoción> plano|experiencia <clave> --nota "…" [--documento N]   (En actualización, 044)
+//   node herramientas/documentos.mjs actualizaciones <promoción> [resolver <ids> --version vN]
 //
 // Receta 2 («revisa lo nuevo de X»): pendientes → bajar cada uno → leerlo y
 // comprobarlo → proponer a la administradora qué marcar como vigente y qué
-// rechazar (con la nota para la promotora) → con su OK, estado.
+// rechazar (con la nota para la promotora) y qué plano o tipología ya preparado
+// deja desfasado → con su OK, estado y actualizar.
 //
 // Credenciales: variables de entorno ROBOT_EMAIL y ROBOT_CLAVE (configuración
 // privada del entorno de Claude). Nunca en el código, en GitHub ni en el chat.
@@ -37,7 +40,7 @@ const opcion = ( nombre ) => {
 	return i >= 0 ? args[ i + 1 ] : undefined;
 
 };
-const posicionales = args.filter( ( a, i ) => ! a.startsWith( '--' ) && ! [ '--nota', '--desde', '--version' ].includes( args[ i - 1 ] ) );
+const posicionales = args.filter( ( a, i ) => ! a.startsWith( '--' ) && ! [ '--nota', '--desde', '--version', '--documento' ].includes( args[ i - 1 ] ) );
 
 function fallo( texto ) {
 
@@ -253,6 +256,49 @@ async function comentarios( token, promocion, accion ) {
 
 }
 
+// «En actualización» (044_vigencia.sql, decisión 69): un plano comercial o
+// una tipología de la Experiencia 3D que la documentación nueva deja
+// desfasado. Lo marca Claude al revisar la documentación, con el OK de la
+// administradora; se resuelve al preparar la versión que lo incorpora.
+//   actualizar <promoción> plano|experiencia <clave> --nota "…" [--documento N]
+//   actualizaciones <promoción>                                  las abiertas
+//   actualizaciones <promoción> resolver <id,id,…> --version vN  al preparar vN
+async function actualizar( token, promocion, tipo ) {
+
+	const clave = posicionales[ 3 ];
+	const nota = opcion( 'nota' );
+	const documento = opcion( 'documento' );
+	if ( ! /^[a-z0-9-]{1,60}$/.test( promocion ?? '' ) || ! [ 'plano', 'experiencia' ].includes( tipo ) || ! clave || ! nota || nota.trim().length < 3 ) {
+
+		fallo( 'Uso: actualizar <promoción> plano|experiencia <clave> --nota "Qué cambia y por qué" [--documento 12]' );
+
+	}
+	if ( documento !== undefined && ! /^\d+$/.test( documento ) ) fallo( '--documento lleva el número del documento (de «pendientes»)' );
+	const id = await pedir( '/rest/v1/rpc/marcar_actualizacion', { metodo: 'POST', token,
+		cuerpo: { p_promocion: promocion, p_tipo: tipo, p_clave: clave, p_nota: nota, p_documento: documento ? Number( documento ) : null } } );
+	console.log( `✓ Marcado como «En actualización» (#${ id }): ${ tipo === 'plano' ? 'plano' : 'tipología' } ${ clave }. Lo ven MUNE Studio y la promotora en MUNE Portal.` );
+
+}
+
+async function actualizaciones( token, promocion, accion ) {
+
+	if ( ! /^[a-z0-9-]{1,60}$/.test( promocion ?? '' ) ) fallo( 'Indica la promoción, por ejemplo: residencial-demo' );
+	if ( accion === 'resolver' ) {
+
+		const ids = ( posicionales[ 3 ] ?? '' ).split( ',' ).map( Number ).filter( ( n ) => Number.isInteger( n ) && n > 0 );
+		const version = opcion( 'version' );
+		if ( ! ids.length || ! /^v\d+$/.test( version ?? '' ) ) fallo( 'Uso: actualizaciones <promoción> resolver 3,4 --version v18' );
+		const n = await pedir( '/rest/v1/rpc/resolver_actualizaciones', { metodo: 'POST', token, cuerpo: { p_promocion: promocion, p_version: version, p_ids: ids } } );
+		return console.log( `✓ ${ n } marca(s) resueltas en la ${ version }: pasan a «Te toca revisar» al enviarla a validar.` );
+
+	}
+	const abiertas = await pedir( `/rest/v1/actualizaciones?select=id,tipo,clave,nota,documento_id,marcada_en&promocion_id=eq.${ promocion }&resuelta_en=is.null&quitada_en=is.null&order=marcada_en`, { token } );
+	if ( ! abiertas.length ) return console.log( `Nada marcado como «En actualización» en ${ promocion }.` );
+	for ( const m of abiertas ) console.log( `#${ m.id } · ${ m.tipo === 'plano' ? 'plano' : '3D' } ${ m.clave } · ${ fecha( m.marcada_en ) }${ m.documento_id ? ` · documento ${ m.documento_id }` : '' }\n  «${ m.nota }»` );
+	console.log( `\nAl preparar la versión nueva: node herramientas/documentos.mjs actualizaciones ${ promocion } resolver <ids> --version vN` );
+
+}
+
 /** Opciones que han pedido las promotoras (029), con sus adjuntos sin metadatos en salida/opciones/. */
 async function opciones( token ) {
 
@@ -293,6 +339,8 @@ switch ( orden ) {
 	case 'estado': await cambiarEstado( token, a, b ); break;
 	case 'comentarios': await comentarios( token, a, b ); break;
 	case 'opciones': await opciones( token ); break;
-	default: fallo( 'Orden desconocida. Usa: novedades | pendientes | bajar | estado | comentarios | opciones' );
+	case 'actualizar': await actualizar( token, a, b ); break;
+	case 'actualizaciones': await actualizaciones( token, a, b ); break;
+	default: fallo( 'Orden desconocida. Usa: novedades | pendientes | bajar | estado | comentarios | opciones | actualizar | actualizaciones' );
 
 }
