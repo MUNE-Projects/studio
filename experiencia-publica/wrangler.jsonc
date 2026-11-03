@@ -6,7 +6,8 @@
 {
   "name": "experience",
   "compatibility_date": "2026-10-01",
-  // la vista previa es la dirección revision-experience.… (alias «revision»)
+  // la vista previa es otro Worker con esta misma configuración, «revision-experience»
+  // (desplegar.mjs lo envía con --name), en revision-experience.mune-projects.workers.dev
   "previews": {},
   "assets": {
     "directory": "./publico",
