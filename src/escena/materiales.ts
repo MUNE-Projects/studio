@@ -14,6 +14,7 @@ import {
 } from 'three/tsl';
 
 import { APAREJOS, ASPECTOS, BRILLOS, type Revestimiento } from '../modelo/revestimientos';
+import { real } from './texturasReales';
 
 type N = any; // nodos TSL: el tipado de @types/three para TSL es demasiado estricto para componer libremente
 
@@ -163,6 +164,9 @@ const baldosas = ( p: N, tam: N, junta: N, desfase = 0 ): [ N, N ] => {
 
 const ruidoSuave = ( p: N, escala: number | N ): N => mx_fractal_noise_float( p.mul( escala ) );
 
+/** Coordenada 2D en metros para una superficie cualquiera: planta en las horizontales, alzado en las verticales. */
+const uvCaja = ( p: N ): N => mix( vec2( p.x.add( p.z ), p.y ), vec2( p.x, p.z ), step( 0.6, abs( normalWorldGeometry.y ) ) );
+
 
 /**
  * Despiece de un revestimiento en piezas de ancho × largo (m) con su junta (m).
@@ -207,11 +211,13 @@ const piezas = ( p0: N, ancho: N, largo: N, junta: N, aparejo: N, desfase: N, gi
 };
 
 /** Veta de madera sobre una pieza (a lo largo a, a lo ancho c): 0 oscuro … 1 claro, y fibra. */
-const vetaMadera = ( a: N, c: N, id: N ): { t: N; fibra: N } => {
+const vetaMadera = ( a: N, c: N, id: N ): { t: N; fibra: N; brillo: N } => {
 
-	const veta = mx_noise_float( vec3( a.mul( 1.2 ).add( id.mul( 40 ) ), c.mul( 55 ), id.mul( 7 ) ) ).mul( 0.5 ).add( 0.5 );
-	const fibra = mx_noise_float( vec3( a.mul( 6 ), c.mul( 420 ), id.mul( 3 ) ) ).mul( 0.5 ).add( 0.5 );
-	return { t: clamp( id.mul( 0.45 ).add( veta.mul( 0.4 ) ).add( fibra.mul( 0.25 ) ).sub( 0.1 ), 0, 1 ), fibra };
+	// foto de chapa de roble: la veta va a lo largo de la pieza y cada pieza toma
+	// otro trozo de la foto (como las lamas de verdad, ninguna igual)
+	const r = real( 'roble', vec2( c, a ).add( vec2( id.mul( 0.71 ), id.mul( 1.93 ) ) ) );
+	const t = clamp( id.mul( 0.4 ).add( 0.32 ).add( r.claro.mul( 0.17 ) ), 0, 1 );
+	return { t, fibra: clamp( r.alto.mul( 0.2 ).add( 0.5 ), 0, 1 ), brillo: r.rug };
 
 };
 
@@ -246,23 +252,23 @@ const revestir = ( { col, rug, rel, c0 }: Salida, p: N ) => {
 	const marmol = mix( c0.mul( float( 0.95 ).add( vetas.mul( 0.05 ) ) ), c0.mul( 0.58 ), max( linea.mul( 0.6 ), fina.mul( 0.3 ) ) );
 
 	// cemento o microcemento: nubes amplias y continuas, grano fino
-	const nube = ruidoSuave( vec3( p.x, p.y, 0 ), 0.7 ).mul( 0.5 ).add( 0.5 );
-	const llana = mx_noise_float( vec3( p.mul( 3.1 ), 1 ) ).mul( 0.5 ).add( 0.5 );
-	const cemento = c0.mul( float( 0.9 ).add( nube.mul( 0.13 ) ).add( llana.mul( 0.05 ) ).add( grano.mul( 0.02 ) ) );
+	// (foto de un enlucido de llana real)
+	const mc = real( 'microcemento', p );
+	const nube = clamp( mc.claro.mul( 0.25 ).add( 0.5 ), 0, 1 );
+	const cemento = c0.mul( float( 1 ).add( mc.claro.mul( 0.05 ) ).add( grano.mul( 0.01 ) ) );
 
 	// imitación madera: veta a lo largo de cada pieza
 	const { t, fibra } = vetaMadera( a, c, id );
 	const madera = mix( c0.mul( 0.74 ), c0.mul( 1.06 ), t );
 
-	// terrazo: fondo con lascas claras y oscuras
-	const w: N = vec2( p.x, p.y ).add( mx_noise_float( vec3( p.mul( 40 ), 4 ) ).mul( 0.006 ) );
-	const lasca = step( 0.8, mx_cell_noise_float( vec3( w.mul( 70 ), 0 ) ) );
-	const tono = mx_cell_noise_float( vec3( w.mul( 70 ).add( 11 ), 3 ) );
-	const terrazo = mix( c0.mul( float( 0.96 ).add( llana.mul( 0.04 ) ) ), mix( c0.mul( 0.5 ), min( c0.mul( 1.18 ), vec3( 1 ) ), tono ), lasca );
+	// terrazo: foto de un pavimento de árido visto, teñida con el color del revestimiento
+	const tz = real( 'terrazo', vec2( p.x, p.y ).add( vec2( id.mul( 0.53 ), id.mul( 1.21 ) ) ) );
+	const terrazo = min( c0.mul( float( 1 ).add( tz.claro.mul( 0.16 ) ) ), vec3( 1 ) );
 
 	const base = liso.mul( es( 0 ) ).add( piedra.mul( es( 1 ) ) ).add( marmol.mul( es( 2 ) ) ).add( cemento.mul( es( 3 ) ) ).add( madera.mul( es( 4 ) ) ).add( terrazo.mul( es( 5 ) ) );
 	const r = V.v2.add( vetas.mul( 0.08 ).mul( es( 0 ) ) ).add( mancha.mul( 0.12 ).mul( es( 1 ) ) ).add( nube.mul( 0.1 ).mul( es( 3 ) ) ).add( fibra.mul( 0.1 ).mul( es( 4 ) ) );
-	const relieve = float( 0.6 ).sub( float( 0.3 ).mul( es( 3 ) ) ).add( mancha.mul( 0.3 ).sub( poro.mul( 0.3 ) ).sub( 0.1 ).mul( es( 1 ) ) ).add( fibra.mul( 0.3 ).mul( es( 4 ) ) );
+	const relieve = float( 0.6 ).sub( float( 0.3 ).mul( es( 3 ) ) ).add( mancha.mul( 0.3 ).sub( poro.mul( 0.3 ) ).sub( 0.1 ).mul( es( 1 ) ) ).add( fibra.mul( 0.3 ).mul( es( 4 ) ) )
+		.add( mc.alto.mul( 0.05 ).mul( es( 3 ) ) ).add( tz.alto.mul( 0.08 ).mul( es( 5 ) ) );
 	const junta = mix( V.c1, c0.mul( V.v8 ), step( 0.001, V.v8 ) );
 	col.assign( mix( base, junta, enJunta ) );
 	rug.assign( mix( r, float( 0.9 ), enJunta ) );
@@ -354,11 +360,13 @@ const PATRONES: Record<number, ( o: Salida ) => void> = {
 	[ A.PINTURA ]: ( { col, rug, rel, c0 } ) => {
 
 		// pintura plástica mate: leves nubes de rodillo y grano fino que atrapan la luz rasante
+		// (relieve de un enlucido real, muy suave: la pintura lo tapa casi todo)
 		const nube = ruidoSuave( pw, 1.4 ).mul( 0.5 ).add( 0.5 );
 		const grano = mx_noise_float( pw.mul( 260 ) ).mul( 0.5 ).add( 0.5 );
-		col.assign( c0.mul( float( 0.985 ).add( nube.mul( 0.02 ) ).add( grano.mul( 0.006 ) ) ) );
+		const yeso = real( 'microcemento', uvCaja( pw ).mul( 2.3 ) );
+		col.assign( c0.mul( float( 0.985 ).add( nube.mul( 0.02 ) ).add( yeso.claro.mul( 0.006 ) ) ) );
 		rug.assign( float( 0.84 ).add( nube.mul( 0.08 ) ) );
-		rel.assign( grano.mul( 0.5 ).add( nube.mul( 0.2 ) ) );
+		rel.assign( grano.mul( 0.25 ).add( yeso.alto.mul( 0.12 ) ).add( 0.5 ) );
 
 
 	},
@@ -380,13 +388,11 @@ const PATRONES: Record<number, ( o: Salida ) => void> = {
 	[ A.MADERA ]: ( { col, rug, rel, c0 } ) => {
 
 		// veta a lo largo del eje x local: c0 claro, c1 oscuro, v0 rugosidad
-		const deform = mx_noise_float( vec3( pl.x.mul( 0.6 ), pl.y.mul( 6 ), pl.z.mul( 6 ) ) ).mul( 0.35 );
-		const anillos = fract( pl.z.mul( 18 ).add( pl.y.mul( 18 ) ).add( deform.mul( 4 ) ) );
-		const veta = smoothstep( 0.0, 0.5, anillos ).mul( smoothstep( 1.0, 0.5, anillos ) );
-		const fibra = mx_noise_float( vec3( pl.x.mul( 3 ), pl.y.mul( 180 ), pl.z.mul( 180 ) ) ).mul( 0.5 ).add( 0.5 );
-		col.assign( mix( V.c1, c0, veta.mul( 0.55 ).add( fibra.mul( 0.45 ) ) ) );
-		rug.assign( V.v0.add( fibra.mul( 0.1 ) ) );
-		rel.assign( fibra.mul( 0.4 ) );
+		// foto de chapa de roble con la veta a lo largo del eje x local
+		const r = real( 'roble', vec2( pl.y.add( pl.z ), pl.x ) );
+		col.assign( mix( V.c1, c0, clamp( r.claro.mul( 0.22 ).add( 0.6 ), 0, 1 ) ) );
+		rug.assign( V.v0.add( r.rug.mul( 0.04 ) ) );
+		rel.assign( r.alto.mul( 0.15 ).add( 0.5 ) );
 
 
 	},
@@ -407,14 +413,11 @@ const PATRONES: Record<number, ( o: Salida ) => void> = {
 
 		// frentes de cocina: liso o con veta de madera según P.cocina (veta 0..1)
 		const k = P.cocina;
-		const deform = mx_noise_float( vec3( pl.x.mul( 0.6 ), pl.y.mul( 6 ), pl.z.mul( 6 ) ) ).mul( 0.35 );
-		const anillos = fract( pl.y.mul( 14 ).add( pl.z.mul( 14 ) ).add( deform.mul( 4 ) ) );
-		const veta = smoothstep( 0.0, 0.5, anillos ).mul( smoothstep( 1.0, 0.5, anillos ) );
-		const fibra = mx_noise_float( vec3( pl.x.mul( 3 ), pl.y.mul( 160 ), pl.z.mul( 160 ) ) ).mul( 0.5 ).add( 0.5 );
-		const madera = mix( k.oscuro, k.claro, veta.mul( 0.55 ).add( fibra.mul( 0.45 ) ) );
+		const r = real( 'roble', vec2( pl.y.add( pl.z ), pl.x ) );
+		const madera = mix( k.oscuro, k.claro, clamp( r.claro.mul( 0.22 ).add( 0.6 ), 0, 1 ) );
 		col.assign( mix( k.claro, madera, k.veta ) );
-		rug.assign( k.rugosidad );
-		rel.assign( fibra.mul( k.veta ).mul( 0.4 ) );
+		rug.assign( k.rugosidad.add( r.rug.mul( 0.04 ).mul( k.veta ) ) );
+		rel.assign( r.alto.mul( 0.15 ).mul( k.veta ).add( 0.5 ) );
 
 
 	},
@@ -425,9 +428,9 @@ const PATRONES: Record<number, ( o: Salida ) => void> = {
 		// de calidades, como en `revestir` (v0 ancho, v3 largo, v1 junta, v4 aparejo…)
 		const s = P.suelo;
 		const { enJunta, id, a, c } = piezas( vec2( pw.x, pw.z ), V.v0, V.v3, max( V.v1, 0.00001 ), V.v4, V.v5, V.v7 );
-		const { t, fibra } = vetaMadera( a, c, id );
+		const { t, fibra, brillo } = vetaMadera( a, c, id );
 		col.assign( mix( mix( s.oscuro, s.claro, t ), s.oscuro.mul( 0.6 ), enJunta ) );
-		rug.assign( s.rugosidad.add( fibra.mul( 0.1 ) ) );
+		rug.assign( s.rugosidad.add( brillo.mul( 0.05 ) ).add( fibra.mul( 0.04 ) ) );
 		rel.assign( enJunta.oneMinus().mul( 0.7 ).add( fibra.mul( 0.3 ) ) );
 
 
@@ -436,12 +439,12 @@ const PATRONES: Record<number, ( o: Salida ) => void> = {
 	[ A.TEXTIL ]: ( { col, rug, rel, c0 } ) => {
 
 		// trama fina (v0 escala de la trama) + irregularidad del tejido
-		const p = pw.mul( V.v0.mul( 700 ) );
-		const trama = sin( p.x.add( p.z ) ).mul( sin( p.y.add( p.z.mul( 0.7 ) ) ) ).mul( 0.5 ).add( 0.5 );
+		// foto de un lino de trama gruesa (v0 escala de la trama: 1 = la real)
+		const tela = real( 'lino', uvCaja( pw ).mul( max( V.v0, 0.25 ) ) );
 		const irregular = mx_noise_float( pw.mul( 40 ) ).mul( 0.5 ).add( 0.5 );
-		col.assign( c0.mul( float( 0.94 ).add( irregular.mul( 0.08 ) ) ) );
+		col.assign( c0.mul( float( 0.97 ).add( irregular.mul( 0.04 ) ).add( tela.claro.mul( 0.05 ) ) ) );
 		rug.assign( 0.95 );
-		rel.assign( trama.mul( 0.5 ).add( irregular.mul( 0.5 ) ) );
+		rel.assign( tela.alto.mul( 0.35 ).add( 0.5 ) );
 
 
 	},
