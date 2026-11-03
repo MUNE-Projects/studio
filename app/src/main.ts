@@ -95,7 +95,7 @@ function pantallaCodigo(factor: Factor): void {
 	pintar(`<form class="caja" novalidate>
 		${CABECERA}
 		<h1>Código del móvil</h1>
-		<p>Abre la app de verificación del móvil y escribe el código de 6 cifras que aparece en <strong>MUNE Studio</strong> (o «MUNE Panel», si aún no lo has cambiado).</p>
+		<p>Abre la app de verificación del móvil y escribe el código de 6 cifras que aparece en <strong>MUNE Studio</strong>.</p>
 		${CAMPO_CODIGO}
 		<p class="error" role="alert"></p>
 		<button class="boton" type="submit">Verificar</button>
