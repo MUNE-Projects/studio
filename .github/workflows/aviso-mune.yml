@@ -8,7 +8,7 @@
 # si no existe, al propio Gmail de MUNE). Gratis.
 
 name: Aviso por email a MUNE
-run-name: aviso a MUNE · ${{ inputs.asunto }}
+run-name: aviso a MUNE
 
 on:
   workflow_dispatch:

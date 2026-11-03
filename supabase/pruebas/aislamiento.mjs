@@ -285,6 +285,8 @@ async function caso( grupo, texto, prueba ) {
 
 const vacio = ( r ) => ! r.error && Array.isArray( r.data ) && r.data.length === 0;
 const falla = ( r ) => !! r.error;
+// 045: antes de eliminar, la exportación enviada o la petición de eliminar sin exportación
+const sinExportacion = ( promotora, promocion = null ) => exigir( admin.rpc( 'anotar_eliminacion_sin_exportacion', { p_promotora: promotora, p_promocion: promocion, p_solicitado_por: 'Gerencia (prueba)', p_motivo: 'Email de prueba' } ), 'anotar sin exportación' );
 const filaDe = async ( tabla, id ) => ( await servicio.from( tabla ).select( '*' ).eq( 'id', id ).single() ).data;
 
 const DEBE_FALLAR = 'Intentos que deben fallar';
@@ -673,6 +675,7 @@ await caso( DEBE_FUNCIONAR, 'La administradora borra una promoción desactivada:
 		await exigir( admin.storage.from( almacen ).remove( lista.filter( ( a ) => a.bucket === almacen ).map( ( a ) => a.nombre ) ), `borrar ${ almacen }` );
 
 	}
+	await sinExportacion( pA.id, 'prueba-borrar' );
 	await exigir( admin.rpc( 'borrar_promocion', { p_id: 'prueba-borrar', p_nombre: ' Residencial que se borra ' } ), 'borrar promoción' );
 	const quedan = await Promise.all( [ 'requisitos', 'documentos', 'entregables', 'validaciones', 'miembros', 'peticiones' ].map( async ( t ) =>
 		( await servicio.from( t ).select( '*', { count: 'exact', head: true } ).eq( 'promocion_id', 'prueba-borrar' ) ).count ) );
@@ -718,6 +721,7 @@ await caso( DEBE_FUNCIONAR, 'La administradora borra una promotora desactivada c
 	const lista = await exigir( admin.rpc( 'archivos_de_promotora', { p_id: pC.id } ), 'lista de archivos de C' );
 	if ( lista.length !== 1 ) throw new Error( `esperaba 1 archivo y hay ${ lista.length }` );
 	await exigir( admin.storage.from( 'documentos' ).remove( lista.map( ( a ) => a.nombre ) ), 'borrar archivos de C' );
+	await sinExportacion( pC.id );
 	await exigir( admin.rpc( 'borrar_promotora', { p_id: pC.id, p_nombre: 'Promotora C (se borra)' } ), 'borrar promotora C' );
 	const { count: miembrosC } = await servicio.from( 'miembros' ).select( '*', { count: 'exact', head: true } ).eq( 'promotora_id', pC.id );
 	const { count: docsC } = await servicio.from( 'documentos' ).select( '*', { count: 'exact', head: true } ).eq( 'promocion_id', 'prueba-c' );
@@ -1963,6 +1967,7 @@ await caso( DEBE_FUNCIONAR, 'Modelo de la promoción: el robot guarda la versió
 	await exigir( guardarModelo( robot, MODELO, {}, 'prueba-modelo' ), 'modelo de prueba-modelo' );
 	await exigir( guardarModelo( robot, MODELO, { p_version: 'v1', p_codigo: COMMIT }, 'prueba-modelo' ), 'v1 de prueba-modelo' );
 	await exigir( admin.from( 'promociones' ).update( { activa: false } ).eq( 'id', 'prueba-modelo' ), 'desactivar' );
+	await sinExportacion( pA.id, 'prueba-modelo' );
 	await exigir( admin.rpc( 'borrar_promocion', { p_id: 'prueba-modelo', p_nombre: 'Modelo (se borra)' } ), 'borrar' );
 	const quedan = ( await servicio.from( 'modelo_promocion' ).select( 'id' ).eq( 'promocion_id', 'prueba-modelo' ) ).data;
 
@@ -2118,11 +2123,13 @@ await caso( DEBE_FUNCIONAR, 'Borrado completo: al borrar una promoción o una pr
 	await exigir( admin.from( 'promociones' ).update( { activa: false } ).eq( 'id', 'prueba-borra-web' ), 'desactivar' );
 	const deLaPromocion = await exigir( admin.rpc( 'archivos_de_promocion', { p_id: 'prueba-borra-web' } ), 'archivos de la promoción' );
 	await borrarTodo( deLaPromocion );
+	await sinExportacion( pA.id, 'prueba-borra-web' );
 	await exigir( admin.rpc( 'borrar_promocion', { p_id: 'prueba-borra-web', p_nombre: 'Con web (se borra)' } ), 'borrar promoción' );
 	// promotora
 	await exigir( admin.from( 'promotoras' ).update( { activa: false } ).eq( 'id', pBorra.id ), 'desactivar promotora' );
 	const deLaPromotora = await exigir( admin.rpc( 'archivos_de_promotora', { p_id: pBorra.id } ), 'archivos de la promotora' );
 	await borrarTodo( deLaPromotora );
+	await sinExportacion( pBorra.id );
 	await exigir( admin.rpc( 'borrar_promotora', { p_id: pBorra.id, p_nombre: 'Promotora que se borra entera' } ), 'borrar promotora' );
 
 	const quedan = {
@@ -2513,6 +2520,182 @@ await caso( DEBE_FUNCIONAR, 'Vigencia: el robot marca un plano con la nota y el 
 	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
 	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) }` );
 	return true;
+
+} );
+
+// ─── Cerrar y eliminar: exportación, portfolio, eliminaciones y recuperación (045) ───
+
+const EXPORTACION = process.env.EXPORTACION_URL ?? `${ SUPABASE_URL }/functions/v1/exportacion`;
+async function exportacion( sb, orden ) {
+
+	const token = sb ? ( await sb.auth.getSession() ).data.session?.access_token : null;
+	const r = await fetch( EXPORTACION, {
+		method: 'POST',
+		headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${ token ?? SUPABASE_ANON_KEY }`, 'Content-Type': 'application/json' },
+		body: JSON.stringify( orden ),
+	} );
+	return { estado: r.status, datos: await r.json().catch( () => ( {} ) ) };
+
+}
+const sqlDirecto = ( sql ) => execFileSync( 'psql', [ DB_URL, '-q', '-v', 'ON_ERROR_STOP=1', '-c', sql ] );
+await exigir( admin.from( 'promociones' ).insert( { id: 'prueba-cierre', promotora_id: pA.id, nombre: 'Residencial que se cierra' } ), 'promoción que se cierra' );
+await exigir( admin.from( 'promociones' ).update( { activa: false } ).eq( 'id', 'prueba-cierre' ), 'desactivarla' );
+const planoCierre = await entregable( 'prueba-cierre', 'plano comercial que se cierra' );
+const NOMBRE_CIERRE = 'Residencial que se cierra';
+const ZIP = Buffer.from( 'PK\u0003\u0004 exportación inventada de prueba' );
+const nuevaExportacion = ( sb, extra = {} ) => sb.rpc( 'exportacion_nueva', { p_promotora: pA.id, p_promocion: 'prueba-cierre', p_dias: 30, ...extra } );
+
+await caso( DEBE_FALLAR, '57. Cerrar y eliminar: la promotora o alguien sin sesión preparan o leen exportaciones, eliminaciones o el portfolio; exportar una promoción activa o de otra promotora; subir fuera de su sitio; dar por lista una exportación sin archivo; eliminar sin exportación ni petición; con una recuperación sin comprobar, las promotoras y los compradores entran', async () => {
+
+	const exp = await exigir( nuevaExportacion( admin ), 'la administradora prepara una' );
+	const codigo = String( await exigir( generar( admin, 'Cierre Z' ), 'código' ) );
+	const r = {
+		promotoraPrepara: await nuevaExportacion( aprobA ),
+		anonimoPrepara: await nuevaExportacion( anonimo ),
+		robotPrepara: await nuevaExportacion( robot ),
+		activa: await nuevaExportacion( admin, { p_promocion: 'prueba-a' } ),
+		otraPromotora: await nuevaExportacion( admin, { p_promotora: pB.id } ),
+		dias0: await nuevaExportacion( admin, { p_dias: 0 } ),
+		dias91: await nuevaExportacion( admin, { p_dias: 91 } ),
+		promotoraLee: await aprobA.from( 'exportaciones' ).select( 'id' ),
+		anonimoLee: await anonimo.from( 'exportaciones' ).select( 'id' ),
+		promotoraSube: await aprobA.storage.from( 'exportaciones' ).upload( `${ exp }/parte-1.zip`, ZIP, { contentType: 'application/zip' } ),
+		adminFueraDeSitio: await admin.storage.from( 'exportaciones' ).upload( `${ exp }/otra.zip`, ZIP, { contentType: 'application/zip' } ),
+		adminOtraCarpeta: await admin.storage.from( 'exportaciones' ).upload( '00000000-0000-0000-0000-000000000000/parte-1.zip', ZIP, { contentType: 'application/zip' } ),
+		listaSinArchivo: await admin.rpc( 'exportacion_lista', { p_id: exp, p_partes: [ { ruta: `${ exp }/parte-1.zip`, huella: huella( ZIP ), tamano: ZIP.length } ], p_archivos: 1 } ),
+		promotoraLaDaPorLista: await aprobA.rpc( 'exportacion_lista', { p_id: exp, p_partes: [], p_archivos: 0 } ),
+		eliminarSinNada: await admin.rpc( 'borrar_promocion', { p_id: 'prueba-cierre', p_nombre: NOMBRE_CIERRE } ),
+		promotoraAnota: await aprobA.rpc( 'anotar_eliminacion_sin_exportacion', { p_promotora: pA.id, p_promocion: 'prueba-cierre', p_solicitado_por: 'Gerencia', p_motivo: 'Email' } ),
+		anotaSinQuien: await admin.rpc( 'anotar_eliminacion_sin_exportacion', { p_promotora: pA.id, p_promocion: 'prueba-cierre', p_solicitado_por: ' ', p_motivo: 'Email del 3/11' } ),
+		anotaSinComo: await admin.rpc( 'anotar_eliminacion_sin_exportacion', { p_promotora: pA.id, p_promocion: 'prueba-cierre', p_solicitado_por: 'Gerencia', p_motivo: '' } ),
+		promotoraLeeSinExportacion: await aprobA.from( 'eliminaciones_sin_exportacion' ).select( 'id' ),
+		promotoraAutoriza: await aprobA.rpc( 'autorizar_portfolio', { p_promocion: 'prueba-cierre', p_autorizada_por: 'Gerencia', p_fecha: '2026-11-01', p_alcance: 'Imágenes en la web de MUNE', p_documento: null } ),
+		autorizaFutura: await admin.rpc( 'autorizar_portfolio', { p_promocion: 'prueba-cierre', p_autorizada_por: 'Gerencia', p_fecha: '2099-01-01', p_alcance: 'Imágenes en la web de MUNE', p_documento: null } ),
+		promotoraLeePortfolio: await aprobA.from( 'portfolio_autorizaciones' ).select( 'id' ),
+		promotoraLeeEliminaciones: await aprobA.from( 'eliminaciones' ).select( 'id' ),
+		robotLeeEliminaciones: await robot.from( 'eliminaciones' ).select( 'id' ),
+		anonimoLeeEliminaciones: await anonimo.from( 'eliminaciones' ).select( 'id' ),
+		promotoraLeeRecuperacion: await aprobA.from( 'restauracion' ).select( 'id' ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+
+	// otra promoción en el portfolio de esta, o una pieza que no es un resultado de MUNE
+	const aut = await exigir( admin.rpc( 'autorizar_portfolio', { p_promocion: 'prueba-cierre', p_autorizada_por: 'Gerencia (prueba)', p_fecha: '2026-11-01', p_alcance: 'Planos comerciales en la web de MUNE', p_documento: null } ), 'autorización' );
+	await exigir( admin.storage.from( 'portfolio' ).upload( `${ aut }/ajeno.pdf`, pdf( 'otro' ), { contentType: 'application/pdf' } ), 'subir al portfolio' );
+	const piezaAjena = await admin.rpc( 'pieza_de_portfolio', { p_autorizacion: aut, p_entregable: planoB.id, p_ruta: `${ aut }/ajeno.pdf`, p_titulo: 'Plano de B' } );
+	const fueraDeSitio = await admin.storage.from( 'portfolio' ).upload( 'suelto/ajeno.pdf', pdf( 'otro' ), { contentType: 'application/pdf' } );
+	const promotoraSubePortfolio = await aprobA.storage.from( 'portfolio' ).upload( `${ aut }/promotora.pdf`, pdf( 'otro' ), { contentType: 'application/pdf' } );
+	if ( ! falla( piezaAjena ) ) noFallan.push( 'piezaAjena' );
+	if ( ! falla( fueraDeSitio ) ) noFallan.push( 'portfolioFueraDeSitio' );
+	if ( ! falla( promotoraSubePortfolio ) ) noFallan.push( 'promotoraSubePortfolio' );
+	await admin.storage.from( 'portfolio' ).remove( [ `${ aut }/ajeno.pdf` ] );
+	await admin.rpc( 'retirar_portfolio', { p_autorizacion: aut } );
+
+	// la función: la promotora no envía ni revoca; un enlace inventado no descarga
+	const fn = {
+		promotoraEnvia: await exportacion( aprobA, { accion: 'enviar', id: exp } ),
+		anonimoRevoca: await exportacion( null, { accion: 'revocar', id: exp } ),
+		enlaceInventado: await exportacion( null, { accion: 'descargar', token: 'A'.repeat( 43 ) } ),
+		enlaceRaro: await exportacion( null, { accion: 'descargar', token: "' or 1=1 --" } ),
+		sinPreparar: await exportacion( admin, { accion: 'enviar', id: exp } ),
+	};
+	const esperado = { promotoraEnvia: 403, anonimoRevoca: 403, enlaceInventado: 404, enlaceRaro: 404, sinPreparar: 409 };
+	for ( const [ k, v ] of Object.entries( fn ) ) if ( v.estado !== esperado[ k ] ) noFallan.push( `${ k } (${ v.estado })` );
+
+	// recuperación sin comprobar: nadie de las promotoras ni ningún comprador entra
+	if ( ! ( await entrarComprador( codigo ) ).data ) noFallan.push( 'el código no funcionaba antes' );
+	sqlDirecto( "insert into public.restauracion (id, pendiente) values (1, true) on conflict (id) do update set pendiente = true" );
+	const ve = await gestorA.from( 'promociones' ).select( 'id' ).eq( 'id', 'prueba-a' );
+	const comprador = await entrarComprador( codigo );
+	const adminVe = await admin.from( 'promociones' ).select( 'id' ).eq( 'id', 'prueba-a' );
+	sqlDirecto( 'update public.restauracion set pendiente = false, comprobada_en = now() where id = 1' );
+	if ( ! vacio( ve ) ) noFallan.push( 'la promotora entra durante la recuperación' );
+	if ( ! falla( comprador ) && comprador.data ) noFallan.push( 'el comprador entra durante la recuperación' );
+	if ( adminVe.data?.length !== 1 ) noFallan.push( 'la administradora no puede comprobar la recuperación' );
+	if ( ( await gestorA.from( 'promociones' ).select( 'id' ).eq( 'id', 'prueba-a' ) ).data?.length !== 1 ) noFallan.push( 'la promotora no vuelve a entrar' );
+	if ( ! ( await entrarComprador( codigo ) ).data ) noFallan.push( 'el comprador no vuelve a entrar' );
+
+	await admin.rpc( 'exportacion_fallida', { p_id: exp, p_error: 'Prueba' } );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Cerrar y eliminar: se prepara y comprueba la exportación; si el email no sale, sigue lista para reintentar; el enlace privado descarga exactamente lo preparado; se elimina con la exportación enviada, la eliminación queda apuntada sin el nombre, la exportación y el portfolio autorizado siguen; revocar corta el enlace; retirar un acceso y revocar un código quedan apuntados', async () => {
+
+	const exp = await exigir( nuevaExportacion( admin ), 'preparar' );
+	await exigir( admin.storage.from( 'exportaciones' ).upload( `${ exp }/parte-1.zip`, ZIP, { contentType: 'application/zip' } ), 'subir la parte' );
+	await exigir( admin.rpc( 'exportacion_lista', { p_id: exp, p_partes: [ { ruta: `${ exp }/parte-1.zip`, huella: huella( ZIP ), tamano: ZIP.length } ], p_archivos: 3 } ), 'darla por lista' );
+
+	// sin la llave A (como en la prueba), el email no sale: sigue «lista», con el motivo
+	const envio = await exportacion( admin, { accion: 'enviar', id: exp } );
+	const trasFallo = await filaDe( 'exportaciones', exp );
+
+	// lo que hace el envío cuando sale el email (el enlace llega solo a la promotora)
+	const token = Buffer.from( Array.from( { length: 32 }, ( _, i ) => ( i * 37 + 11 ) % 256 ) ).toString( 'base64url' );
+	await exigir( servicio.from( 'exportaciones' ).update( { estado: 'enviada', token_huella: huella( token ), caduca_en: new Date( Date.now() + 30 * 86400000 ).toISOString(), enviada_en: new Date().toISOString(), destinatarios: 1 } ).eq( 'id', exp ), 'enviada' );
+
+	// portfolio: solo el plano comercial autorizado
+	const aut = await exigir( admin.rpc( 'autorizar_portfolio', { p_promocion: 'prueba-cierre', p_autorizada_por: 'Gerencia (prueba)', p_fecha: '2026-11-01', p_alcance: 'Planos comerciales en la web de MUNE', p_documento: 'Email del 1/11 (prueba)' } ), 'autorizar' );
+	const original = await exigir( admin.storage.from( 'entregables' ).download( planoCierre.ruta ), 'bajar el plano' );
+	await exigir( admin.storage.from( 'portfolio' ).upload( `${ aut }/plano.pdf`, original, { contentType: 'application/pdf' } ), 'copiar al portfolio' );
+	await exigir( admin.rpc( 'pieza_de_portfolio', { p_autorizacion: aut, p_entregable: planoCierre.id, p_ruta: `${ aut }/plano.pdf`, p_titulo: 'Plano comercial' } ), 'pieza' );
+
+	await exigir( admin.storage.from( 'entregables' ).remove( [ planoCierre.ruta ] ), 'quitar sus archivos (como MUNE Studio)' );
+	await exigir( admin.rpc( 'borrar_promocion', { p_id: 'prueba-cierre', p_nombre: NOMBRE_CIERRE } ), 'eliminar con la exportación enviada' );
+	const descarga = await exportacion( null, { accion: 'descargar', token } );
+	const bajado = descarga.estado === 200 ? Buffer.from( await ( await fetch( descarga.datos.partes[ 0 ].url ) ).arrayBuffer() ) : Buffer.alloc( 0 );
+	const eliminaciones = await exigir( admin.from( 'eliminaciones' ).select( 'tipo, huella' ), 'eliminaciones' );
+	const piezas = await exigir( admin.from( 'portfolio_piezas' ).select( 'ruta, huella' ).eq( 'autorizacion_id', aut ), 'piezas' );
+	const enPortfolio = await existe( 'portfolio', `${ aut }/plano.pdf` );
+
+	const revocar = await exportacion( admin, { accion: 'revocar', id: exp } );
+	const trasRevocar = await exportacion( null, { accion: 'descargar', token } );
+	const caducar = await exportacion( null, { accion: 'caducar' } );
+	const quitadas = await exigir( admin.rpc( 'retirar_portfolio', { p_autorizacion: aut } ), 'retirar la autorización' );
+
+	// retirar un acceso y revocar un código
+	const persona = await altaEquipo( 'cierre.a@prueba.local', 'prueba-a', [] );
+	const [ filaPersona ] = await exigir( admin.from( 'miembros' ).select( 'id' ).eq( 'user_id', persona.id ), 'acceso' );
+	await exigir( admin.from( 'miembros' ).update( { activo: false } ).eq( 'id', filaPersona.id ), 'retirar' );
+	await exigir( generar( admin, 'Cierre Y' ), 'código' );
+	await exigir( generar( admin, 'Cierre Y' ), 'otro código (revoca el anterior)' );
+	const [ cod ] = await exigir( servicio.from( 'codigos_comprador' ).select( 'id' ).eq( 'promocion_id', 'prueba-a' ).eq( 'vivienda_ref', 'Cierre Y' ).eq( 'activo', false ), 'el código revocado' );
+	const despues = await exigir( admin.from( 'eliminaciones' ).select( 'tipo, huella' ), 'eliminaciones' );
+	const hay = ( lista, tipo, clave ) => lista.some( ( e ) => e.tipo === tipo && e.huella === huella( clave ) );
+
+	const mal = Object.entries( {
+		envioFalla: envio.estado === 502,
+		sigueLista: trasFallo.estado === 'lista' && /llave A|email/.test( trasFallo.error ?? '' ) && ! trasFallo.token_huella,
+		descarga: descarga.estado === 200 && descarga.datos.partes?.length === 1 && bajado.equals( ZIP ),
+		nombreDescarga: /^MUNE-Residencial-que-se-cierra-parte-1\.zip$/.test( descarga.datos.partes?.[ 0 ]?.nombre ?? '' ),
+		cuenta: ( await filaDe( 'exportaciones', exp ) ).descargas === 1 || revocar.estado === 200,
+		apuntada: hay( eliminaciones, 'promocion', 'promocion:prueba-cierre' ),
+		sinNombre: ! JSON.stringify( eliminaciones ).includes( 'prueba-cierre' ),
+		portfolio: piezas.length === 1 && piezas[ 0 ].huella === planoCierre.huella && enPortfolio,
+		revocada: revocar.estado === 200 && trasRevocar.estado === 404 && ! ( await existe( 'exportaciones', `${ exp }/parte-1.zip` ) ),
+		caducar: caducar.estado === 200,
+		retirada: quitadas.length === 1,
+		portfolioApuntado: hay( despues, 'portfolio_retirado', `portfolio:${ aut }` ),
+		acceso: hay( despues, 'acceso_retirado', `acceso:${ filaPersona.id }` ),
+		codigo: hay( despues, 'codigo_revocado', `codigo:${ cod.id }` ),
+	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
+	await admin.storage.from( 'portfolio' ).remove( quitadas.map( ( q ) => typeof q === 'string' ? q : Object.values( q )[ 0 ] ) );
+	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Cerrar y eliminar: con la petición de la promotora anotada, se elimina sin exportación (y solo esa promoción)', async () => {
+
+	await exigir( admin.from( 'promociones' ).insert( { id: 'prueba-cierre-2', promotora_id: pA.id, nombre: 'Residencial sin exportación' } ), 'alta' );
+	await exigir( admin.from( 'promociones' ).update( { activa: false } ).eq( 'id', 'prueba-cierre-2' ), 'desactivarla' );
+	const antes = await admin.rpc( 'borrar_promocion', { p_id: 'prueba-cierre-2', p_nombre: 'Residencial sin exportación' } );
+	await sinExportacion( pA.id, 'prueba-cierre-2' );
+	await exigir( admin.rpc( 'borrar_promocion', { p_id: 'prueba-cierre-2', p_nombre: 'Residencial sin exportación' } ), 'eliminar' );
+	const queda = await servicio.from( 'promociones' ).select( 'id' ).eq( 'id', 'prueba-cierre-2' );
+	const otras = await servicio.from( 'promociones' ).select( 'id' ).eq( 'id', 'prueba-a' );
+	return falla( antes ) && vacio( queda ) && otras.data?.length === 1;
 
 } );
 

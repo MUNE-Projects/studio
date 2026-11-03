@@ -1,0 +1,39 @@
+# Guardar la lista de eliminaciones fuera de Supabase (receta 18, decisión 70).
+#
+# Cada promoción, promotora, acceso o código de comprador eliminado o retirado
+# queda apuntado en Supabase con solo una huella. Esta lista se copia a la
+# release «eliminaciones» del almacén de copias, que no caduca: así, al
+# recuperar una copia (aunque sea anterior), no vuelve nada de lo eliminado.
+# La lanza la función «exportacion» después de cada eliminación y copias.yml
+# cada noche. Con el usuario «copias» (solo lectura) y la llave B. Gratis.
+name: Guardar las eliminaciones
+run-name: guardar las eliminaciones
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eliminaciones
+  cancel-in-progress: false
+
+jobs:
+  guardar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_POOLER: ${{ vars.SUPABASE_POOLER }}
+      COPIAS_BD_CLAVE: ${{ secrets.COPIAS_BD_CLAVE }}
+      COPIAS_REPO: MUNE-Projects/copias
+      COPIAS_TOKEN: ${{ secrets.ESCAPARATE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: supabase/copias
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Guardar
+        run: node supabase/copias/eliminaciones.mjs guardar

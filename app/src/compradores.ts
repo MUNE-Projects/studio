@@ -151,6 +151,7 @@ export async function pintarCompradores(caja: HTMLElement, d: Dependencias, p: P
 			if (tipo === 'nuevo' && !confirm(`¿Código para un comprador nuevo de ${ref}?\n\nEl nuevo comprador empezará de cero y no verá las selecciones del anterior. Las selecciones anteriores se conservarán en el historial interno de la vivienda. El código actual dejará de valer.`)) return;
 			b.disabled = true;
 			const { data: codigo, error: e } = await d.sb.rpc('generar_codigo_comprador', { p_promocion: p.id, p_vivienda: ref, p_nuevo_comprador: tipo === 'nuevo' });
+			if (!e) void d.sb.functions.invoke('exportacion', { body: { accion: 'apuntar-eliminaciones' } }); // el código anterior queda revocado (045)
 			if (e || typeof codigo !== 'string') { b.disabled = false; alert(d.traducir(e)); return; }
 			await pintarCompradores(caja, d, p);
 			mostrarCodigo(caja.querySelector<HTMLElement>('[data-codigo-nuevo]')!, d, p, datos, ref, codigo);

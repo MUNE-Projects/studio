@@ -34,6 +34,12 @@ jobs:
       CLAVE_PUBLICA: sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR
       PANEL: https://studio.mune-projects.workers.dev
     steps:
+      - name: Borrar las exportaciones caducadas (045)
+        continue-on-error: true
+        run: |
+          curl -sS -m 60 -X POST "$SUPABASE_URL/functions/v1/exportacion" \
+            -H "apikey: $CLAVE_PUBLICA" -H "Content-Type: application/json" -d '{"accion":"caducar"}' -w '\n%{http_code}\n' || true
+
       - name: Dar señales a Supabase y comprobar las llaves
         run: |
           gh label create sistema --repo "$REPO" --color 9B2C2C \

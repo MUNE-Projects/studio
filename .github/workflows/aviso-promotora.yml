@@ -4,7 +4,8 @@
 # contraseña de aplicación guardada en el secreto AVISOS_GMAIL_CLAVE. Gratis.
 #
 # Los correos llegan como dato de entrada: solo los ve quien tiene acceso a
-# este almacén privado, y en el registro del proceso aparecen ocultos.
+# este almacén privado, y en el registro del proceso aparecen ocultos, como el
+# enlace (el de una exportación lleva su clave privada).
 
 name: Aviso por email a la promotora
 run-name: aviso a la promotora
@@ -42,6 +43,7 @@ jobs:
         run: |
           IFS=',' read -ra correos <<< "$PARA"
           for c in "${correos[@]}"; do echo "::add-mask::$c"; done
+          echo "::add-mask::$ENLACE"
       - name: Enviar
         shell: python3 {0}
         run: |
@@ -62,7 +64,7 @@ jobs:
           if not re.fullmatch(r'https://(portal|experience|escaparate)\.mune-projects\.workers\.dev/[^\s"<>]*', enlace):
               sys.exit('::error::Enlace no válido')
 
-          etiqueta = 'Ver la experiencia publicada' if ('//experience.' in enlace or '//escaparate.' in enlace) else 'Abrir MUNE Portal'
+          etiqueta = 'Ver la experiencia publicada' if ('//experience.' in enlace or '//escaparate.' in enlace) else 'Descargar la exportación' if '/descarga/#' in enlace else 'Abrir MUNE Portal'
           parrafos = ''.join(f'<p style="margin:0 0 14px">{html.escape(p).replace(chr(10), "<br>")}</p>' for p in texto.split('\n\n'))
           cuerpo_html = f'''<!doctype html><html lang="es"><body style="margin:0;background:#f5f3ef;font-family:Helvetica,Arial,sans-serif;color:#1c1c1a">
             <div style="max-width:560px;margin:0 auto;padding:28px 20px">
