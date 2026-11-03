@@ -73,6 +73,14 @@ export function almacenCopias( repo, token ) {
 
 		},
 
+		/** Quita un adjunto de una release (para sustituirlo). */
+		async borrarAdjunto( release, nombre ) {
+
+			const adjunto = release.assets.find( ( a ) => a.name === nombre );
+			if ( adjunto ) await pedir( `${ API }/repos/${ repo }/releases/assets/${ adjunto.id }`, { method: 'DELETE' } );
+
+		},
+
 		async borrar( release ) {
 
 			await pedir( `${ API }/repos/${ repo }/releases/${ release.id }`, { method: 'DELETE' } );
