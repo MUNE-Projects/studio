@@ -9,6 +9,7 @@ import datos from '../../biblioteca/biblioteca.json';
 import { Pieza } from '../escena/equipamiento';
 import type { Rect } from '../modelo/tipos';
 import { GENERADORES, type Params } from './generadores';
+import { existeModelo, ponerModelo } from './modelos';
 
 export interface Activo {
 	id: string;
@@ -30,6 +31,12 @@ export interface Activo {
 	sustituye?: string[];
 	/** Activo creado en el Studio (no viene de la biblioteca base). */
 	propio?: boolean;
+	/** Modelo 3D real (biblioteca/modelos/<modelo>.glb) que sustituye al generador al cargarse. */
+	modelo?: string;
+	/** Deformar el modelo hasta llenar la huella (muebles); si no, misma escala en todo. */
+	ajustar?: boolean;
+	/** Giro del modelo (grados) para que su frente mire a +z. */
+	giro?: number;
 }
 
 export interface Biblioteca {
@@ -93,7 +100,10 @@ export function construirActivo( a: Activo, W: number, D: number, H: number, ext
 		k.caja( 'tela:#cccccc', - W / 2, 0, - D / 2, W / 2, H, D / 2 );
 
 	} else gen( k, { W, D, H, ...extra, p: a.params } );
-	return k.malla( a.id );
+	const g = k.malla( a.id );
+	// modelo real: se ve el generado hasta que llega el archivo
+	if ( a.modelo && existeModelo( a.modelo ) ) ponerModelo( g, a.modelo, W, D, H, a.ajustar, THREE.MathUtils.degToRad( a.giro ?? 0 ) );
+	return g;
 
 }
 

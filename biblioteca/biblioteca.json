@@ -275,6 +275,36 @@
    ]
   },
   {
+   "id": "mesa-centro-hormigon",
+   "categoria": "mesas",
+   "nombre": "Mesa de centro de hormigón y roble",
+   "estilo": "nórdico cálido",
+   "materiales": "hormigón y roble",
+   "color": "#b89574",
+   "gama": "media",
+   "dims": [
+    1.2,
+    0.6,
+    0.39
+   ],
+   "generador": "mesa-centro",
+   "params": {
+    "tapa": "madera:#b89574",
+    "pie": "metalNegro"
+   },
+   "inspiracion": [
+    "Poly Haven"
+   ],
+   "referencia": "MESA-CENTRO-HORMIGON",
+   "miniatura": null,
+   "sustituye": [
+    "mesa-centro"
+   ],
+   "modelo": "modern_coffee_table_01",
+   "ajustar": true,
+   "giro": 90
+  },
+  {
    "id": "mesa-centro-marmol",
    "categoria": "mesas",
    "nombre": "Mesas nido de mármol",
@@ -1034,7 +1064,34 @@
     "Sklum"
    ],
    "referencia": "PLANTA-PEQUENA",
-   "miniatura": null
+   "miniatura": null,
+   "modelo": "potted_plant_04"
+  },
+  {
+   "id": "planta-terracota",
+   "categoria": "plantas",
+   "nombre": "Planta en maceta de barro",
+   "estilo": "orgánico",
+   "materiales": "maceta de barro",
+   "color": "#4d6b3c",
+   "gama": "esencial",
+   "dims": [
+    0.7,
+    0.66,
+    0.84
+   ],
+   "generador": "planta",
+   "params": {
+    "maceta": "ceramica:#e6ded0",
+    "hojas": 14,
+    "maceta_alto": 0.12
+   },
+   "inspiracion": [
+    "Poly Haven"
+   ],
+   "referencia": "PLANTA-TERRACOTA",
+   "miniatura": null,
+   "modelo": "potted_plant_02"
   },
   {
    "id": "jarron-ramas",
@@ -1386,7 +1443,52 @@
     "Kave Home"
    ],
    "referencia": "JARRON-CERAMICA",
-   "miniatura": null
+   "miniatura": null,
+   "modelo": "ceramic_vase_02"
+  },
+  {
+   "id": "jarra-ceramica",
+   "categoria": "decoracion",
+   "nombre": "Jarra de cerámica",
+   "estilo": "mediterráneo",
+   "materiales": "cerámica esmaltada",
+   "color": "#e6ded0",
+   "gama": "esencial",
+   "dims": [
+    0.18,
+    0.18,
+    0.34
+   ],
+   "generador": "jarron",
+   "params": {},
+   "inspiracion": [
+    "Poly Haven"
+   ],
+   "referencia": "JARRA-CERAMICA",
+   "miniatura": null,
+   "modelo": "ceramic_vase_04"
+  },
+  {
+   "id": "jarron-ceramica-alto",
+   "categoria": "decoracion",
+   "nombre": "Jarrón de cerámica alto",
+   "estilo": "mediterráneo",
+   "materiales": "cerámica esmaltada",
+   "color": "#e6ded0",
+   "gama": "esencial",
+   "dims": [
+    0.2,
+    0.2,
+    0.4
+   ],
+   "generador": "jarron",
+   "params": {},
+   "inspiracion": [
+    "Poly Haven"
+   ],
+   "referencia": "JARRON-CERAMICA-ALTO",
+   "miniatura": null,
+   "modelo": "ceramic_vase_01"
   },
   {
    "id": "jarron-terracota",
