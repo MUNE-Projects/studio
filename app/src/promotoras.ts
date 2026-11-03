@@ -527,7 +527,7 @@ interface Exportacion {
 	caduca_en: string | null; enviada_en: string | null; destinatarios: number | null; descargas: number; error: string | null; creada_en: string;
 }
 
-const MB = (b: number | null) => `${((b ?? 0) / 1048576).toFixed(1).replace('.', ',')} MB`;
+const MB = (b: number | null) => (b ?? 0) < 102400 ? `${Math.max(1, Math.round((b ?? 0) / 1024))} KB` : `${((b ?? 0) / 1048576).toFixed(1).replace('.', ',')} MB`;
 
 /**
  * Zona roja para eliminar (045, decisión 70). Desactivar no borra nada; eliminar
@@ -639,7 +639,7 @@ async function pintarPasoExportacion(caja: HTMLElement, b: Borrado, permitir: (s
 		return;
 	}
 	if (vigente && e) {
-		caja.innerHTML = `<p class="ok">✓ Exportación enviada el ${esc(fecha(e.enviada_en!))} a ${cuantos(e.destinatarios ?? 0, 'persona', 'personas')} que administran la promotora
+		caja.innerHTML = `<p class="ok">✓ Exportación enviada el ${esc(fecha(e.enviada_en!))} a quien administra la promotora (${cuantos(e.destinatarios ?? 0, 'persona', 'personas')})
 				(${cuantos(e.partes.length, 'parte', 'partes')}, ${cuantos(e.archivos ?? 0, 'archivo', 'archivos')}, ${MB(e.tamano)}). El enlace funciona hasta el ${esc(fecha(e.caduca_en!))}${e.descargas ? `; se ha abierto ${cuantos(e.descargas, 'vez', 'veces')}` : '; todavía no se ha abierto'}.</p>
 			<div class="acciones">
 				<button class="boton secundario pequeno" type="button" data-reenviar>Enviar un enlace nuevo</button>
@@ -671,7 +671,7 @@ async function pintarPasoExportacion(caja: HTMLElement, b: Borrado, permitir: (s
 		<form class="peticion-form" data-exportar-form novalidate>
 			<label class="opcion"><input type="radio" name="modo" value="exportar" checked> Enviar su exportación a quien administra la promotora</label>
 			<p class="ayuda">MUNE la prepara (solo su documentación, los planos y materiales entregados y los datos de la promoción; nada interno de MUNE), la comprueba y envía un email con un enlace privado. No se descarga en tu ordenador.</p>
-			<label>El enlace caduca a los <input name="dias" type="number" min="1" max="90" value="30" style="width:5em"> días</label>
+			<label class="en-linea">El enlace caduca a los <input class="corto" name="dias" type="number" min="1" max="90" value="30"> días</label>
 			<label class="opcion"><input type="radio" name="modo" value="sin"> La promotora ha pedido eliminarla sin exportación</label>
 			<div data-sin hidden>
 				<label>Quién lo ha pedido <input name="quien" maxlength="200" placeholder="Nombre y cargo"></label>

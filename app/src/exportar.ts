@@ -208,7 +208,7 @@ class Partes {
 }
 
 async function anadirParaPromotora(partes: Partes, carpeta: string, id: string, equipo: Fila[], avisos: string[], progreso: (t: string) => void): Promise<string> {
-	const [[promocion], requisitos, documentos, entregables, validaciones, aprobaciones, selecciones, categorias, ajustes, packs, comentarios] = await Promise.all([
+	const [[promocion], requisitos, documentos, entregables, validaciones, aprobaciones, selecciones, catalogo, comentarios] = await Promise.all([
 		leer(sb.from('promociones').select('*').eq('id', id)),
 		leer(sb.from('requisitos').select('*').eq('promocion_id', id).order('orden').order('id')),
 		leer(sb.from('documentos').select('*').eq('promocion_id', id).order('requisito_id').order('version')),
@@ -216,10 +216,13 @@ async function anadirParaPromotora(partes: Partes, carpeta: string, id: string, 
 		leer(sb.from('validaciones').select('*').eq('promocion_id', id).order('id')),
 		leer(sb.from('aprobaciones').select('*').eq('promocion_id', id).order('id')),
 		leer(sb.from('selecciones_comprador').select('*').eq('promocion_id', id).order('vivienda_ref').order('comprador')),
-		leer(sb.from('catalogo_categorias').select('*').eq('promocion_id', id)),
-		leer(sb.from('catalogo_ajustes').select('*').eq('promocion_id', id)),
-		leer(sb.from('packs_promocion').select('*').eq('promocion_id', id)),
-		sb.rpc('comentarios_de', { p_promocion: id }).then((r) => ({ data: ((r.data ?? []) as Fila[]).filter((c) => !c.interno), error: r.error })).then((r) => r.data),
+		// el catálogo como lo ven la promotora y MUNE Studio (precios, packs, cambios y opciones pedidas), sin el modelo interno
+		sb.rpc('catalogo_de_promocion', { p_promocion: id }).then(({ data, error }) => {
+			if (error) throw error;
+			const c = (data ?? {}) as Record<string, unknown>;
+			return { catalogo: c.catalogo ?? null, packs: c.packs ?? null, cambios: c.cambios ?? [], pedidas: c.pedidas ?? [] };
+		}),
+		sb.rpc('comentarios_de', { p_promocion: id }).then((r) => { if (r.error) throw r.error; return ((r.data ?? []) as Fila[]).filter((c) => !c.interno); }),
 	]);
 	const reqPorId = new Map(requisitos.map((r) => [r.id, r]));
 	const lineas: string[] = [];
@@ -247,7 +250,7 @@ async function anadirParaPromotora(partes: Partes, carpeta: string, id: string, 
 		documentacion: documentos.map((d) => ({ elemento: reqPorId.get(d.requisito_id)?.elemento, nombre: d.nombre, version: d.version, estado: d.estado, nota: d.nota, subido_en: d.subido_en, huella: d.huella })),
 		materiales: entregables.map((e) => ({ version: e.version, nombre: e.titulo ?? e.nombre, huella: e.huella })),
 		validaciones, aprobaciones, selecciones_de_comprador: selecciones,
-		catalogo: { categorias, ajustes, packs }, comentarios,
+		catalogo, comentarios,
 	}));
 	return [`■ ${promocion?.nombre ?? id}`, ...lineas].join('\n');
 }

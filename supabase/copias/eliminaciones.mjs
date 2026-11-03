@@ -98,24 +98,28 @@ if ( orden === 'guardar' ) {
 	const accesosBorrados = huellas( de( 'acceso_borrado' ) );
 	const accesosRetirados = huellas( de( 'acceso_retirado' ) );
 	const codigos = huellas( de( 'codigo_revocado' ) );
+	const portfolio = huellas( de( 'portfolio_retirado' ) );
 	const quedan = () => JSON.parse( consulta( `select json_build_object(
 		'promociones', (select coalesce(json_agg(id), '[]') from public.promociones where ${ H( `'promocion:' || id` ) } = any(${ promos })),
 		'promotoras', (select coalesce(json_agg(id), '[]') from public.promotoras where ${ H( `'promotora:' || id` ) } = any(${ promotoras })),
 		'accesos', (select count(*) from public.miembros where ${ H( `'acceso:' || id` ) } = any(${ accesosBorrados })
 			or (activo and ${ H( `'acceso:' || id` ) } = any(${ accesosRetirados }))),
-		'codigos', (select count(*) from public.codigos_comprador where activo and ${ H( `'codigo:' || id` ) } = any(${ codigos })))`, con, tmp ) );
+		'codigos', (select count(*) from public.codigos_comprador where activo and ${ H( `'codigo:' || id` ) } = any(${ codigos })),
+		'portfolio', (select coalesce(json_agg(id), '[]') from public.portfolio_autorizaciones where ${ H( `'portfolio:' || id` ) } = any(${ portfolio })
+			and (retirada_en is null or exists (select 1 from public.portfolio_piezas p where p.autorizacion_id = portfolio_autorizaciones.id))))`, con, tmp ) );
 
 	// 1. Que nadie entre mientras tanto
 	consulta( `insert into public.restauracion (id, pendiente, detalle) values (1, true, '{"paso": "aplicando eliminaciones"}')
 		on conflict (id) do update set pendiente = true, comprobada_en = null`, con, tmp );
 	const antes = quedan();
 	console.log( `Lista de eliminaciones: ${ todas.length } apuntes (${ fuera.length } guardados fuera de Supabase).` );
-	console.log( `En el proyecto recuperado había que volver a eliminar: ${ antes.promociones.length } promociones, ${ antes.promotoras.length } promotoras, ${ antes.accesos } accesos y ${ antes.codigos } códigos de comprador.` );
+	console.log( `En el proyecto recuperado había que volver a eliminar: ${ antes.promociones.length } promociones, ${ antes.promotoras.length } promotoras, ${ antes.accesos } accesos, ${ antes.codigos } códigos de comprador y ${ antes.portfolio.length } autorizaciones de portfolio retiradas.` );
 
 	// 2. Sus archivos (con la API de almacenamiento del proyecto recuperado)
 	const archivos = JSON.parse( consulta( `select coalesce(json_agg(json_build_object('almacen', bucket_id, 'nombre', name)), '[]') from storage.objects
 		where public.promocion_del_archivo(bucket_id, name) = any(select jsonb_array_elements_text('${ JSON.stringify( antes.promociones ) }'::jsonb))
-			or (bucket_id = 'documentos' and (storage.foldername(name))[1] = any(select jsonb_array_elements_text('${ JSON.stringify( antes.promotoras ) }'::jsonb)))`, con, tmp ) );
+			or (bucket_id = 'documentos' and (storage.foldername(name))[1] = any(select jsonb_array_elements_text('${ JSON.stringify( antes.promotoras ) }'::jsonb)))
+			or (bucket_id = 'portfolio' and (storage.foldername(name))[1] = any(select jsonb_array_elements_text('${ JSON.stringify( antes.portfolio ) }'::jsonb)))`, con, tmp ) );
 	if ( archivos.length ) {
 
 		falta( 'SUPABASE_URL', 'SUPABASE_SERVICE_KEY' );
@@ -148,6 +152,12 @@ delete from public.promotoras where ${ H( `'promotora:' || id` ) } = any(${ prom
 delete from public.miembros where ${ H( `'acceso:' || id` ) } = any(${ accesosBorrados });
 update public.miembros set activo = false where activo and ${ H( `'acceso:' || id` ) } = any(${ accesosRetirados });
 update public.codigos_comprador set activo = false where activo and ${ H( `'codigo:' || id` ) } = any(${ codigos });
+delete from public.portfolio_piezas where autorizacion_id in (select id from public.portfolio_autorizaciones where ${ H( `'portfolio:' || id` ) } = any(${ portfolio }));
+update public.portfolio_autorizaciones set retirada_en = coalesce(retirada_en, now()) where ${ H( `'portfolio:' || id` ) } = any(${ portfolio });
+-- las exportaciones no van en las copias: las que la copia trae sin sus archivos ya no sirven
+update public.exportaciones e set estado = 'caducada', token_huella = null, terminada_en = now()
+where e.estado in ('preparando', 'lista', 'enviada')
+	and not exists (select 1 from storage.objects o where o.bucket_id = 'exportaciones' and (storage.foldername(o.name))[1] = e.id::text);
 commit;
 ` );
 	pg( 'psql', [ '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-f', '/w/aplicar.sql' ], con, tmp );
@@ -155,8 +165,8 @@ commit;
 	// 4. Comprobación
 	const despues = quedan();
 	const restos = Number( consulta( `select count(*) from storage.objects where public.promocion_del_archivo(bucket_id, name) = any(select jsonb_array_elements_text('${ JSON.stringify( antes.promociones ) }'::jsonb))`, con, tmp ) );
-	const limpio = ! despues.promociones.length && ! despues.promotoras.length && ! despues.accesos && ! despues.codigos && ! restos;
-	const detalle = { lista: todas.length, fuera: fuera.length, eliminado: { promociones: antes.promociones.length, promotoras: antes.promotoras.length, accesos: antes.accesos, codigos: antes.codigos, archivos: archivos.length }, limpio };
+	const limpio = ! despues.promociones.length && ! despues.promotoras.length && ! despues.accesos && ! despues.codigos && ! despues.portfolio.length && ! restos;
+	const detalle = { lista: todas.length, fuera: fuera.length, eliminado: { promociones: antes.promociones.length, promotoras: antes.promotoras.length, accesos: antes.accesos, codigos: antes.codigos, portfolio: antes.portfolio.length, archivos: archivos.length }, limpio };
 	if ( ! limpio ) {
 
 		consulta( `update public.restauracion set detalle = '${ JSON.stringify( detalle ) }'::jsonb where id = 1`, con, tmp );

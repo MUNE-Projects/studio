@@ -114,9 +114,11 @@ end $$;
 create table if not exists public.eliminaciones (
 	id      bigint generated always as identity primary key,
 	momento timestamptz not null default now(),
-	tipo    text not null check (tipo in ('promocion', 'promotora', 'acceso_borrado', 'acceso_retirado', 'acceso_devuelto', 'codigo_revocado', 'codigo_reactivado')),
+	tipo    text not null check (tipo in ('promocion', 'promotora', 'acceso_borrado', 'acceso_retirado', 'acceso_devuelto', 'codigo_revocado', 'codigo_reactivado', 'portfolio_retirado')),
 	huella  text not null check (huella ~ '^[0-9a-f]{64}$')
 );
+alter table public.eliminaciones drop constraint if exists eliminaciones_tipo_check;
+alter table public.eliminaciones add constraint eliminaciones_tipo_check check (tipo in ('promocion', 'promotora', 'acceso_borrado', 'acceso_retirado', 'acceso_devuelto', 'codigo_revocado', 'codigo_reactivado', 'portfolio_retirado'));
 alter table public.eliminaciones enable row level security;
 revoke all on public.eliminaciones from anon, authenticated;
 grant select on public.eliminaciones to authenticated;
@@ -582,6 +584,10 @@ as $$
 begin
 	if not public.es_admin() then raise exception 'Solo la administradora'; end if;
 	update public.portfolio_autorizaciones set retirada_en = now() where id = p_autorizacion and retirada_en is null;
+	-- también fuera de Supabase: una copia anterior no la vuelve a traer (eliminaciones.mjs aplicar)
+	if found then
+		insert into public.eliminaciones (tipo, huella) values ('portfolio_retirado', public.huella_de('portfolio:' || p_autorizacion));
+	end if;
 	insert into public.registro (user_id, accion, detalle)
 	values (auth.uid(), 'retira una autorización de portfolio', jsonb_build_object('autorizacion', p_autorizacion));
 	return query delete from public.portfolio_piezas where autorizacion_id = p_autorizacion returning ruta;

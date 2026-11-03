@@ -161,6 +161,8 @@ if ( op.comprobar ) {
 
 	for ( const [ tabla, n ] of Object.entries( resumen.filas ) ) {
 
+		if ( tabla === 'restauracion' ) continue; // la cambia la propia recuperación (045)
+
 		const real = tabla.startsWith( 'auth:' )
 			? consulta( `select count(*) from ${ TABLAS_AUTH.find( ( [ a ] ) => `auth:${ a }` === tabla )[ 1 ] }`, con, datos )
 			: consulta( `select count(*) from public.${ ident( tabla ) }`, con, datos );
