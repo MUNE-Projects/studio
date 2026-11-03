@@ -1,0 +1,35 @@
+# Comprobación de solo lectura (decisión 70): las versiones antiguas de la web
+# pública y de la vista previa no tienen dirección propia; solo responden las
+# direcciones principales. Lista las versiones de los Workers «experience» y
+# «revision-experience» con la llave C y pide la portada de cada una por su
+# dirección de versión: si alguna responde, se para en rojo. No despliega nada.
+# Actions → «Comprobar versiones de Cloudflare» → Run workflow.
+name: Comprobar versiones de Cloudflare
+run-name: comprobar versiones de Cloudflare
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  comprobar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 2706295406853446349339961bd45902
+    steps:
+      - name: Versiones y direcciones
+        run: |
+          set -u
+          abiertas=0
+          for w in experience revision-experience; do
+            npx --yes wrangler@4.147.0 versions list --name "$w" --json > v.json 2> error.txt || { echo "No se han podido leer las versiones de $w"; tail -3 error.txt; exit 1; }
+            node -e 'const v=JSON.parse(require("fs").readFileSync("v.json","utf8")); require("fs").writeFileSync("ids.txt", v.map((x)=>(x.id||"").slice(0,8)).filter(Boolean).join("\n")); console.log(process.argv[1]+": "+v.length+" versiones")' "$w"
+            echo "$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 https://$w.mune-projects.workers.dev/) dirección principal de $w"
+            while read -r id; do
+              c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$id-$w.mune-projects.workers.dev/")
+              if [ "$c" = "200" ]; then abiertas=$((abiertas+1)); echo "✗ responde la versión $id de $w"; fi
+            done < ids.txt
+          done
+          if [ "$abiertas" -gt 0 ]; then echo "::error::$abiertas versiones antiguas siguen visibles"; exit 1; fi
+          echo "✓ Ninguna versión antigua tiene dirección propia."

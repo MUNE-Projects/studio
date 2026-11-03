@@ -9,6 +9,11 @@
   // la vista previa es otro Worker con esta misma configuración, «revision-experience»
   // (desplegar.mjs lo envía con --name), en revision-experience.mune-projects.workers.dev
   "previews": {},
+  // solo las direcciones principales: sin dirección propia por cada versión
+  // (antes cualquier versión antigua seguía visible en <versión>-experience…;
+  // comprobado el 3/11/2026, decisión 70). Vale para los dos Workers.
+  "workers_dev": true,
+  "preview_urls": false,
   "assets": {
     "directory": "./publico",
     "not_found_handling": "404-page"
