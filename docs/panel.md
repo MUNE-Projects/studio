@@ -13,10 +13,10 @@ Este documento es la referencia: todo lo que se construya en el Panel sigue este
 
 Menú fijo arriba: **Inicio · Promotoras · Sistema · Salir**, y arriba de cada página «dónde estás» (*Promotoras › Promotora › Promoción*).
 
-- `#/` **Inicio**: avisos del sistema; versiones pendientes con el estado de sus planos (lista para publicar, cambios pedidos, enviar planos, esperando a la promotora); lo que requiere actualizar (decisión 69); documentación por revisar, cambios pedidos por las promotoras (comentarios enviados y sin resolver) y peticiones abiertas, cada una con enlace a su sitio.
+- `#/` **Inicio**: avisos del sistema; versiones pendientes con el estado de sus planos (lista para publicar, cambios pedidos, enviar planos, esperando a la promotora); lo que está «En actualización» (decisión 69); documentación por revisar, cambios pedidos por las promotoras (comentarios enviados y sin resolver) y peticiones abiertas, cada una con enlace a su sitio.
 - `#/promotoras` **Promotoras**: la lista y el alta.
 - `#/promotora/<id>` **Una promotora**: sus promociones, quién tiene acceso a todas, sus datos y su actividad (la suya y la de todas sus promociones).
-- `#/promocion/<id>/<pestaña>` **Una promoción**, con pestañas: *Resumen y versiones* (publicar, volver atrás, estado y lo marcado como «Requiere actualizar», que se puede quitar si se puso por error), *Equipo*, *Documentación*, *Ficha y datos*, *Compradores* (códigos de comprador, receta 24), *Peticiones de cambios* y *Actividad*.
+- `#/promocion/<id>/<pestaña>` **Una promoción**, con pestañas: *Resumen y versiones* (publicar, volver atrás, estado y lo que está «En actualización», que se puede quitar si se puso por error), *Equipo*, *Documentación*, *Ficha y datos*, *Compradores* (códigos de comprador, receta 24), *Peticiones de cambios* y *Actividad*.
 - `#/sistema` **Sistema**: llaves con su caducidad (*Ya la he renovado*), espacio usado del plan gratuito, última señal de la vigilancia automática y el registro de actividad completo (auditoría). Y las copias de seguridad: la última copia de la noche y el último simulacro de recuperación (receta 18).
 
 ## Secciones

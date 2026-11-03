@@ -2457,7 +2457,7 @@ await caso( DEBE_FUNCIONAR, 'Archivos para Claude: el robot recibe la documentac
 
 } );
 
-// ─── Vigencia: «Requiere actualizar» (044_vigencia.sql) ─────────────────────
+// ─── Vigencia: «En actualización» (044_vigencia.sql) ─────────────────────
 
 for ( const promocion of [ 'prueba-a', 'prueba-b' ] ) {
 
@@ -2469,7 +2469,7 @@ const marcar = ( sb, extra = {} ) => sb.rpc( 'marcar_actualizacion', { p_promoci
 const enRevisionA = ( await servicio.from( 'versiones_promocion' ).select( 'version' ).eq( 'promocion_id', 'prueba-a' ).eq( 'estado', 'en_revision' ) ).data?.[ 0 ]?.version;
 const [ { id: docDeB } ] = await exigir( servicio.from( 'documentos' ).select( 'id' ).eq( 'promocion_id', 'prueba-b' ).limit( 1 ), 'un documento de B' );
 
-await caso( DEBE_FALLAR, '56. Vigencia: la promotora, otra promotora o alguien sin sesión marcan, resuelven, quitan o leen «Requiere actualizar»; el robot quita una marca; planos inventados, documentos de otra promoción, duplicados o versiones sin preparar', async () => {
+await caso( DEBE_FALLAR, '56. Vigencia: la promotora, otra promotora o alguien sin sesión ponen, resuelven, quitan o leen «En actualización»; el robot quita una marca; planos inventados, documentos de otra promoción, duplicados o versiones sin preparar', async () => {
 
 	const marca = await exigir( marcar( robot ), 'el robot marca' );
 	const r = {

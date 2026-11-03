@@ -7,7 +7,7 @@
 //   node herramientas/documentos.mjs opciones                         (opciones pedidas por las promotoras; baja sus adjuntos a salida/opciones/)
 //   node herramientas/documentos.mjs estado <id> vigente|rechazado [--nota "Texto"]
 //   node herramientas/documentos.mjs comentarios <promoción> [resolver <ids> --version vN]   (comentarios visuales enviados, 038)
-//   node herramientas/documentos.mjs actualizar <promoción> plano|experiencia <clave> --nota "…" [--documento N]   (Requiere actualizar, 044)
+//   node herramientas/documentos.mjs actualizar <promoción> plano|experiencia <clave> --nota "…" [--documento N]   (En actualización, 044)
 //   node herramientas/documentos.mjs actualizaciones <promoción> [resolver <ids> --version vN]
 //
 // Receta 2 («revisa lo nuevo de X»): pendientes → bajar cada uno → leerlo y
@@ -256,7 +256,7 @@ async function comentarios( token, promocion, accion ) {
 
 }
 
-// «Requiere actualizar» (044_vigencia.sql, decisión 69): un plano comercial o
+// «En actualización» (044_vigencia.sql, decisión 69): un plano comercial o
 // una tipología de la Experiencia 3D que la documentación nueva deja
 // desfasado. Lo marca Claude al revisar la documentación, con el OK de la
 // administradora; se resuelve al preparar la versión que lo incorpora.
@@ -276,7 +276,7 @@ async function actualizar( token, promocion, tipo ) {
 	if ( documento !== undefined && ! /^\d+$/.test( documento ) ) fallo( '--documento lleva el número del documento (de «pendientes»)' );
 	const id = await pedir( '/rest/v1/rpc/marcar_actualizacion', { metodo: 'POST', token,
 		cuerpo: { p_promocion: promocion, p_tipo: tipo, p_clave: clave, p_nota: nota, p_documento: documento ? Number( documento ) : null } } );
-	console.log( `✓ Marcado como «Requiere actualizar» (#${ id }): ${ tipo === 'plano' ? 'plano' : 'tipología' } ${ clave }. Lo ven MUNE Studio y la promotora en MUNE Portal.` );
+	console.log( `✓ Marcado como «En actualización» (#${ id }): ${ tipo === 'plano' ? 'plano' : 'tipología' } ${ clave }. Lo ven MUNE Studio y la promotora en MUNE Portal.` );
 
 }
 
@@ -289,11 +289,11 @@ async function actualizaciones( token, promocion, accion ) {
 		const version = opcion( 'version' );
 		if ( ! ids.length || ! /^v\d+$/.test( version ?? '' ) ) fallo( 'Uso: actualizaciones <promoción> resolver 3,4 --version v18' );
 		const n = await pedir( '/rest/v1/rpc/resolver_actualizaciones', { metodo: 'POST', token, cuerpo: { p_promocion: promocion, p_version: version, p_ids: ids } } );
-		return console.log( `✓ ${ n } marca(s) resueltas en la ${ version }: pasan a «Pendiente de validar».` );
+		return console.log( `✓ ${ n } marca(s) resueltas en la ${ version }: pasan a «Te toca revisar» al enviarla a validar.` );
 
 	}
 	const abiertas = await pedir( `/rest/v1/actualizaciones?select=id,tipo,clave,nota,documento_id,marcada_en&promocion_id=eq.${ promocion }&resuelta_en=is.null&quitada_en=is.null&order=marcada_en`, { token } );
-	if ( ! abiertas.length ) return console.log( `Nada marcado como «Requiere actualizar» en ${ promocion }.` );
+	if ( ! abiertas.length ) return console.log( `Nada marcado como «En actualización» en ${ promocion }.` );
 	for ( const m of abiertas ) console.log( `#${ m.id } · ${ m.tipo === 'plano' ? 'plano' : '3D' } ${ m.clave } · ${ fecha( m.marcada_en ) }${ m.documento_id ? ` · documento ${ m.documento_id }` : '' }\n  «${ m.nota }»` );
 	console.log( `\nAl preparar la versión nueva: node herramientas/documentos.mjs actualizaciones ${ promocion } resolver <ids> --version vN` );
 
