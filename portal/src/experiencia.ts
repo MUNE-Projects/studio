@@ -11,7 +11,7 @@
 // personalización con precios y lo que ha elegido cada comprador; renders y
 // plano comercial. Con «Gestionar personalizaciones», también elegir en su nombre.
 
-import { type Actualizacion, chipVigencia, deElemento, htmlMarca, leerActualizaciones } from './vigencia';
+import { type Actualizacion, avisoEnRevision, chip, deElemento, estadoDe, frase, leerActualizaciones } from './vigencia';
 import { ESCAPARATE, REVISION, alEnviar, esc, sb } from './comun';
 import { type Hilo, abiertos, hilosDe, pendientes as sinEnviar, leerHilos, pintarComentarios, textoPedirCambios } from './comentarios';
 import {
@@ -51,28 +51,20 @@ export async function pintarExperiencia(caja: HTMLElement, promo: Promocion3D, e
 	}
 	const version = versiones.includes(extra) ? extra : versiones[0];
 	const actual = version === versiones[0];
-	const [unidades, base, hilos, marcas] = await Promise.all([leerValidacion(id, version, 'experiencia'), baseVisita(id, version),
-		leerHilos(sb, id).catch(() => [] as Hilo[]), leerActualizaciones(sb, id)]);
+	const [unidades, base, hilos, marcas, docsEnRevision] = await Promise.all([leerValidacion(id, version, 'experiencia'), baseVisita(id, version),
+		leerHilos(sb, id).catch(() => [] as Hilo[]), leerActualizaciones(sb, id), actual ? avisoEnRevision(sb, esc, id, 'promotora') : Promise.resolve('')]);
 	const supuestos = await leerSupuestos(base, id);
-	const aprobadas = unidades.filter((u) => u.estado === 'aprobado').length;
-	const todas = unidades.length > 0 && aprobadas === unidades.length;
-	const pendientes = unidades.filter((u) => u.estado !== 'aprobado').map(tituloUnidad);
-	// vigencia (decisión 69): la versión publicada o, si aún no hay, la última toda validada;
-	// lo marcado, en la vigente y en la que se valida
-	const enVigor = publicada && versiones.includes(publicada) ? publicada : await ultimaValidada(id, versiones);
-	const vigente = version === enVigor;
-	const marcaDe = (u: Elemento) => (actual || vigente ? deElemento(marcas, 'experiencia', u.clave) : null);
+	// vigencia (decisión 69): una etiqueta por tipología, en la versión más reciente
+	const marcaDe = (u: Elemento) => (actual ? deElemento(marcas, 'experiencia', u.clave) : null);
 
 	caja.innerHTML = `${cabecera}
-		<h2 class="separado">${todas ? 'Tipologías' : 'Validación'} · ${esc(version)}</h2>
-		${!actual ? '<p class="ayuda">Es una versión anterior y solo se puede consultar.</p>'
-			: todas ? '<p class="ayuda">Todas validadas. Puedes recorrer cada tipología cuando quieras.</p>'
-			: '<p class="ayuda">Recorre cada tipología en 3D: distribución, espacios, materiales, acabados, mobiliario, vistas guiadas, exteriores y modo Plano. Cada una queda validada cuando la aprueban todas las personas elegidas para validarla. Si algo no está bien, pide cambios e indica, si quieres, en qué vista o zona.</p>'}
+		<h2 class="separado">Tipologías${actual ? '' : ` · ${esc(version)} (anterior)`}</h2>
+		${actual ? `<p class="ayuda">Cada tipología lleva su estado: <strong>✅ Al día</strong>; <strong>👀 Te toca revisar</strong> (recórrela en 3D: distribución, materiales, mobiliario, vistas y modo Plano); <strong>⏳ Pendiente de validar</strong> por otras personas del equipo; <strong>🔄 En actualización</strong>, el equipo de MUNE está preparando cambios.</p>`
+			: '<p class="ayuda">Es una versión anterior y solo se puede consultar.</p>'}
+		${docsEnRevision}
 		${actual && unidades.some((u) => u.estado === 'sin_aprobadores') ? htmlSinAprobadores(id, 'experiencia', ctx) : ''}
 		${actual ? htmlSupuestos(id, supuestos) : ''}
-		${todas ? '' : `<p class="promo-versiones">${aprobadas} de ${unidades.length} aprobadas${pendientes.length && aprobadas ? ` · Pendiente: ${esc(pendientes.join(', '))}` : ''}</p>
-		<progress class="progreso" value="${aprobadas}" max="${Math.max(1, unidades.length)}" aria-hidden="true"></progress>`}
-		${unidades.map((u) => htmlUnidad(id, u, version, actual, base, ctx, abiertos(hilosDe(hilos, 'experiencia', u.clave, version)).length, marcaDe(u), vigente)).join('')}
+		${unidades.map((u) => htmlUnidad(id, u, version, actual, base, ctx, abiertos(hilosDe(hilos, 'experiencia', u.clave, version)).length, marcaDe(u))).join('')}
 		${versiones.length > 1 ? `<p class="ayuda separado">Otras versiones: ${versiones.filter((v) => v !== version)
 			.map((v) => `<a class="enlace" href="#/promocion/${esc(id)}/experiencia/${esc(v)}">${esc(v)}</a>`).join(' · ')}</p>` : ''}`;
 	abrirProfesional(caja, id);
@@ -146,26 +138,20 @@ function htmlSupuestos(id: string, supuestos: Supuesto[]): string {
 	</div>`;
 }
 
-/** La versión más reciente (de las dadas) con todas sus tipologías validadas. */
-async function ultimaValidada(id: string, versiones: string[]): Promise<string | null> {
-	for (const v of versiones) {
-		const { data } = await sb.rpc('validacion_lista', { p_promocion: id, p_version: v, p_tipo: 'experiencia' });
-		if (data === 'listos') return v;
-	}
-	return null;
-}
-
 function htmlUnidad(id: string, u: Elemento, version: string, actual: boolean, base: string, ctx: Contexto, hilosAbiertos: number,
-	marca: Actualizacion | null, vigente: boolean): string {
+	marca: Actualizacion | null): string {
 	const voto = miVoto(u, ctx);
 	const puede = actual && u.estado !== 'aprobado' && !!voto;
+	const e = estadoDe(u.estado, marca, puede && voto!.decision !== 'aprobado');
 	const vistas = (u.vistas ?? []).filter((v) => v && v.nombre);
 	return `<article class="unidad" data-unidad="${u.id}">
-		<div class="plano-titulo"><h3>Experiencia 3D · ${esc(tituloUnidad(u))}</h3>${chipVigencia(esc, u.estado, marca, vigente, chipEstado(u, 'experiencia'))}</div>
-		${htmlMarca(esc, marca, 'promotora')}
+		<div class="plano-titulo"><h3>Experiencia 3D · ${esc(tituloUnidad(u))}</h3>${actual ? chip(e) : chipEstado(u, 'experiencia')}</div>
+		${actual ? frase(esc, e, marca, 'promotora') : ''}
 		${u.detalle || u.viviendas ? `<p class="promo-lugar">${esc(u.detalle ?? '')}${u.detalle && u.viviendas ? ' · ' : ''}${esc(u.viviendas ?? '')}</p>` : ''}
-		${avance(u, 'experiencia') ? `<p class="avance">${avance(u, 'experiencia')}</p>` : ''}
-		${htmlPersonas(u, version)}
+		<details class="detalle-plegable"><summary>Ver detalle</summary>
+			<p class="promo-lugar">Versión ${esc(version)}${avance(u, 'experiencia') ? ` · ${avance(u, 'experiencia')}` : ''}</p>
+			${htmlPersonas(u, version)}
+		</details>
 		${actual ? `<div class="acciones"><a class="boton ${puede && voto!.decision !== 'aprobado' ? '' : 'secundario'} pequeno" href="${esc(`${base}/${id}/?ver=${encodeURIComponent(u.clave)}`)}" data-profesional target="_blank" rel="noopener noreferrer">Recorrer en 3D</a></div>` : ''}
 		${puede ? `<details class="validar-plegable" ${voto!.decision === null ? 'open' : ''}>
 			<summary>${voto!.decision === 'aprobado' ? 'Ya la has aprobado · pedir cambios' : 'Validar'}</summary>

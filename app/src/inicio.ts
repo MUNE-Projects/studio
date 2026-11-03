@@ -1,7 +1,7 @@
 // Inicio de MUNE Studio: lo que necesita tu atención, con enlace a cada sitio.
 // Arriba, los avisos del sistema (015_sistema.sql); después, las versiones
 // pendientes con el estado de su validación (planos comerciales y Experiencia
-// 3D), lo que requiere actualizar (044_vigencia.sql), la documentación por revisar, los cambios pedidos por las promotoras, las
+// 3D), lo que está en actualización (044_vigencia.sql), la documentación por revisar, los cambios pedidos por las promotoras, las
 // opciones nuevas pedidas y las peticiones abiertas.
 
 import { esc, fecha, sb, traducir } from './comun';
@@ -26,8 +26,8 @@ export async function pantallaInicio(destino: HTMLElement): Promise<void> {
 			<div data-documentos><p class="vacio">Cargando…</p></div>
 		</section>
 		<section class="tarjeta" data-actualizar hidden>
-			<h2>Requiere actualizar</h2>
-			<p class="ayuda">Planos o tipologías que la documentación nueva de la promotora deja desfasados. Se resuelven al preparar la versión que lo incorpora: pídeme «prepara la versión nueva de …».</p>
+			<h2>🔄 En actualización</h2>
+			<p class="ayuda">Planos y tipologías para los que la promotora ha enviado cambios. Pasan a la versión nueva cuando me pides «prepara la versión nueva de …».</p>
 			<div data-lista-actualizar></div>
 		</section>
 		<section class="tarjeta" data-comentarios hidden>
@@ -118,7 +118,7 @@ export async function pantallaInicio(destino: HTMLElement): Promise<void> {
 		caja.querySelector<HTMLElement>('[data-lista-actualizar]')!.innerHTML = `<div class="lista-enlaces">${[...grupos].map(([id, n]) => `
 			<a class="fila-enlace" href="#/promocion/${esc(id)}/resumen">
 				<span><strong>${esc(nombre.get(id) ?? id)}</strong></span>
-				<span class="estado rechazado">${n === 1 ? '1 por actualizar' : `${n} por actualizar`}</span>
+				<span class="estado actualizando">${n === 1 ? '1 en actualización' : `${n} en actualización`}</span>
 			</a>`).join('')}</div>`;
 	});
 

@@ -1,17 +1,15 @@
--- Vigencia de planos y tipologías: «Requiere actualizar» (3/11/2026, decidido
--- por la administradora; decisión 69).
+-- Vigencia de planos y tipologías: «En actualización» (3/11/2026, decidido por
+-- la administradora; decisión 69).
 --
 -- Se ejecuta una vez en Supabase → SQL Editor, después de 043. Es repetible.
 --
--- Cada plano comercial y cada tipología de la Experiencia 3D se ve con su
--- vigencia: Vigente (aprobado, en la versión publicada o la última validada),
--- Pendiente de validar (en la versión que se está validando) o Requiere
--- actualizar. Esto último lo marca el equipo de MUNE (Claude, con el robot, o
--- la administradora) cuando la promotora aporta documentación que cambia algo
--- ya preparado: qué plano o qué tipología, con una nota y, si se quiere, el
--- documento que lo motiva. Se resuelve al preparar la versión que lo incorpora
--- (entonces pasa a «Pendiente de validar» en esa versión). La administradora
--- puede quitar una marca puesta por error.
+-- Cada plano comercial y cada tipología de la Experiencia 3D lleva una sola
+-- etiqueta: ✅ Al día, 👀 Te toca revisar, ⏳ Pendiente de validar o
+-- 🔄 En actualización. Esta tabla guarda lo último: cuando la promotora envía
+-- planos nuevos de una tipología, Claude (con el robot) lo marca al revisarlos,
+-- con una nota. La promotora puede seguir descargando el anterior, sabiendo que
+-- no es el último. Se resuelve al preparar la versión que lo incluye. La
+-- administradora puede quitar una marca puesta por error.
 --  · Lo ven MUNE Studio, el robot y el equipo de la promotora de esa promoción.
 --  · Solo el robot y la administradora marcan y resuelven; nadie borra filas.
 
@@ -40,7 +38,7 @@ drop policy if exists "leen las actualizaciones" on public.actualizaciones;
 create policy "leen las actualizaciones" on public.actualizaciones for select to authenticated
 	using (public.es_admin() or public.es_robot() or public.es_miembro_de_promocion(promocion_id));
 
--- Marca un plano o una tipología como «Requiere actualizar» (robot o administradora).
+-- Pone un plano o una tipología «En actualización» (robot o administradora).
 create or replace function public.marcar_actualizacion(
 	p_promocion text, p_tipo text, p_clave text, p_nota text, p_documento bigint default null)
 returns bigint
@@ -53,7 +51,7 @@ declare
 	v_id bigint;
 begin
 	if not (public.es_admin() or public.es_robot()) then
-		raise exception 'Solo el equipo de MUNE marca lo que requiere actualizar';
+		raise exception 'Solo el equipo de MUNE marca lo que está en actualización';
 	end if;
 	if p_tipo not in ('plano', 'experiencia') then
 		raise exception 'Tipo no válido';
@@ -66,13 +64,13 @@ begin
 	end if;
 	if exists (select 1 from public.actualizaciones a where a.promocion_id = p_promocion and a.tipo = p_tipo and a.clave = p_clave
 			and a.resuelta_en is null and a.quitada_en is null) then
-		raise exception 'Ya está marcado como «Requiere actualizar»';
+		raise exception 'Ya está «En actualización»';
 	end if;
 	insert into public.actualizaciones (promocion_id, tipo, clave, nota, documento_id)
 	values (p_promocion, p_tipo, p_clave, btrim(p_nota), p_documento)
 	returning id into v_id;
 	insert into public.registro (user_id, accion, detalle)
-	values (auth.uid(), 'marca que requiere actualizar', jsonb_build_object('promocion', p_promocion, 'tipo', p_tipo, 'clave', p_clave, 'id', v_id));
+	values (auth.uid(), 'pone en actualización', jsonb_build_object('promocion', p_promocion, 'tipo', p_tipo, 'clave', p_clave, 'id', v_id));
 	return v_id;
 end $$;
 revoke all on function public.marcar_actualizacion(text, text, text, text, bigint) from public, anon;
@@ -91,7 +89,7 @@ declare
 	n int;
 begin
 	if not (public.es_admin() or public.es_robot()) then
-		raise exception 'Solo el equipo de MUNE resuelve lo que requiere actualizar';
+		raise exception 'Solo el equipo de MUNE resuelve lo que está en actualización';
 	end if;
 	if not exists (select 1 from public.versiones_promocion v where v.promocion_id = p_promocion and v.version = p_version and v.estado = 'en_revision') then
 		raise exception 'Esa versión no está preparada y en revisión';
@@ -100,7 +98,7 @@ begin
 	where a.promocion_id = p_promocion and a.id = any (p_ids) and a.resuelta_en is null and a.quitada_en is null;
 	get diagnostics n = row_count;
 	insert into public.registro (user_id, accion, detalle)
-	values (auth.uid(), 'resuelve lo que requería actualizar', jsonb_build_object('promocion', p_promocion, 'version', p_version, 'ids', p_ids, 'resueltas', n));
+	values (auth.uid(), 'resuelve lo que estaba en actualización', jsonb_build_object('promocion', p_promocion, 'version', p_version, 'ids', p_ids, 'resueltas', n));
 	return n;
 end $$;
 revoke all on function public.resolver_actualizaciones(text, text, bigint[]) from public, anon;
@@ -127,9 +125,9 @@ begin
 		raise exception 'No hay ninguna marca abierta con ese número';
 	end if;
 	insert into public.registro (user_id, accion, detalle)
-	values (auth.uid(), 'quita una marca de requiere actualizar', jsonb_build_object('promocion', v_promocion, 'id', p_id));
+	values (auth.uid(), 'quita «En actualización»', jsonb_build_object('promocion', v_promocion, 'id', p_id));
 end $$;
 revoke all on function public.quitar_actualizacion(bigint) from public, anon;
 grant execute on function public.quitar_actualizacion(bigint) to authenticated;
 
-select 'Listo: vigencia (requiere actualizar)' as resultado;
+select 'Listo: vigencia (en actualización)' as resultado;

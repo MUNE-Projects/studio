@@ -105,7 +105,7 @@ async function ejecutar(aviso: HTMLElement, id: string, orden: Record<string, st
 
 /** Bloque de versiones de una promoción: ver, publicar y volver a una anterior. */
 /**
- * Lo que requiere actualizar en esta promoción (044_vigencia.sql, decisión 69):
+ * Lo que está «En actualización» en esta promoción (044_vigencia.sql, decisión 69):
  * lo marca Claude al revisar la documentación nueva; se resuelve al preparar la
  * versión que lo incorpora. La administradora puede quitar una marca puesta por error.
  */
@@ -119,8 +119,8 @@ async function pintarActualizar(zona: HTMLElement, id: string): Promise<void> {
 		titulo.set(`${e.tipo}/${e.clave}`, e.titulo || e.nombre);
 	}
 	zona.innerHTML = `
-		<h3>Requiere actualizar</h3>
-		<p class="ayuda">Lo publicado que la documentación nueva de la promotora deja desfasado. Lo marca Claude al revisarla; se resuelve al preparar la versión que lo incorpora. La promotora lo ve en MUNE Portal.</p>
+		<h3>🔄 En actualización</h3>
+		<p class="ayuda">Planos y tipologías para los que la promotora ha enviado cambios. Lo pone Claude al revisar su documentación, y la promotora lo ve así en MUNE Portal (puede seguir descargando el anterior, sabiendo que no es el último). Vuelven a «Te toca revisar» al preparar la versión que los incluye.</p>
 		<ul class="lista-actualizar">${marcas.map((m) => `<li>
 			<span><strong>${m.tipo === 'plano' ? 'Plano' : 'Experiencia 3D'} · ${esc(titulo.get(`${m.tipo}/${m.clave}`) ?? m.clave)}</strong><br>
 			<span class="promo-lugar">${esc(m.nota)} · desde el ${esc(fecha(m.marcada_en))}</span></span>
@@ -128,7 +128,7 @@ async function pintarActualizar(zona: HTMLElement, id: string): Promise<void> {
 		</li>`).join('')}</ul>
 		<p class="error" role="alert" data-error-actualizar></p>`;
 	zona.querySelectorAll<HTMLButtonElement>('[data-quitar-marca]').forEach((b) => b.addEventListener('click', async () => {
-		if (!confirm('¿Quitar esta marca? Volverá a verse como vigente para la promotora.')) return;
+		if (!confirm('¿Quitar «En actualización»? La promotora volverá a verlo como «Al día».')) return;
 		b.disabled = true;
 		const { error } = await sb.rpc('quitar_actualizacion', { p_id: Number(b.dataset.quitarMarca) });
 		if (error) {

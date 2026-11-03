@@ -384,9 +384,14 @@ label.nombre-categoria input { padding: 6px 8px; font-size: 17px; font-weight: 6
 .lista-referencias .pendiente-texto { color: var(--tinta-2); font-style: italic; }
 .lista-referencias [data-guardada]:empty { display: none; }
 
-/* Vigencia: «Requiere actualizar» (044_vigencia.sql, decisión 69) */
-.aviso-actualizar { background: #fdf6f6; border: 1px solid rgb(155 44 44 / 0.25); color: #6b2121; margin: 8px 0; }
+/* Vigencia: una etiqueta por plano y tipología (decisión 69) */
+.estado.te-toca { background: var(--acento); color: #fff; }
+.estado.actualizando { background: #e8eef7; color: #23466e; }
+.frase-vigencia { margin: 4px 0 8px; font-size: 14px; color: #23466e; }
+.aviso-revision { background: #e8eef7; color: #23466e; margin: 8px 0 12px; }
+.detalle-plegable { margin-top: 8px; font-size: 14px; }
+.detalle-plegable summary { cursor: pointer; color: var(--tinta-2); }
 .lista-actualizar { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px; }
-.lista-actualizar li { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid rgb(155 44 44 / 0.25); border-radius: 8px; background: #fdf6f6; }
-@media (max-width: 600px) { .lista-actualizar li { flex-direction: column; align-items: flex-start; } }
+.lista-actualizar li { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid rgb(35 70 110 / 0.2); border-radius: 8px; background: #f4f7fb; }
 .lista-actualizar li .boton { white-space: nowrap; flex: none; }
+@media (max-width: 600px) { .lista-actualizar li { flex-direction: column; align-items: flex-start; } }
