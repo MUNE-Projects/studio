@@ -172,9 +172,9 @@ export class Pieza {
 			const sx = pos.getX( i ), sy = pos.getY( i ), sz = pos.getZ( i );
 			const ang = Math.atan2( sy, sx ), rad = Math.hypot( sx, sy );
 			const c = Math.cos( ang ), s = Math.sin( ang );
-			const sq = ( v: number ) => Math.sign( v ) * Math.abs( v ) ** 0.45;
+			const sq = ( v: number ) => Math.sign( v ) * Math.abs( v ) ** 0.7;
 			// esquinas un poco hacia dentro (pellizco de la costura)
-			const pellizco = 1 - 0.1 * Math.abs( Math.sin( 2 * ang ) ) ** 3;
+			const pellizco = 1 - 0.05 * Math.abs( Math.sin( 2 * ang ) ) ** 3;
 			const x = sq( c ) * rad * pellizco * w / 2, y = sq( s ) * rad * pellizco * h / 2;
 			const borde = Math.max( 0, 1 - rad ** 2 );
 			const arruga = 1 + 0.06 * Math.sin( ang * 5 + semilla ) * rad;
