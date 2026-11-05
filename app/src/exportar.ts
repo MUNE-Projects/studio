@@ -183,3 +183,133 @@ export async function exportarPromotora(id: string, progreso: (t: string) => voi
 	await anotar('exporta una promotora', { promotora: id, archivos: zip.cuantos, avisos: avisos.length });
 	return { archivos: zip.cuantos, avisos };
 }
+
+// ── Exportación para la promotora, al eliminar (decisión 70, 045) ──────────
+// Solo lo que corresponde a la promotora: su documentación con todas sus
+// versiones, los planos y materiales que le ha entregado MUNE y los datos de
+// la promoción (ficha, equipo, selecciones de compradores, catálogo,
+// validaciones y comentarios). Nada interno de MUNE: ni el modelo, ni las
+// peticiones y sus fotos, ni el registro de actividad, ni la web construida.
+// Se sube en partes de 40 MB como mucho al almacén privado «exportaciones», se
+// comprueba cada parte y se envía con un enlace privado (función «exportacion»).
+
+const MAX_PARTE = 40 * 1024 * 1024;
+
+class Partes {
+	zips: Zip[] = [new Zip()];
+	archivos = 0;
+	anadir(ruta: string, contenido: Uint8Array | string): void {
+		const tam = typeof contenido === 'string' ? contenido.length * 3 : contenido.length;
+		let actual = this.zips.at(-1)!;
+		if (actual.cuantos && actual.bytes + tam > MAX_PARTE) this.zips.push((actual = new Zip()));
+		actual.anadir(ruta, contenido);
+		this.archivos++;
+	}
+}
+
+async function anadirParaPromotora(partes: Partes, carpeta: string, id: string, equipo: Fila[], avisos: string[], progreso: (t: string) => void): Promise<string> {
+	const [[promocion], requisitos, documentos, entregables, validaciones, aprobaciones, selecciones, catalogo, comentarios] = await Promise.all([
+		leer(sb.from('promociones').select('*').eq('id', id)),
+		leer(sb.from('requisitos').select('*').eq('promocion_id', id).order('orden').order('id')),
+		leer(sb.from('documentos').select('*').eq('promocion_id', id).order('requisito_id').order('version')),
+		leer(sb.from('entregables').select('*').eq('promocion_id', id).order('id')),
+		leer(sb.from('validaciones').select('*').eq('promocion_id', id).order('id')),
+		leer(sb.from('aprobaciones').select('*').eq('promocion_id', id).order('id')),
+		leer(sb.from('selecciones_comprador').select('*').eq('promocion_id', id).order('vivienda_ref').order('comprador')),
+		// el catálogo como lo ven la promotora y MUNE Studio (precios, packs, cambios y opciones pedidas), sin el modelo interno
+		sb.rpc('catalogo_de_promocion', { p_promocion: id }).then(({ data, error }) => {
+			if (error) throw error;
+			const c = (data ?? {}) as Record<string, unknown>;
+			return { catalogo: c.catalogo ?? null, packs: c.packs ?? null, cambios: c.cambios ?? [], pedidas: c.pedidas ?? [] };
+		}),
+		sb.rpc('comentarios_de', { p_promocion: id }).then((r) => { if (r.error) throw r.error; return ((r.data ?? []) as Fila[]).filter((c) => !c.interno); }),
+	]);
+	const reqPorId = new Map(requisitos.map((r) => [r.id, r]));
+	const lineas: string[] = [];
+	lineas.push(`Documentación subida: ${documentos.length}`);
+	for (const [i, d] of documentos.entries()) {
+		progreso(`Preparando la documentación de ${String(promocion?.nombre ?? id)} (${i + 1} de ${documentos.length})…`);
+		const r = reqPorId.get(d.requisito_id);
+		const sub = `${String(r?.orden ?? 0).padStart(2, '0')} ${limpio(`${r?.bloque ?? ''} - ${r?.elemento ?? ''}`)}`;
+		const datos = await bajar('documentos', String(d.ruta), String(d.huella), avisos);
+		if (datos) partes.anadir(`${carpeta}documentacion/${sub}/v${d.version} - ${limpio(String(d.nombre))}`, datos);
+		lineas.push(`  · ${r?.bloque} › ${r?.elemento} · v${d.version} · ${d.nombre} · ${d.estado} · subido ${String(d.subido_en).slice(0, 10)}`);
+	}
+	lineas.push(`Planos y materiales entregados por MUNE: ${entregables.length}`);
+	for (const [i, e] of entregables.entries()) {
+		progreso(`Preparando los planos y materiales de ${String(promocion?.nombre ?? id)} (${i + 1} de ${entregables.length})…`);
+		const datos = await bajar('entregables', String(e.ruta), String(e.huella), avisos);
+		if (datos) partes.anadir(`${carpeta}materiales/${limpio(String(e.version))}/${limpio(String(e.ruta).split('/').pop() ?? String(e.nombre))}`, datos);
+		const v = validaciones.find((x) => x.entregable_id === e.id);
+		lineas.push(`  · ${e.version} · ${e.titulo ?? e.nombre}${v ? ` · ${v.decision} el ${String(v.momento).slice(0, 10)}` : ''}`);
+	}
+	lineas.push(`Personas con acceso: ${equipo.length}`);
+	lineas.push(`Selecciones de compradores: ${selecciones.length}`);
+	partes.anadir(`${carpeta}datos.json`, json({
+		promocion, equipo: equipo.map((a) => ({ nombre: a.nombre, email: a.email, cargo: a.cargo, activo: a.activo })),
+		documentacion: documentos.map((d) => ({ elemento: reqPorId.get(d.requisito_id)?.elemento, nombre: d.nombre, version: d.version, estado: d.estado, nota: d.nota, subido_en: d.subido_en, huella: d.huella })),
+		materiales: entregables.map((e) => ({ version: e.version, nombre: e.titulo ?? e.nombre, huella: e.huella })),
+		validaciones, aprobaciones, selecciones_de_comprador: selecciones,
+		catalogo, comentarios,
+	}));
+	return [`■ ${promocion?.nombre ?? id}`, ...lineas].join('\n');
+}
+
+export interface Preparada { id: string; partes: number; archivos: number; bytes: number }
+
+/** Prepara, sube y comprueba la exportación (aún no la envía). Si algo falla, la deja como fallida. */
+export async function prepararExportacion(promotora: string, promocion: string | null, dias: number, progreso: (t: string) => void = () => {}): Promise<Preparada> {
+	const { data: id, error } = await sb.rpc('exportacion_nueva', { p_promotora: promotora, p_promocion: promocion, p_dias: dias });
+	if (error) throw error;
+	try {
+		const partes = new Partes();
+		const avisos: string[] = [];
+		const accesos = await leer(sb.rpc('accesos', { p_promotora: promotora }));
+		const [po] = await leer(sb.from('promotoras').select('nombre, razon_social, cif, domicilio_fiscal, contacto').eq('id', promotora));
+		const resumenes: string[] = [];
+		const ids = promocion ? [promocion] : (await leer(sb.from('promociones').select('id').eq('promotora_id', promotora).order('nombre'))).map((p) => String(p.id));
+		for (const pid of ids) {
+			const carpeta = promocion ? '' : `promociones/${limpio(pid)}/`;
+			resumenes.push(await anadirParaPromotora(partes, carpeta, pid, accesos.filter((a) => a.promocion_id === pid || (!promocion && a.promocion_id === null)), avisos, progreso));
+		}
+		if (!promocion) {
+			const [marca] = await leer(sb.from('marcas').select('nombre, logo_svg, color_principal, color_secundario, tipografia, telefono, email, web, direccion').eq('promotora_id', promotora).is('promocion_id', null));
+			partes.anadir('promotora.json', json({ promotora: po, marca: marca ?? null }));
+		}
+		if (avisos.length) throw new Error(`No se ha podido preparar completa: ${avisos.slice(0, 3).join(' · ')}${avisos.length > 3 ? '…' : ''}`);
+		const leeme = [
+			`MUNE · Exportación de ${promocion ? 'la promoción' : 'la promotora'}`,
+			`Fecha: ${new Date().toLocaleString('es-ES')}`, '',
+			'Contenido:',
+			`  · ${promocion ? '' : 'promociones/<promoción>/'}documentacion/: lo que subisteis a MUNE Portal, con todas sus versiones.`,
+			`  · ${promocion ? '' : 'promociones/<promoción>/'}materiales/: los planos y materiales que os ha entregado MUNE, por versión.`,
+			`  · ${promocion ? '' : 'promociones/<promoción>/'}datos.json: ficha, equipo, selecciones de compradores, catálogo, validaciones y comentarios.`,
+			...(promocion ? [] : ['  · promotora.json: los datos de la promotora y su marca.']),
+			`  · ${partes.zips.length > 1 ? `La exportación va en ${partes.zips.length} partes: descárgalas todas.` : 'Todo va en este ZIP.'}`,
+			'', 'Todos los archivos coinciden con los originales guardados (se han comprobado con su huella).', '',
+			resumenes.join('\n\n'), '',
+		].join('\n');
+		partes.zips[0].anadir('LEEME.txt', leeme);
+		const lista: { ruta: string; tamano: number; huella: string }[] = [];
+		for (const [i, zip] of partes.zips.entries()) {
+			progreso(`Subiendo la parte ${i + 1} de ${partes.zips.length}…`);
+			const datos = new Uint8Array(await zip.cerrar().arrayBuffer());
+			const ruta = `${id}/parte-${i + 1}.zip`;
+			const firma = await huella(datos);
+			const { error: eSubir } = await sb.storage.from('exportaciones').upload(ruta, datos, { contentType: 'application/zip', upsert: false });
+			if (eSubir) throw eSubir;
+			// comprobación: lo guardado es exactamente lo preparado
+			progreso(`Comprobando la parte ${i + 1} de ${partes.zips.length}…`);
+			const { data: vuelta, error: eBajar } = await sb.storage.from('exportaciones').download(ruta);
+			if (eBajar || !vuelta || (await huella(new Uint8Array(await vuelta.arrayBuffer()))) !== firma) throw new Error(`La parte ${i + 1} no se ha guardado bien`);
+			lista.push({ ruta, tamano: datos.length, huella: firma });
+		}
+		const { error: eLista } = await sb.rpc('exportacion_lista', { p_id: id, p_partes: lista, p_archivos: partes.archivos });
+		if (eLista) throw eLista;
+		await anotar('prepara y comprueba una exportación', { exportacion: id, promotora, promocion, partes: lista.length, archivos: partes.archivos });
+		return { id: String(id), partes: lista.length, archivos: partes.archivos, bytes: lista.reduce((s, p) => s + p.tamano, 0) };
+	} catch (e) {
+		await sb.rpc('exportacion_fallida', { p_id: id, p_error: e instanceof Error ? e.message : String((e as { message?: string })?.message ?? e) });
+		throw e;
+	}
+}

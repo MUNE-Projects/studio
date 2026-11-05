@@ -20,7 +20,7 @@
 # (publicar o volver) y herramientas/desplegar.mjs (enviar a Cloudflare).
 
 name: Publicar desde el Panel
-run-name: ${{ inputs.accion }} ${{ inputs.promocion }} ${{ inputs.version }} · ${{ inputs.por }}
+run-name: ${{ inputs.accion }} ${{ inputs.promocion }} ${{ inputs.version }}
 
 on:
   workflow_dispatch:

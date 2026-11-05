@@ -8,7 +8,8 @@
 - **Cada noche** (`.github/workflows/copias.yml`), en el almacén privado **MUNE-Projects/copias** de GitHub, como *releases* en borrador (en *Releases*, no en el código). No van al historial de git: al borrar una copia, desaparece de verdad (decisión 56):
   - **la base de datos**: todo lo de MUNE y los usuarios, con su contraseña cifrada y su código del móvil. Se lee con el usuario `copias` de la base de datos, que **solo puede leer**. Cada noche, una copia `bd-AAAA-MM-DD-HHMMSS` (con `datos.tar.gz.gpg` y el índice de archivos, `indice.json.gpg`). **Se conservan las de los últimos 31 días;**
   - **los archivos nuevos**: documentación, entregables y fotos de referencia. Se leen con la cuenta `hello.muneprojects+copias@gmail.com` de MUNE, que **solo puede verlos**. Se guardan una sola vez (en MUNE no se modifican), en un paquete por noche: `archivos-AAAA-MM-DD-HHMMSS` (`archivos.tar.gpg`). Si un archivo se borra en Supabase, sigue en su paquete 31 días (lo que tarda en caducar la última copia de la base de datos que lo tenía) y después el paquete se rehace sin él. Mientras tanto, en el índice solo queda una huella de su nombre, no el nombre.
-- **Lo que se borra en MUNE desaparece de las copias en 31 días como máximo.**
+- **Lo que se elimina en MUNE (base de datos y archivos de esos cuatro almacenes) desaparece de estas copias en 31 días como máximo.** Esto no cubre lo que ya ha salido de Supabase por otro camino (emails enviados, descargas, el historial de GitHub Actions, lo que haya en un ordenador): ver el inventario de conservación. No van en las copias el almacén temporal `exportaciones` (caduca solo) ni el `portfolio`.
+- **La lista de eliminaciones** (decisión 70): cada promoción o promotora eliminada, acceso retirado o borrado, código de comprador revocado y autorización de portfolio retirada se apunta en la tabla `eliminaciones` **solo con una huella** (un código que no deja ver el nombre). `eliminaciones.yml` («Guardar las eliminaciones») la guarda en la release **«eliminaciones»** del almacén `copias`, que **no caduca**: es lo que impide que una copia anterior vuelva a abrir algo eliminado, también lo eliminado después de la última copia. Se lanza solo (la base de datos avisa con cada eliminación) y cada noche; si falla, llega un aviso «⚠️ La lista de eliminaciones no se ha podido guardar». Una promoción o promotora no se elimina hasta que está guardada ahí.
 - **Todo va cifrado** con la **contraseña de las copias** (`COPIAS_CIFRADO`). Sin ella las copias no sirven, ni a MUNE ni a nadie que entrara en GitHub. **Guárdala también fuera de GitHub**: en tu gestor de contraseñas y en papel, en un sitio seguro.
 - **Cada tres meses** (`.github/workflows/simulacro.yml`, el día 2 de enero, abril, julio y octubre), el simulacro:
   1. levanta dentro de GitHub un Supabase vacío, nunca el real;
@@ -112,7 +113,10 @@ Solo si Supabase pierde datos, en caso de un error grave o de una pérdida total
 1. Se crea un proyecto de Supabase nuevo y vacío (gratuito, en la UE).
 2. Se le aplica la estructura: `supabase/copias/estructura.sh` o, a mano, los archivos SQL en orden.
 3. `node supabase/copias/bajar.mjs [--fecha AAAA-MM-DD]` descarga la copia elegida (o la última) a una carpeta, y `node supabase/copias/restaurar.mjs --bd <dirección del proyecto nuevo> --archivos --comprobar --forzar` la recupera. Necesitan la contraseña de cifrado, la llave B y la clave secreta del proyecto nuevo, que se configuran como secretos, nunca en el chat.
-4. Se cambian las direcciones de MUNE Studio, el Portal y las funciones al proyecto nuevo, o se recupera solo lo que se perdió en el actual.
+   Al terminar, el proyecto recuperado queda **cerrado** («pendiente de comprobar»): ninguna persona de las promotoras ni ningún comprador puede entrar, y no se puede enviar ninguna web a Cloudflare.
+4. **Paso obligatorio: las eliminaciones.** `node supabase/copias/eliminaciones.mjs aplicar --bd <dirección del proyecto nuevo>` (con `COPIAS_REPO`, `COPIAS_TOKEN`, `SUPABASE_URL` y `SUPABASE_SERVICE_KEY` del proyecto nuevo como secretos). Junta la lista guardada fuera de Supabase con la de la copia, vuelve a eliminar o retirar lo que la copia traiga (también sus archivos) y comprueba que no queda nada. Si sale «✓ Comprobado», se repite con `--abrir` y solo entonces se abre. Si sale «✗», sigue cerrado: díselo a Claude. **Sigue cerrado también si la lista de fuera no se puede leer, no existe o es anterior a la copia recuperada**: hay que conseguir una actualizada o, tras revisarlo con Claude, repetir con `--lista-revisada "quién y por qué"`. Se niega a trabajar sobre el proyecto real.
+   Cuando el proyecto recuperado pase a ser el de MUNE, se apunta su dirección para que avise solo de las eliminaciones: `update public.sincronizacion set url = 'https://<proyecto>.supabase.co/functions/v1/exportacion', apikey = '<su clave publishable>' where id = 1;` (la recuperación lo deja apagado).
+5. Se cambian las direcciones de MUNE Studio, el Portal y las funciones al proyecto nuevo, o se recupera solo lo que se perdió en el actual.
 
 **Pérdida máxima:** lo que se hizo desde la última copia (como mucho, un día).
 
@@ -124,6 +128,7 @@ Solo si Supabase pierde datos, en caso de un error grave o de una pérdida total
   - `copias_hechas` y `registrar_copia`;
   - avisos y estado del sistema con las copias.
 - `supabase/copias/`: `copiar.mjs`, `bajar.mjs`, `restaurar.mjs`, `registrar.mjs`, `estructura.sh`, `comun.mjs`, `github.mjs` (las copias como releases) y `simulacro/` (Supabase local del simulacro).
-- `.github/workflows/copias.yml` y `.github/workflows/simulacro.yml`.
+- `.github/workflows/copias.yml`, `.github/workflows/simulacro.yml` y `.github/workflows/eliminaciones.yml` («Guardar las eliminaciones»).
+- `supabase/045_cierre_y_eliminacion.sql` (`eliminaciones`, `restauracion`) y `supabase/copias/eliminaciones.mjs` (`guardar` y `aplicar`).
 - `app/src/sistema.ts` (Sistema → Copias de seguridad).
 - La prueba de aislamiento comprueba que la cuenta y el usuario de copias solo pueden leer, y que nadie más apunta copias.

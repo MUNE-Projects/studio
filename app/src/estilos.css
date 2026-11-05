@@ -156,6 +156,9 @@ h4 { margin: 18px 0 6px; font-size: 14px; font-weight: 600; }
 label.en-linea { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 label.en-linea select { width: auto; }
 input[type=checkbox] { width: auto; }
+label.opcion { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; color: var(--tinta); }
+label.opcion input { width: auto; margin-top: 3px; flex: none; }
+label.en-linea input.corto { width: 5.5em; }
 .requisitos ul { margin: 0 0 8px; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
 
 @media (prefers-reduced-motion: reduce) {
