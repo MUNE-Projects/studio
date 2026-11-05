@@ -309,7 +309,7 @@ if '--exposicion' not in sys.argv:
     im = bpy.data.images.load(medida)
     px = np.array(im.pixels[:]).reshape(-1, 4)[:, :3]
     l = px @ np.array([0.2126, 0.7152, 0.0722])
-    lum = float(np.percentile(l, 45))  # la estancia, no la ventana (percentil: robusto ante el cielo y el grano)
+    lum = max(float(np.percentile(l, 45)), float(np.mean(l)) * 0.3, 1e-4)  # la estancia, no la ventana; nunca cero
     esc.view_settings.exposure = float(np.clip(np.log2(arg('--brillo', 0.2) / lum), -2, 9))
     print('exposición automática: %.2f (luz media %.4f)' % (esc.view_settings.exposure, lum))
     os.remove(medida)
