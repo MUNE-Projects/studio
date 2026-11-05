@@ -1569,6 +1569,17 @@ async function iniciar() {
 			return { glb: btoa( bin ), datos };
 
 		};
+		( window as unknown as { renderFoto: ( w: number, h: number, n: number ) => Promise<string> } ).renderFoto = async ( w, h, n ) => {
+
+			const { renderFoto } = await import( './escena/renderFoto' );
+			const blob = await renderFoto( renderer, escena, camara, luzSol, ( p ) => ( pausado = p ), { ancho: w, alto: h, muestras: n, tipo: 'image/png',
+				progreso: ( f ) => console.info( 'render foto', Math.round( f * 100 ), '%' ) } );
+			const b = new Uint8Array( await blob.arrayBuffer() );
+			let bin = '';
+			for ( let i = 0; i < b.length; i += 0x8000 ) bin += String.fromCharCode( ...b.subarray( i, i + 0x8000 ) );
+			return btoa( bin );
+
+		};
 
 	}
 	const muestrasHD = Number( new URLSearchParams( location.search ).get( 'hdmuestras' ) ) || 0;
@@ -1623,10 +1634,41 @@ async function iniciar() {
 
 			},
 		} ) );
+		// calidad fotográfica: la luz calculada rayo a rayo, en la tarjeta gráfica de este ordenador (renderFoto.ts)
+		opciones.unshift( {
+			titulo: 'Calidad fotográfica', detalle: 'La luz calculada como en los programas de infografía: rebotes, sombras suaves y reflejos reales. Tarda entre uno y cinco minutos, según el ordenador.', formato: '',
+			hacer: async ( pr: ( t: string ) => void ) => {
+
+				const ancho = 1920, alto = Math.round( ancho * proporcion[ 1 ] / proporcion[ 0 ] );
+				capturando = true;
+				try {
+
+					pr( 'Calculando la luz…' );
+					const { renderFoto } = await import( './escena/renderFoto' );
+					const blob = await renderFoto( renderer, escena, camara, luzSol, ( p ) => ( pausado = p ), {
+						ancho, alto, muestras: Number( new URLSearchParams( location.search ).get( 'fotomuestras' ) ) || 384, aviso: PROMOCION.marca.legal.imagenes,
+						progreso: ( f ) => pr( `Calculando la luz… ${ Math.round( f * 100 ) } %` ),
+					} );
+					await descargar( `foto-${ nombreArchivo( cam.actual || 'vista' ) }-${ ancho }x${ alto }.jpg`, blob );
+
+				} catch ( e ) {
+
+					console.error( e );
+					avisar( 'Este ordenador no puede calcular la calidad fotográfica. Prueba con un navegador actualizado (Chrome o Edge) o descarga el Render HD.' );
+
+				} finally {
+
+					capturando = false;
+					despertar();
+
+				}
+
+			},
+		} );
 		abrirDescarga( 'Render HD', 'Descarga una imagen de la vista actual, sin interfaz y con más calidad que el visor. Elige el tamaño según dónde la vayas a usar. Puede tardar desde unos segundos hasta un par de minutos.', opciones, formatos );
 		const actualizar = () => dialogoDescarga.querySelectorAll<HTMLElement>( '.opcion-descarga' ).forEach( ( el, i ) => {
 
-			const ancho = resoluciones[ i ][ 2 ];
+			const ancho = i === 0 ? 1920 : resoluciones[ i - 1 ][ 2 ];
 			el.querySelector( '.formato' )!.textContent = `${ ancho } × ${ Math.round( ancho * proporcion[ 1 ] / proporcion[ 0 ] ) }`;
 
 		} );

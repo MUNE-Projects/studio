@@ -115,7 +115,10 @@ def material(nombre):
         return br.outputs['Color']
 
     oscuro = tuple(c * 0.55 for c in color[:3]) + (1,)
-    if acabado in ('tarima', 'madera', 'laminado'):
+    if acabado == 'laminado' and v0 < 0.05:
+        # frentes lacados: liso, satinado
+        bsdf.inputs['Roughness'].default_value = 0.35
+    elif acabado in ('tarima', 'madera', 'laminado'):
         claro, rg, alto = real('roble', giro=(acabado == 'tarima'))
         col = tenir(claro, 0.16)
         if acabado == 'tarima': col = despiece(v0, v3, v1, col, oscuro)
@@ -237,7 +240,43 @@ esc.cycles.caustics_reflective = False
 esc.cycles.caustics_refractive = False
 esc.view_settings.view_transform = 'AgX'
 esc.view_settings.look = 'AgX - Medium High Contrast' if 'AgX - Medium High Contrast' in [x.identifier for x in esc.view_settings.bl_rna.properties['look'].enum_items] else 'None'
-esc.view_settings.exposure = arg('--exposicion', 1.8)
+esc.view_settings.exposure = arg('--exposicion', 2.3)
+# contraste suave de fotografía (curva en S): negros con cuerpo sin quemar los blancos
+try:
+    esc.view_settings.use_curve_mapping = True
+    curva = esc.view_settings.curve_mapping.curves[3]
+    curva.points[0].location = (0.0, 0.0); curva.points[1].location = (1.0, 1.0)
+    curva.points.new(0.25, 0.21); curva.points.new(0.75, 0.79)
+    esc.view_settings.curve_mapping.update()
+except Exception as e:
+    print('sin curva de contraste:', e)
+# equilibrio de blancos de fotógrafo de interiores: el cielo azul no enfría la estancia
+try:
+    esc.view_settings.use_white_balance = True
+    esc.view_settings.white_balance_temperature = arg('--temperatura', 7200.0)
+except Exception as e:
+    print('sin equilibrio de blancos:', e)
+# exposímetro de fotógrafo: un render pequeño y rápido mide la luz media de la
+# vista y se abre o se cierra el «diafragma» para que la estancia se vea clara
+if '--exposicion' not in sys.argv:
+    import numpy as np
+    esc.render.resolution_percentage = 15
+    esc.cycles.samples = 16
+    esc.cycles.use_denoising = False
+    esc.render.image_settings.file_format = 'OPEN_EXR'
+    medida = os.path.join(os.path.dirname(salida), '.medida.exr')
+    esc.render.filepath = medida
+    bpy.ops.render.render(write_still=True)
+    im = bpy.data.images.load(medida)
+    px = np.array(im.pixels[:]).reshape(-1, 4)[:, :3]
+    l = px @ np.array([0.2126, 0.7152, 0.0722])
+    lum = float(np.percentile(l, 60))  # la estancia, no la ventana (percentil: robusto ante el cielo y el grano)
+    esc.view_settings.exposure = float(np.clip(np.log2(arg('--brillo', 0.16) / lum), -2, 9))
+    print('exposición automática: %.2f (luz media %.4f)' % (esc.view_settings.exposure, lum))
+    os.remove(medida)
+    esc.render.resolution_percentage = 100
+    esc.cycles.samples = muestras
+    esc.cycles.use_denoising = True
 esc.render.image_settings.file_format = 'PNG'
 esc.render.filepath = salida
 bpy.ops.render.render(write_still=True)

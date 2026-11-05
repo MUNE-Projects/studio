@@ -27,7 +27,7 @@ const hex = ( c: THREE.Color ) => `#${ c.getHexString() }`;
 function colorBase( u: Valores ): THREE.Color {
 
 	const a = ACABADOS[ u.acabado ];
-	if ( a === 'tarima' ) return ( P.suelo.claro as any ).value.clone().lerp( ( P.suelo.oscuro as any ).value, 0.45 );
+	if ( a === 'tarima' ) return ( P.suelo.claro as any ).value.clone().lerp( ( P.suelo.oscuro as any ).value, 0.25 );
 	if ( a === 'laminado' ) return ( P.cocina.claro as any ).value.clone();
 	if ( a === 'cuarzo' ) return ( P.encimera.base as any ).value.clone();
 	if ( u.fuente === 1 ) return ( P.banos.suelo as any ).value.clone();
@@ -74,7 +74,9 @@ function estandar( m: THREE.Material ): THREE.Material {
 		}
 		// el nombre lleva lo que el render necesita para poner el material real:
 		// acabado, color, segundo color, rugosidad y medidas de la pieza (v0 ancho, v3 largo, v1 junta, v6 aspecto)
-		s.name = [ 'mune', a, hex( c ), hex( u.c1 ), s.roughness.toFixed( 3 ), u.v0.toFixed( 4 ), u.v3.toFixed( 4 ), u.v1.toFixed( 4 ), u.v6.toFixed( 0 ) ].join( ':' );
+		// (laminado de cocina: v0 lleva cuánta veta tiene la opción elegida; 0 = lacado liso)
+		const v0 = a === 'laminado' ? ( P.cocina.veta as any ).value : u.v0;
+		s.name = [ 'mune', a, hex( c ), hex( u.c1 ), s.roughness.toFixed( 3 ), Number( v0 ).toFixed( 4 ), u.v3.toFixed( 4 ), u.v1.toFixed( 4 ), u.v6.toFixed( 0 ) ].join( ':' );
 		r = s;
 
 	}
@@ -95,7 +97,8 @@ function visible( o: THREE.Object3D ) {
  * La escena tal como se ve ahora, lista para el render: .glb con la geometría
  * visible (en coordenadas del mundo) y un JSON con la cámara y el sol.
  */
-export async function exportarRender( escena: THREE.Scene, camara: THREE.PerspectiveCamera, sol: THREE.DirectionalLight ) {
+/** La escena tal como se ve ahora, con materiales estándar y la geometría en coordenadas del mundo. */
+export function escenaEstandar( escena: THREE.Scene ): THREE.Scene {
 
 	escena.updateMatrixWorld( true );
 	const salida = new THREE.Scene();
@@ -110,6 +113,17 @@ export async function exportarRender( escena: THREE.Scene, camara: THREE.Perspec
 		salida.add( copia );
 
 	} );
+	return salida;
+
+}
+
+/**
+ * La escena tal como se ve ahora, lista para el render: .glb con la geometría
+ * visible (en coordenadas del mundo) y un JSON con la cámara y el sol.
+ */
+export async function exportarRender( escena: THREE.Scene, camara: THREE.PerspectiveCamera, sol: THREE.DirectionalLight ) {
+
+	const salida = escenaEstandar( escena );
 	const glb = await new GLTFExporter().parseAsync( salida, { binary: true } ) as ArrayBuffer;
 	const dir = sol.position.clone().sub( sol.target.position ).normalize();
 	const datos = {
