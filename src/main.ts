@@ -1556,6 +1556,21 @@ async function iniciar() {
 
 	// ---------------------------------------------------------------- render HD (imagen comercial)
 	const hd = new RenderHD( renderer, escena, camara, luzSol, () => lucesVentana.children.filter( ( l ): l is THREE.SpotLight => ( l as THREE.SpotLight ).isSpotLight ) );
+	// Render foto (prueba): la escena tal como se ve, para Blender (herramientas/render_foto.py)
+	if ( new URLSearchParams( location.search ).has( 'exportar-render' ) ) {
+
+		( window as unknown as { exportarRender: () => Promise<unknown> } ).exportarRender = async () => {
+
+			const { exportarRender } = await import( './escena/exportarRender' );
+			const { glb, datos } = await exportarRender( escena, camara, luzSol );
+			let bin = '';
+			const b = new Uint8Array( glb );
+			for ( let i = 0; i < b.length; i += 0x8000 ) bin += String.fromCharCode( ...b.subarray( i, i + 0x8000 ) );
+			return { glb: btoa( bin ), datos };
+
+		};
+
+	}
 	const muestrasHD = Number( new URLSearchParams( location.search ).get( 'hdmuestras' ) ) || 0;
 	let proporcion: [ number, number ] = [ 16, 9 ];
 	$( '#foto' ).addEventListener( 'click', () => {
