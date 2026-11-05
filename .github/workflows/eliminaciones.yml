@@ -1,19 +1,30 @@
 # Guardar la lista de eliminaciones fuera de Supabase (receta 18, decisión 70).
 #
-# Cada promoción, promotora, acceso o código de comprador eliminado o retirado
-# queda apuntado en Supabase con solo una huella. Esta lista se copia a la
-# release «eliminaciones» del almacén de copias, que no caduca: así, al
-# recuperar una copia (aunque sea anterior), no vuelve nada de lo eliminado.
-# La lanza la función «exportacion» después de cada eliminación y copias.yml
-# cada noche. Con el usuario «copias» (solo lectura) y la llave B. Gratis.
+# Cada promoción, promotora, acceso, código de comprador o autorización de
+# portfolio eliminado o retirado queda apuntado en Supabase con solo una
+# huella. Este proceso copia esa lista a la release «eliminaciones» del
+# almacén de copias, que no caduca, la comprueba y marca las filas como
+# guardadas: así, al recuperar una copia (aunque sea anterior), no vuelve nada
+# de lo eliminado. Una promoción o una promotora no se elimina hasta que su
+# eliminación está guardada aquí.
+#
+# Se lanza solo: la base de datos avisa a la función «exportacion» con cada
+# eliminación nueva (pg_net) y la función lo lanza; además, cada noche, para
+# comprobar que la lista se puede leer y recoger lo que se hubiera quedado sin
+# guardar. A mano (Run workflow) solo hace falta al instalarlo. Si falla,
+# abre un aviso «⚠️ …» (email) que se cierra solo cuando vuelve a funcionar.
+# Con la cuenta «ejecutor» (EJECUTOR_CLAVE) y la llave B. Gratis.
 name: Guardar las eliminaciones
 run-name: guardar las eliminaciones
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '47 3 * * *'
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: eliminaciones
@@ -24,10 +35,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      SUPABASE_POOLER: ${{ vars.SUPABASE_POOLER }}
-      COPIAS_BD_CLAVE: ${{ secrets.COPIAS_BD_CLAVE }}
+      EJECUTOR_CLAVE: ${{ secrets.EJECUTOR_CLAVE }}
       COPIAS_REPO: MUNE-Projects/copias
       COPIAS_TOKEN: ${{ secrets.ESCAPARATE_TOKEN }}
+      TITULO: ⚠️ La lista de eliminaciones no se ha podido guardar
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,5 +46,31 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Guardar
+      - name: Guardar y comprobar
         run: node supabase/copias/eliminaciones.mjs guardar
+
+      - name: Avisar si ha fallado
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh label create sistema --repo "$REPO" --color 9B2C2C --description "Avisos del sistema (vigilancia automática)" 2>/dev/null || true
+          abierto=$(gh issue list --repo "$REPO" --label sistema --state open --limit 100 --json number,title \
+            --jq '.[] | select(.title == $ENV.TITULO) | .number' | head -n1)
+          [[ -n "$abierto" ]] || gh issue create --repo "$REPO" --label sistema --title "$TITULO" --body "$(printf '%s\n' \
+            "La lista de eliminaciones no se ha podido guardar fuera de Supabase." "" \
+            "Mientras tanto no se puede eliminar ninguna promoción ni promotora (MUNE Studio lo dice al intentarlo). Lo demás funciona. Díselo a Claude." "" \
+            "Detalle: $GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID" "" \
+            "_Este aviso se cierra solo la próxima vez que funcione._")"
+
+      - name: Cerrar el aviso si ya funciona
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          for n in $(gh issue list --repo "$REPO" --label sistema --state open --limit 100 --json number,title \
+            --jq '.[] | select(.title == $ENV.TITULO) | .number'); do
+            gh issue close "$n" --repo "$REPO" --comment "Resuelto: la lista de eliminaciones vuelve a guardarse."
+          done

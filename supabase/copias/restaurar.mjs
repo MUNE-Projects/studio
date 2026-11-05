@@ -112,8 +112,11 @@ console.log( 'Base de datos recuperada.' );
 // entran y no se publica hasta «eliminaciones.mjs aplicar --abrir».
 if ( consulta( `select to_regclass('public.restauracion') is not null`, con, datos ) === 't' ) {
 
-	consulta( `insert into public.restauracion (id, pendiente, detalle) values (1, true, '{"copia": "${ resumen.fecha }"}')
+	const detalle = JSON.stringify( { copia: resumen.fecha, copia_creada: resumen.creada } );
+	consulta( `insert into public.restauracion (id, pendiente, detalle) values (1, true, '${ detalle }')
 		on conflict (id) do update set pendiente = true, desde = now(), comprobada_en = null, detalle = excluded.detalle`, con, datos );
+	// La base de datos recuperada no avisa a la función del proyecto anterior: se apunta la suya al cambiar MUNE a ella (receta 18)
+	consulta( `update public.sincronizacion set url = null, ultima_peticion = null where id = 1`, con, datos );
 	console.log( 'Proyecto recuperado CERRADO hasta comprobar las eliminaciones (receta 18).' );
 
 }

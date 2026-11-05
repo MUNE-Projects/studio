@@ -115,8 +115,10 @@ create table if not exists public.eliminaciones (
 	id      bigint generated always as identity primary key,
 	momento timestamptz not null default now(),
 	tipo    text not null check (tipo in ('promocion', 'promotora', 'acceso_borrado', 'acceso_retirado', 'acceso_devuelto', 'codigo_revocado', 'codigo_reactivado', 'portfolio_retirado')),
-	huella  text not null check (huella ~ '^[0-9a-f]{64}$')
+	huella  text not null check (huella ~ '^[0-9a-f]{64}$'),
+	guardada_en timestamptz              -- ya está en la lista de fuera de Supabase (eliminaciones.yml)
 );
+alter table public.eliminaciones add column if not exists guardada_en timestamptz;
 alter table public.eliminaciones drop constraint if exists eliminaciones_tipo_check;
 alter table public.eliminaciones add constraint eliminaciones_tipo_check check (tipo in ('promocion', 'promotora', 'acceso_borrado', 'acceso_retirado', 'acceso_devuelto', 'codigo_revocado', 'codigo_reactivado', 'portfolio_retirado'));
 alter table public.eliminaciones enable row level security;
@@ -145,9 +147,11 @@ set search_path = ''
 as $$
 begin
 	if tg_table_name = 'promociones' and tg_op = 'DELETE' then
-		insert into public.eliminaciones (tipo, huella) values ('promocion', public.huella_de('promocion:' || old.id));
+		insert into public.eliminaciones (tipo, huella) select 'promocion', public.huella_de('promocion:' || old.id)
+		where not exists (select 1 from public.eliminaciones e where e.tipo = 'promocion' and e.huella = public.huella_de('promocion:' || old.id));
 	elsif tg_table_name = 'promotoras' and tg_op = 'DELETE' then
-		insert into public.eliminaciones (tipo, huella) values ('promotora', public.huella_de('promotora:' || old.id));
+		insert into public.eliminaciones (tipo, huella) select 'promotora', public.huella_de('promotora:' || old.id)
+		where not exists (select 1 from public.eliminaciones e where e.tipo = 'promotora' and e.huella = public.huella_de('promotora:' || old.id));
 	elsif tg_table_name = 'miembros' and tg_op = 'DELETE' then
 		insert into public.eliminaciones (tipo, huella) values ('acceso_borrado', public.huella_de('acceso:' || old.id));
 	elsif tg_table_name = 'miembros' and old.activo is distinct from new.activo then
@@ -184,7 +188,7 @@ create table if not exists public.exportaciones (
 	promocion_id   text,                 -- null: la promotora entera
 	titulo         text not null check (char_length(titulo) between 1 and 200),
 	estado         text not null default 'preparando'
-	               check (estado in ('preparando', 'lista', 'enviada', 'fallida', 'revocada', 'caducada')),
+	               check (estado in ('preparando', 'lista', 'enviando', 'enviada', 'fallida', 'revocada', 'caducada')),
 	partes         jsonb not null default '[]'::jsonb check (jsonb_typeof(partes) = 'array'),
 	archivos       int,
 	tamano         bigint,
@@ -197,6 +201,7 @@ create table if not exists public.exportaciones (
 	ultima_descarga timestamptz,
 	creada_en      timestamptz not null default now(),
 	creada_por     uuid default auth.uid(),
+	enviando_desde timestamptz,           -- se está enviando el email (proceso de GitHub)
 	enviada_en     timestamptz,
 	terminada_en   timestamptz
 );
@@ -260,7 +265,12 @@ begin
 		where pr.id = p_promocion and pr.promotora_id = p_promotora and not (pr.activa and po.activa);
 		if v_titulo is null then raise exception 'Primero desactiva la promoción'; end if;
 	end if;
-	-- una sola en preparación por promoción o promotora
+	-- una sola a la vez: la que está lista o enviada se revoca antes
+	if exists (select 1 from public.exportaciones e where e.promotora_id = p_promotora and e.promocion_id is not distinct from p_promocion
+			and (e.estado in ('lista', 'enviando') or (e.estado = 'enviada' and e.caduca_en > now()))) then
+		raise exception 'Ya hay una exportación preparada o enviada: revócala antes de preparar otra';
+	end if;
+	-- la que se quedó a medias (por ejemplo, al cerrar la página) se da por fallida
 	update public.exportaciones set estado = 'fallida', error = 'Sustituida por otra exportación', terminada_en = now()
 	where promotora_id = p_promotora and promocion_id is not distinct from p_promocion and estado = 'preparando';
 	insert into public.exportaciones (promotora_id, promocion_id, titulo, dias)
@@ -373,7 +383,20 @@ as $$
 $$;
 revoke all on function public._eliminacion_permitida(uuid, text) from public, anon, authenticated;
 
--- 010, con la comprobación de la exportación
+-- ¿Está ya guardada fuera de Supabase la eliminación de esta promoción o promotora?
+create or replace function public._eliminacion_guardada(p_tipo text, p_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+	select exists (select 1 from public.eliminaciones e
+		where e.tipo = p_tipo and e.huella = public.huella_de(p_tipo || ':' || p_id) and e.guardada_en is not null);
+$$;
+revoke all on function public._eliminacion_guardada(text, text) from public, anon, authenticated;
+
+-- 010, con la comprobación de la exportación y de la eliminación guardada fuera
 create or replace function public.borrar_promocion(p_id text, p_nombre text)
 returns void
 language plpgsql
@@ -399,6 +422,9 @@ begin
 	end if;
 	if not public._eliminacion_permitida(pr.promotora_id, p_id) then
 		raise exception 'Antes de eliminarla, envía su exportación a la promotora o anota que la ha pedido sin exportación';
+	end if;
+	if not public._eliminacion_guardada('promocion', p_id) then
+		raise exception 'Antes de eliminarla se tiene que guardar la eliminación fuera de Supabase: vuelve a pulsar «Eliminar para siempre» en un momento';
 	end if;
 	if exists (select 1 from public.archivos_de_promocion(p_id)) then
 		raise exception 'Todavía quedan archivos de esta promoción: vuelve a pulsar «Eliminar»';
@@ -439,6 +465,9 @@ begin
 	end if;
 	if not public._eliminacion_permitida(p_id, null) then
 		raise exception 'Antes de eliminarla, envía su exportación a la promotora o anota que la ha pedido sin exportación';
+	end if;
+	if not public._eliminacion_guardada('promotora', p_id::text) then
+		raise exception 'Antes de eliminarla se tiene que guardar la eliminación fuera de Supabase: vuelve a pulsar «Eliminar para siempre» en un momento';
 	end if;
 	if exists (select 1 from public.archivos_de_promotora(p_id)) then
 		raise exception 'Todavía quedan archivos de esta promotora: vuelve a pulsar «Eliminar»';
@@ -594,5 +623,193 @@ begin
 end $$;
 revoke all on function public.retirar_portfolio(bigint) from public, anon;
 grant execute on function public.retirar_portfolio(bigint) to authenticated;
+
+-- ═══ 5. Las eliminaciones, guardadas fuera de Supabase sin depender de nadie ═
+--
+-- Cada fila nueva de «eliminaciones» avisa sola (pg_net, desde la propia base
+-- de datos) a la función «exportacion», acción «sincronizar», que lanza
+-- eliminaciones.yml: este copia la lista a la release «eliminaciones» del
+-- almacén de copias, comprueba que ha quedado y marca las filas como
+-- guardadas (con la cuenta «ejecutor»). Si algo falla, las filas siguen «sin
+-- guardar»: lo vuelven a pedir MUNE Studio, la vigilancia y la copia de la
+-- noche. Una promoción o una promotora no se elimina hasta que su eliminación
+-- está guardada fuera (pedir_eliminacion → guardada → borrar_*).
+
+create extension if not exists pg_net;
+
+create table if not exists public.sincronizacion (
+	id              int primary key default 1 check (id = 1),
+	url             text,                 -- la función «exportacion» de este proyecto (null: apagado)
+	apikey          text,                 -- la clave pública (publishable) de este proyecto
+	ultima_peticion timestamptz
+);
+alter table public.sincronizacion enable row level security;
+revoke all on public.sincronizacion from anon, authenticated;
+grant select, update on public.sincronizacion to service_role;
+insert into public.sincronizacion (id, url, apikey)
+values (1, 'https://iowtdenlkxjqzlpwizgb.supabase.co/functions/v1/exportacion', 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR')
+on conflict (id) do nothing;
+grant select on public.eliminaciones to service_role;
+
+create or replace function public._pide_sincronizar()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+	s public.sincronizacion%rowtype;
+begin
+	select * into s from public.sincronizacion where id = 1;
+	if s.url is not null then
+		begin
+			perform net.http_post(url := s.url, body := '{"accion": "sincronizar"}'::jsonb,
+				headers := jsonb_build_object('Content-Type', 'application/json', 'apikey', coalesce(s.apikey, '')),
+				timeout_milliseconds := 10000);
+		exception when others then
+			null; -- la fila sigue «sin guardar» y se vuelve a pedir (MUNE Studio, vigilancia, copia de la noche)
+		end;
+	end if;
+	return null;
+end $$;
+revoke all on function public._pide_sincronizar() from public, anon, authenticated;
+drop trigger if exists pide_sincronizar on public.eliminaciones;
+create trigger pide_sincronizar after insert on public.eliminaciones
+	for each statement execute function public._pide_sincronizar();
+
+-- MUNE Studio, antes de eliminar: apunta la eliminación (se guarda fuera sola)
+create or replace function public.pedir_eliminacion(p_tipo text, p_id text, p_nombre text)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+	v_nombre text;
+	v_activa boolean;
+	v_promotora uuid;
+	v_huella text;
+begin
+	if not public.es_admin() then raise exception 'Solo la administradora'; end if;
+	if p_tipo = 'promocion' then
+		select pr.nombre, pr.activa, pr.promotora_id into v_nombre, v_activa, v_promotora from public.promociones pr where pr.id = p_id;
+	elsif p_tipo = 'promotora' then
+		select po.nombre, po.activa, po.id into v_nombre, v_activa, v_promotora from public.promotoras po where po.id::text = p_id;
+	else
+		raise exception 'Tipo no válido';
+	end if;
+	if v_nombre is null then raise exception 'No existe'; end if;
+	if v_activa then raise exception 'Primero desactívala'; end if;
+	if btrim(coalesce(p_nombre, '')) <> btrim(v_nombre) then raise exception 'El nombre escrito no coincide'; end if;
+	if not public._eliminacion_permitida(v_promotora, case when p_tipo = 'promocion' then p_id end) then
+		raise exception 'Antes de eliminarla, envía su exportación a la promotora o anota que la ha pedido sin exportación';
+	end if;
+	v_huella := public.huella_de(p_tipo || ':' || p_id);
+	if exists (select 1 from public.eliminaciones e where e.tipo = p_tipo and e.huella = v_huella and e.guardada_en is not null) then
+		return 'guardada';
+	end if;
+	if not exists (select 1 from public.eliminaciones e where e.tipo = p_tipo and e.huella = v_huella) then
+		insert into public.eliminaciones (tipo, huella) values (p_tipo, v_huella);
+		insert into public.registro (user_id, accion, detalle)
+		values (auth.uid(), 'pide eliminar', jsonb_build_object('tipo', p_tipo, 'id', p_id));
+	end if;
+	return 'pendiente';
+end $$;
+revoke all on function public.pedir_eliminacion(text, text, text) from public, anon;
+grant execute on function public.pedir_eliminacion(text, text, text) to authenticated;
+
+-- eliminaciones.yml: marca como guardadas las que ya están fuera (hasta un número de fila)
+create or replace function public.marcar_eliminaciones_guardadas(p_hasta bigint)
+returns int
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+	n int;
+begin
+	if not public.es_ejecutor() then raise exception 'Solo la cuenta ejecutor'; end if;
+	update public.eliminaciones set guardada_en = now() where id <= p_hasta and guardada_en is null;
+	get diagnostics n = row_count;
+	return n;
+end $$;
+revoke all on function public.marcar_eliminaciones_guardadas(bigint) from public, anon;
+grant execute on function public.marcar_eliminaciones_guardadas(bigint) to authenticated;
+
+-- ═══ 6. El email de la exportación, sin que su enlace pase por GitHub ═══════
+--
+-- La función «exportacion» (acción «enviar») deja la exportación «enviando» y
+-- lanza aviso-exportacion.yml solo con su identificador. El proceso entra
+-- con la cuenta «ejecutor», pide aquí el enlace (se crea una sola vez por
+-- envío; en Supabase solo queda su huella), envía el email y lo confirma.
+-- Si falla, vuelve a «lista», sin enlace válido, para reintentar.
+
+create or replace function public.exportacion_para_enviar(p_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+	e public.exportaciones%rowtype;
+	v_token text;
+	v_para text[];
+begin
+	if not public.es_ejecutor() then raise exception 'Solo la cuenta ejecutor'; end if;
+	select * into e from public.exportaciones where id = p_id for update;
+	if not found or e.estado <> 'enviando' or e.enviando_desde < now() - interval '30 minutes' then
+		raise exception 'Esta exportación no se está enviando';
+	end if;
+	if e.token_huella is not null then raise exception 'El enlace de este envío ya se ha creado'; end if;
+	select array_agg(distinct lower(btrim(m.email))) into v_para from public.miembros m
+	where m.promotora_id = e.promotora_id and m.activo and m.administra
+		and (m.promocion_id is null or (e.promocion_id is not null and m.promocion_id = e.promocion_id))
+		and m.email ~ '^[^\s@,]+@[^\s@,]+\.[^\s@,]+$';
+	if v_para is null then raise exception 'Nadie administra esta promotora en MUNE Portal'; end if;
+	v_token := rtrim(translate(encode(extensions.gen_random_bytes(32), 'base64'), '+/', '-_'), '=');
+	update public.exportaciones set token_huella = public.huella_de(v_token), destinatarios = cardinality(v_para),
+		caduca_en = coalesce(caduca_en, now() + make_interval(days => dias))
+	where id = p_id;
+	return jsonb_build_object('para', to_jsonb(v_para), 'titulo', e.titulo, 'promocion', e.promocion_id is not null,
+		'token', v_token, 'caduca_en', coalesce(e.caduca_en, now() + make_interval(days => e.dias)));
+end $$;
+revoke all on function public.exportacion_para_enviar(uuid) from public, anon;
+grant execute on function public.exportacion_para_enviar(uuid) to authenticated;
+
+create or replace function public.exportacion_confirmada(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+	e public.exportaciones%rowtype;
+begin
+	if not public.es_ejecutor() then raise exception 'Solo la cuenta ejecutor'; end if;
+	update public.exportaciones set estado = 'enviada', enviada_en = now(), enviando_desde = null, error = null
+	where id = p_id and estado = 'enviando' and token_huella is not null
+	returning * into e;
+	if not found then raise exception 'Esta exportación no se estaba enviando'; end if;
+	insert into public.registro (user_id, accion, detalle)
+	values (auth.uid(), 'envía una exportación a la promotora', jsonb_build_object('exportacion', p_id, 'promotora', e.promotora_id,
+		'promocion', e.promocion_id, 'destinatarios', e.destinatarios, 'caduca_en', e.caduca_en));
+end $$;
+revoke all on function public.exportacion_confirmada(uuid) from public, anon;
+grant execute on function public.exportacion_confirmada(uuid) to authenticated;
+
+create or replace function public.exportacion_no_enviada(p_id uuid, p_error text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+	if not public.es_ejecutor() then raise exception 'Solo la cuenta ejecutor'; end if;
+	update public.exportaciones set estado = 'lista', token_huella = null, enviando_desde = null,
+		error = left(coalesce(nullif(btrim(p_error), ''), 'El email no ha salido'), 500)
+	where id = p_id and estado = 'enviando';
+end $$;
+revoke all on function public.exportacion_no_enviada(uuid, text) from public, anon;
+grant execute on function public.exportacion_no_enviada(uuid, text) to authenticated;
 
 select 'Listo: cierre, exportación, portfolio y eliminaciones' as resultado;

@@ -189,8 +189,6 @@ export async function pintarEquipo(caja: HTMLElement, promo: { id: string; nombr
 			if (!confirm(`¿Retirar el acceso a ${p.nombre}?\n\nDejará de poder entrar desde este momento. Puedes devolvérselo más tarde.`)) return;
 			const { error } = await cambiar({ activo: false });
 			if (error) { avisar(traducir(error, 'retirar el acceso'), true); return; }
-			// guardar fuera de Supabase lo retirado, para que una recuperación no lo reabra (045)
-			void sb.functions.invoke('exportacion', { body: { accion: 'apuntar-eliminaciones' } });
 			await recargar(`Has retirado el acceso a ${p.nombre}.`);
 		});
 		fila.querySelector('[data-devolver]')?.addEventListener('click', async () => {

@@ -1,0 +1,110 @@
+# Email de la exportación a quien administra la promotora (decisión 70).
+#
+# Lo lanza la función «exportacion» de Supabase solo con el identificador de
+# la exportación: ni los correos ni el enlace pasan por los datos de entrada.
+# El proceso entra con la cuenta «ejecutor», pide a Supabase el enlace (se crea
+# una sola vez por envío; allí solo queda su huella) y los destinatarios,
+# envía el email desde el Gmail de MUNE y lo confirma. Si algo falla, la
+# exportación vuelve a «lista», sin enlace válido, y se reintenta desde MUNE
+# Studio. Secretos: EJECUTOR_CLAVE y AVISOS_GMAIL_CLAVE. Gratis.
+
+name: Email de la exportación
+run-name: email de una exportación
+
+on:
+  workflow_dispatch:
+    inputs:
+      exportacion:
+        description: identificador de la exportación
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: exportacion-${{ inputs.exportacion }}
+  cancel-in-progress: false
+
+jobs:
+  enviar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      EXPORTACION: ${{ inputs.exportacion }}
+      EJECUTOR_CLAVE: ${{ secrets.EJECUTOR_CLAVE }}
+      CLAVE: ${{ secrets.AVISOS_GMAIL_CLAVE }}
+    steps:
+      - name: Enviar
+        shell: python3 {0}
+        run: |
+          import html, json, os, re, smtplib, ssl, sys, urllib.request
+          from datetime import datetime
+          from email.message import EmailMessage
+          from email.utils import formataddr
+
+          SUPABASE = 'https://iowtdenlkxjqzlpwizgb.supabase.co'
+          PUBLICA = 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR'
+          REMITENTE = 'hello.muneprojects@gmail.com'
+          PORTAL = 'https://portal.mune-projects.workers.dev/descarga/#'
+          MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+          exp = os.environ['EXPORTACION']
+          if not re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', exp):
+              sys.exit('::error::Exportación no válida')
+
+          def pedir(ruta, cuerpo, token=None):
+              cab = {'apikey': PUBLICA, 'Content-Type': 'application/json'}
+              if token: cab['Authorization'] = f'Bearer {token}'
+              r = urllib.request.Request(SUPABASE + ruta, data=json.dumps(cuerpo).encode(), headers=cab, method='POST')
+              with urllib.request.urlopen(r, timeout=30) as res:
+                  texto = res.read().decode() or 'null'
+              return json.loads(texto)
+
+          sesion = pedir('/auth/v1/token?grant_type=password', {'email': 'hello.muneprojects+ejecutor@gmail.com', 'password': os.environ['EJECUTOR_CLAVE']})['access_token']
+          try:
+              clave = os.environ.get('CLAVE', '').replace(' ', '')
+              if not clave:
+                  raise RuntimeError('Falta el secreto AVISOS_GMAIL_CLAVE')
+              d = pedir('/rest/v1/rpc/exportacion_para_enviar', {'p_id': exp}, sesion)
+              print('::add-mask::' + d['token'])
+              for c in d['para']: print('::add-mask::' + c)
+              enlace = PORTAL + d['token']
+              caduca = datetime.fromisoformat(d['caduca_en'].replace('Z', '+00:00'))
+              hasta = f'{caduca.day} de {MESES[caduca.month - 1]} de {caduca.year}'
+              titulo = d['titulo'].replace('\n', ' ')[:150]
+              que = f'la promoción «{titulo}»' if d['promocion'] else f'las promociones de {titulo}'
+              asunto = f'{titulo} · tu exportación de MUNE'
+              texto = (f'El equipo de MUNE ha preparado la exportación de {que}: la documentación que subisteis, con todas sus versiones, '
+                       f'los planos y materiales entregados y los datos de la promoción.\n\n'
+                       f'Descárgala con el botón de este email. Es personal: no lo reenvíes. Funciona hasta el {hasta}; después se borra.\n\n'
+                       f'Cuando MUNE elimine la información de {"la promoción" if d["promocion"] else "la promotora"}, esta exportación será la copia que te queda. '
+                       f'Si tienes cualquier duda, responde a este email.')
+              parrafos = ''.join(f'<p style="margin:0 0 14px">{html.escape(p)}</p>' for p in texto.split('\n\n'))
+              cuerpo_html = f'''<!doctype html><html lang="es"><body style="margin:0;background:#f5f3ef;font-family:Helvetica,Arial,sans-serif;color:#1c1c1a">
+                <div style="max-width:560px;margin:0 auto;padding:28px 20px">
+                  <p style="font-size:12px;letter-spacing:.12em;color:#8b867d;margin:0 0 18px">MUNE</p>
+                  <div style="background:#fcfbf9;border:1px solid #e6e3dd;border-radius:12px;padding:24px;font-size:15px;line-height:1.5">
+                    <p style="margin:0 0 14px">Hola:</p>{parrafos}
+                    <p style="margin:20px 0 0"><a href="{html.escape(enlace)}" style="display:inline-block;background:#2f5d50;color:#fff;text-decoration:none;padding:11px 16px;border-radius:8px;font-weight:600">Descargar la exportación</a></p>
+                  </div>
+                  <p style="font-size:12px;color:#8b867d;margin:18px 0 0">Mensaje de MUNE.</p>
+                </div></body></html>'''
+              cuerpo_texto = f'Hola:\n\n{texto}\n\n{enlace}\n\nMensaje de MUNE.'
+              with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=ssl.create_default_context(), timeout=30) as smtp:
+                  smtp.login(REMITENTE, clave)
+                  for destino in d['para']:
+                      m = EmailMessage()
+                      m['From'] = formataddr(('MUNE', REMITENTE))
+                      m['To'] = destino
+                      m['Subject'] = asunto
+                      m.set_content(cuerpo_texto)
+                      m.add_alternative(cuerpo_html, subtype='html')
+                      smtp.send_message(m)
+              pedir('/rest/v1/rpc/exportacion_confirmada', {'p_id': exp}, sesion)
+              print(f'Enviada a {len(d["para"])} ' + ('persona.' if len(d['para']) == 1 else 'personas.'))
+          except Exception as e:
+              motivo = 'El email no ha salido' if not isinstance(e, RuntimeError) else str(e)
+              try:
+                  pedir('/rest/v1/rpc/exportacion_no_enviada', {'p_id': exp, 'p_error': motivo}, sesion)
+              except Exception:
+                  pass  # la vigilancia la devuelve a «lista» en una hora
+              sys.exit(f'::error::{motivo}: {type(e).__name__}')

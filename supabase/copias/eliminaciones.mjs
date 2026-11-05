@@ -8,7 +8,10 @@
 //     Copia esa lista a la release «eliminaciones» del almacén de copias
 //     (eliminaciones.json), sumándola a la que ya había: no caduca a los 31 días
 //     como las copias, porque es lo que impide reabrir lo eliminado. La lanzan
-//     eliminaciones.yml (después de cada eliminación) y copias.yml (cada noche).
+//     eliminaciones.yml, que se lanza sola con cada eliminación (pg_net →
+//     función «exportacion»), y copias.yml (cada noche). Sube la lista nueva,
+//     la comprueba y solo entonces sustituye la anterior y marca las filas
+//     como guardadas: hasta entonces no se puede eliminar una promoción.
 //
 //   node supabase/copias/eliminaciones.mjs aplicar --bd <dirección> [--lista archivo.json] [--abrir]
 //     Paso obligatorio después de recuperar una copia (restaurar.mjs deja el
@@ -18,8 +21,12 @@
 //     comprueba que no queda nada. Con --abrir, y solo si la comprobación sale
 //     bien, abre el proyecto recuperado.
 //
+// Si la lista de fuera no se puede leer, no existe o es anterior a la copia
+// recuperada, el proyecto sigue cerrado (solo se abre con una lista
+// actualizada o, tras revisarlo, con --lista-revisada "quién y por qué").
+//
 // Variables:
-//   guardar: SUPABASE_POOLER, COPIAS_BD_CLAVE (usuario «copias», solo lectura), COPIAS_REPO, COPIAS_TOKEN (llave B)
+//   guardar: EJECUTOR_CLAVE (cuenta «ejecutor»: lee la tabla y marca lo guardado), COPIAS_REPO, COPIAS_TOKEN (llave B)
 //   aplicar: COPIAS_REPO y COPIAS_TOKEN (o --lista), y SUPABASE_URL y SUPABASE_SERVICE_KEY del
 //            proyecto recuperado (para borrar sus archivos). Nunca contra el proyecto real.
 
@@ -31,37 +38,92 @@ import { almacenCopias } from './github.mjs';
 
 const RELEASE = 'eliminaciones';
 const ADJUNTO = 'eliminaciones.json';
+const NUEVA = 'eliminaciones-nueva.json'; // mientras se sustituye: nunca se queda sin lista
+const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://iowtdenlkxjqzlpwizgb.supabase.co';
+const PUBLICA = process.env.SUPABASE_CLAVE_PUBLICA ?? 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR';
 const { positionals: [ orden ], values: op } = parseArgs( { allowPositionals: true, options: {
-	bd: { type: 'string' }, lista: { type: 'string' }, abrir: { type: 'boolean' },
+	bd: { type: 'string' }, lista: { type: 'string' }, abrir: { type: 'boolean' }, 'lista-revisada': { type: 'string' },
 } } );
 const tmp = carpetaTemporal();
+const norm = ( e ) => ( { tipo: e.tipo, huella: e.huella, momento: new Date( e.momento ).toISOString() } );
 const clave = ( e ) => `${ e.tipo }|${ e.huella }|${ e.momento }`;
-const unir = ( ...listas ) => [ ...new Map( listas.flat().map( ( e ) => [ clave( e ), e ] ) ).values() ]
+const unir = ( ...listas ) => [ ...new Map( listas.flat().map( norm ).map( ( e ) => [ clave( e ), e ] ) ).values() ]
 	.sort( ( a, b ) => a.momento.localeCompare( b.momento ) || a.tipo.localeCompare( b.tipo ) );
 const desdeBD = ( con ) => JSON.parse( consulta( `select coalesce(json_agg(json_build_object('tipo', tipo, 'huella', huella, 'momento', to_char(momento at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')) order by id), '[]') from public.eliminaciones`, con, tmp ) || '[]' );
 
+/** La lista guardada fuera de Supabase. Si no se puede leer, error (nunca «vacía» por un fallo). */
 async function guardada( almacen ) {
 
 	const release = ( await almacen.lista() ).find( ( r ) => r.name === RELEASE );
-	if ( ! release ) return { release: null, lista: [] };
-	const adjunto = release.assets.find( ( a ) => a.name === ADJUNTO );
-	return { release, lista: adjunto ? JSON.parse( String( await almacen.bajar( release, ADJUNTO ) ) ).eliminaciones : [] };
+	if ( ! release ) return { release: null, lista: null, guardada: null };
+	const nombre = [ ADJUNTO, NUEVA ].find( ( n ) => release.assets.some( ( a ) => a.name === n ) );
+	if ( ! nombre ) return { release, lista: null, guardada: null };
+	const datos = JSON.parse( String( await almacen.bajar( release, nombre ) ) );
+	if ( ! Array.isArray( datos.eliminaciones ) ) throw new Error( `${ nombre } no tiene la lista de eliminaciones` );
+	return { release, lista: datos.eliminaciones, guardada: datos.guardada };
+
+}
+
+async function rest( ruta, cabeceras, opciones = {} ) {
+
+	const r = await fetch( `${ SUPABASE_URL }${ ruta }`, { ...opciones, headers: { ...cabeceras, 'Content-Type': 'application/json', ...opciones.headers } } );
+	if ( ! r.ok ) throw new Error( `Supabase ${ ruta.split( '?' )[ 0 ] }: ${ r.status } ${ ( await r.text() ).slice( 0, 200 ) }` );
+	return r.json();
 
 }
 
 if ( orden === 'guardar' ) {
 
-	falta( 'SUPABASE_POOLER', 'COPIAS_BD_CLAVE', 'COPIAS_REPO', 'COPIAS_TOKEN' );
-	const url = new URL( process.env.SUPABASE_POOLER.trim().replace( '[YOUR-PASSWORD]', 'x' ) );
-	url.username = decodeURIComponent( url.username ).replace( /^postgres(?=\.|$)/, 'copias' );
-	url.password = encodeURIComponent( process.env.COPIAS_BD_CLAVE );
+	falta( 'EJECUTOR_CLAVE', 'COPIAS_REPO', 'COPIAS_TOKEN' );
+	const { access_token: token } = await rest( '/auth/v1/token?grant_type=password', { apikey: PUBLICA }, {
+		method: 'POST', body: JSON.stringify( { email: process.env.EJECUTOR_EMAIL || 'hello.muneprojects+ejecutor@gmail.com', password: process.env.EJECUTOR_CLAVE } ),
+	} );
+	const cab = { apikey: PUBLICA, Authorization: `Bearer ${ token }` };
 	const almacen = almacenCopias( process.env.COPIAS_REPO, process.env.COPIAS_TOKEN );
-	const antes = await guardada( almacen );
-	const todas = unir( antes.lista, desdeBD( conexion( url.href ) ) );
-	const release = antes.release ?? await almacen.crear( RELEASE, 'Lista de eliminaciones (solo huellas, sin nombres). No caduca: impide reabrir lo eliminado al recuperar una copia. Receta 18.' );
-	if ( antes.release?.assets.some( ( a ) => a.name === ADJUNTO ) ) await almacen.borrarAdjunto( release, ADJUNTO );
-	await almacen.subir( release, ADJUNTO, Buffer.from( JSON.stringify( { guardada: new Date().toISOString(), eliminaciones: todas }, null, '\t' ) ) );
-	console.log( `Eliminaciones guardadas fuera de Supabase: ${ todas.length } (${ todas.length - antes.lista.length } nuevas).` );
+	for ( let vuelta = 1; vuelta <= 3; vuelta ++ ) {
+
+		// 1. Lo que hay en Supabase (cuenta «ejecutor»: solo lee esta tabla y marca lo guardado)
+		const filas = [];
+		for ( let desde = 0; ; desde += 1000 ) {
+
+			const lote = await rest( `/rest/v1/eliminaciones?select=id,tipo,huella,momento,guardada_en&order=id&offset=${ desde }&limit=1000`, cab );
+			filas.push( ...lote );
+			if ( lote.length < 1000 ) break;
+
+		}
+		const pendientes = filas.filter( ( f ) => ! f.guardada_en ).length;
+		if ( vuelta > 1 && ! pendientes ) break;
+
+		// 2. Sumarlo a lo que ya está fuera (nunca se quita nada) y subirlo sin quedarse en ningún momento sin lista
+		const antes = await guardada( almacen );
+		const todas = unir( antes.lista ?? [], filas );
+		let release = antes.release ?? await almacen.crear( RELEASE, 'Lista de eliminaciones (solo huellas, sin nombres). No caduca: impide reabrir lo eliminado al recuperar una copia. Receta 18.' );
+		const contenido = Buffer.from( JSON.stringify( { guardada: new Date().toISOString(), eliminaciones: todas }, null, '\t' ) );
+		const refrescar = async () => ( release = ( await almacen.lista() ).find( ( r ) => r.id === release.id ) );
+		await refrescar();
+		await almacen.borrarAdjunto( release, NUEVA );
+		await almacen.subir( release, NUEVA, contenido );
+		await refrescar();
+		const comprobar = async ( nombre ) => {
+
+			const vuelto = JSON.parse( String( await almacen.bajar( release, nombre ) ) ).eliminaciones.map( norm );
+			const hay = new Set( vuelto.map( clave ) );
+			if ( vuelto.length !== todas.length || ! todas.every( ( e ) => hay.has( clave( e ) ) ) ) throw new Error( `${ nombre } no ha quedado completo` );
+
+		};
+		await comprobar( NUEVA );
+		await almacen.borrarAdjunto( release, ADJUNTO );
+		await almacen.renombrarAdjunto( release, NUEVA, ADJUNTO );
+		await refrescar();
+		await comprobar( ADJUNTO );
+
+		// 3. Marcar como guardadas las filas que ya están fuera
+		const hasta = filas.length ? Math.max( ...filas.map( ( f ) => f.id ) ) : 0;
+		const marcadas = hasta ? await rest( '/rest/v1/rpc/marcar_eliminaciones_guardadas', cab, { method: 'POST', body: JSON.stringify( { p_hasta: hasta } ) } ) : 0;
+		console.log( `Eliminaciones guardadas fuera de Supabase y comprobadas: ${ todas.length } (${ todas.length - ( antes.lista?.length ?? 0 ) } nuevas; ${ marcadas } marcadas como guardadas).` );
+		if ( ! pendientes ) break;
+
+	}
 
 } else if ( orden === 'aplicar' ) {
 
@@ -78,14 +140,49 @@ if ( orden === 'guardar' ) {
 
 	}
 	const con = conexion( op.bd );
-	let fuera;
-	if ( op.lista ) fuera = JSON.parse( readFileSync( op.lista, 'utf8' ) ).eliminaciones;
-	else {
+	const cerrado = ( motivo ) => {
 
-		falta( 'COPIAS_REPO', 'COPIAS_TOKEN' );
-		fuera = ( await guardada( almacenCopias( process.env.COPIAS_REPO, process.env.COPIAS_TOKEN ) ) ).lista;
+		consulta( `update public.restauracion set pendiente = true, comprobada_en = null, detalle = detalle || '${ JSON.stringify( { problema: motivo } ).replace( /'/g, "''" ) }'::jsonb where id = 1`, con, tmp );
+		console.error( `✗ ${ motivo }\n  El proyecto recuperado sigue CERRADO (ni promotoras ni compradores entran, y no se publica). Receta 18.` );
+		process.exit( 1 );
+
+	};
+
+	// 1. Que nadie entre mientras tanto (aunque falle lo que sigue)
+	consulta( `insert into public.restauracion (id, pendiente, detalle) values (1, true, '{"paso": "aplicando eliminaciones"}')
+		on conflict (id) do update set pendiente = true, comprobada_en = null`, con, tmp );
+	const copia = consulta( `select coalesce(detalle->>'copia_creada', '') from public.restauracion where id = 1`, con, tmp );
+
+	// 2. La lista guardada fuera de Supabase, obligatoria y posterior a la copia recuperada
+	let fuera;
+	try {
+
+		if ( op.lista ) fuera = JSON.parse( readFileSync( op.lista, 'utf8' ) );
+		else {
+
+			falta( 'COPIAS_REPO', 'COPIAS_TOKEN' );
+			fuera = await guardada( almacenCopias( process.env.COPIAS_REPO, process.env.COPIAS_TOKEN ) );
+
+		}
+
+	} catch ( e ) {
+
+		cerrado( `No se ha podido leer la lista de eliminaciones guardada fuera de Supabase (${ e.message.slice( 0, 160 ) }).` );
 
 	}
+	if ( ! Array.isArray( fuera?.eliminaciones ?? fuera?.lista ) ) cerrado( 'No hay lista de eliminaciones guardada fuera de Supabase.' );
+	fuera = { guardada: fuera.guardada, lista: fuera.eliminaciones ?? fuera.lista };
+	if ( copia && ! ( fuera.guardada && new Date( fuera.guardada ) >= new Date( copia ) ) ) {
+
+		if ( ! op[ 'lista-revisada' ] || op[ 'lista-revisada' ].trim().length < 10 ) {
+
+			cerrado( `La lista de eliminaciones (guardada ${ fuera.guardada ?? 'sin fecha' }) es anterior a la copia recuperada (${ copia }): puede faltar algo eliminado después. Consigue una lista actualizada o, tras revisarlo, repite con --lista-revisada "quién y por qué".` );
+
+		}
+		consulta( `update public.restauracion set detalle = detalle || '${ JSON.stringify( { lista_revisada: op[ 'lista-revisada' ].trim().slice( 0, 300 ) } ).replace( /'/g, "''" ) }'::jsonb where id = 1`, con, tmp );
+
+	}
+	fuera = fuera.lista;
 	const todas = unir( fuera, desdeBD( con ) );
 	// lo último que pasó con cada cosa (un acceso retirado y luego devuelto sigue activo)
 	const ultimo = new Map();
@@ -108,9 +205,6 @@ if ( orden === 'guardar' ) {
 		'portfolio', (select coalesce(json_agg(id), '[]') from public.portfolio_autorizaciones where ${ H( `'portfolio:' || id` ) } = any(${ portfolio })
 			and (retirada_en is null or exists (select 1 from public.portfolio_piezas p where p.autorizacion_id = portfolio_autorizaciones.id))))`, con, tmp ) );
 
-	// 1. Que nadie entre mientras tanto
-	consulta( `insert into public.restauracion (id, pendiente, detalle) values (1, true, '{"paso": "aplicando eliminaciones"}')
-		on conflict (id) do update set pendiente = true, comprobada_en = null`, con, tmp );
 	const antes = quedan();
 	console.log( `Lista de eliminaciones: ${ todas.length } apuntes (${ fuera.length } guardados fuera de Supabase).` );
 	console.log( `En el proyecto recuperado había que volver a eliminar: ${ antes.promociones.length } promociones, ${ antes.promotoras.length } promotoras, ${ antes.accesos } accesos, ${ antes.codigos } códigos de comprador y ${ antes.portfolio.length } autorizaciones de portfolio retiradas.` );
@@ -169,19 +263,19 @@ commit;
 	const detalle = { lista: todas.length, fuera: fuera.length, eliminado: { promociones: antes.promociones.length, promotoras: antes.promotoras.length, accesos: antes.accesos, codigos: antes.codigos, portfolio: antes.portfolio.length, archivos: archivos.length }, limpio };
 	if ( ! limpio ) {
 
-		consulta( `update public.restauracion set detalle = '${ JSON.stringify( detalle ) }'::jsonb where id = 1`, con, tmp );
+		consulta( `update public.restauracion set detalle = detalle || '${ JSON.stringify( detalle ) }'::jsonb where id = 1`, con, tmp );
 		console.error( `✗ Sigue habiendo algo eliminado en el proyecto recuperado: ${ JSON.stringify( despues ) }, archivos: ${ restos }. No se abre.` );
 		process.exit( 1 );
 
 	}
 	if ( op.abrir ) {
 
-		consulta( `update public.restauracion set pendiente = false, comprobada_en = now(), detalle = '${ JSON.stringify( detalle ) }'::jsonb where id = 1`, con, tmp );
+		consulta( `update public.restauracion set pendiente = false, comprobada_en = now(), detalle = detalle || '${ JSON.stringify( detalle ) }'::jsonb where id = 1`, con, tmp );
 		console.log( '✓ Comprobado: no queda nada de lo eliminado. El proyecto recuperado ya se puede abrir.' );
 
 	} else {
 
-		consulta( `update public.restauracion set detalle = '${ JSON.stringify( detalle ) }'::jsonb where id = 1`, con, tmp );
+		consulta( `update public.restauracion set detalle = detalle || '${ JSON.stringify( detalle ) }'::jsonb where id = 1`, con, tmp );
 		console.log( '✓ Comprobado: no queda nada de lo eliminado. Sigue cerrado: para abrirlo, repite con --abrir.' );
 
 	}

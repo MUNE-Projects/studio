@@ -168,8 +168,6 @@ export function conectarPersonas(raiz: HTMLElement, accesos: Acceso[], promotora
 			if (!confirm(`¿Quitar el acceso a ${a.nombre}?\n\nDejará de poder entrar desde este momento. Puedes devolvérselo más tarde.`)) return;
 			try {
 				await cambiarAcceso(a.id, { activo: false });
-				// guardar fuera de Supabase lo retirado, para que una recuperación no lo reabra (045)
-				void sb.functions.invoke('exportacion', { body: { accion: 'apuntar-eliminaciones' } });
 				await recargar();
 			} catch (e) { avisar(traducir(e), true); }
 		});
