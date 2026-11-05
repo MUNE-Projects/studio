@@ -283,7 +283,16 @@ try:
 except Exception as e:
     print('cielo simple:', e)
 fondo = W['Background']; fondo.inputs['Strength'].default_value = arg('--cielo', 1.0)
-WL.new(cielo.outputs[0], fondo.inputs[0])
+# el cielo, menos azul dentro de casa: mezcla con luz blanca cálida (como el balance de blancos de un fotógrafo)
+calido = W.new('ShaderNodeMix'); calido.data_type = 'RGBA'
+calido.inputs['Factor'].default_value = arg('--neutro', 0.45)
+WL.new(cielo.outputs[0], calido.inputs['A']); calido.inputs['B'].default_value = (1.0, 0.93, 0.84, 1)
+# conservar la intensidad del cielo: el blanco toma el brillo del cielo
+brillo = W.new('ShaderNodeRGBToBW'); WL.new(cielo.outputs[0], brillo.inputs[0])
+tinte = W.new('ShaderNodeMix'); tinte.data_type = 'RGBA'; tinte.blend_type = 'MULTIPLY'; tinte.inputs['Factor'].default_value = 1
+WL.new(brillo.outputs[0], tinte.inputs['A']); tinte.inputs['B'].default_value = (1.0, 0.93, 0.84, 1)
+WL.new(tinte.outputs['Result'], calido.inputs['B'])
+WL.new(calido.outputs['Result'], fondo.inputs[0])
 
 # ------------------------------------------------------------------ render
 
@@ -329,8 +338,8 @@ if '--exposicion' not in sys.argv:
     im = bpy.data.images.load(medida)
     px = np.array(im.pixels[:]).reshape(-1, 4)[:, :3]
     l = px @ np.array([0.2126, 0.7152, 0.0722])
-    lum = max(float(np.percentile(l, 45)), float(np.mean(l)) * 0.3, 1e-4)  # la estancia, no la ventana; nunca cero
-    esc.view_settings.exposure = float(np.clip(np.log2(arg('--brillo', 0.2) / lum), -2, 9))
+    lum = max(float(np.percentile(l, 30)), float(np.mean(l)) * 0.3, 1e-4)  # la estancia, no la ventana; nunca cero
+    esc.view_settings.exposure = float(np.clip(np.log2(arg('--brillo', 0.3) / lum), -2, 9))
     print('exposición automática: %.2f (luz media %.4f)' % (esc.view_settings.exposure, lum))
     os.remove(medida)
     esc.render.resolution_percentage = 100

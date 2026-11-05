@@ -127,7 +127,7 @@ export class Pieza {
 	 * abombada en el centro de cada cara, con la cara de arriba algo hundida
 	 * (`hundido`, m) e irregularidades suaves, como la tela con relleno.
 	 */
-	acolchada( k: Clave, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, r = 0.06, inflado = 0.012, hundido = 0.008, semilla = 1 ) {
+	acolchada( k: Clave, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, r = 0.06, inflado = 0.012, hundido = 0.008, semilla = 1, arrugas = 0.0015, vivo: Clave | null = null ) {
 
 		const w = x1 - x0, h = y1 - y0, d = z1 - z0;
 		const g = new RoundedBoxGeometry( w, h, d, 6, Math.min( r, w / 2 - 1e-3, h / 2 - 1e-3, d / 2 - 1e-3 ) );
@@ -144,6 +144,14 @@ export class Pieza {
 			const dz = Math.sign( z ) * bz * inflado * ondas * Math.abs( z ) ** 4;
 			// hundido de uso en la cara de arriba (más en el centro)
 			if ( y > 0.6 ) dy -= hundido * by * ( 0.8 + 0.4 * azar( x * 1.3 + 9 ) );
+			// arrugas: pliegues finos donde la tela se tensa, hacia el canto delantero y las esquinas
+			if ( y > 0.6 && arrugas > 0 ) {
+
+				const delante = Math.max( 0, Math.abs( z ) - 0.45 ) / 0.55;
+				const esquina = Math.max( 0, Math.abs( x ) - 0.6 ) / 0.4 * delante;
+				dy -= arrugas * ( delante * 0.6 * ( 0.5 + 0.5 * Math.sin( x * w * 38 + semilla * 3 ) ) + esquina * ( 0.5 + 0.5 * Math.sin( ( x * w + z * d ) * 55 ) ) );
+
+			}
 			pos.setXYZ( i, pos.getX( i ) + dx, pos.getY( i ) + dy, pos.getZ( i ) + dz );
 
 		}
@@ -153,6 +161,26 @@ export class Pieza {
 		const suave = mergeVertices( g, 1e-4 );
 		suave.computeVertexNormals();
 		suave.translate( ( x0 + x1 ) / 2, ( y0 + y1 ) / 2, ( z0 + z1 ) / 2 );
+		// vivo: el cordón cosido que remata el borde de arriba y el de abajo del cojín
+		if ( vivo ) {
+
+			const rr = Math.min( r, w / 2 - 1e-3, h / 2 - 1e-3, d / 2 - 1e-3 );
+			for ( const yv of [ y1 - rr * 0.29, y0 + rr * 0.29 ] ) {
+
+				const m = rr * 0.29, ax = x0 + m, bx = x1 - m, az = z0 + m, bz = z1 - m, rc = Math.max( 0.005, rr * 0.71 );
+				const forma = new THREE.Shape();
+				forma.moveTo( ax + rc, az );
+				forma.lineTo( bx - rc, az ); forma.quadraticCurveTo( bx, az, bx, az + rc );
+				forma.lineTo( bx, bz - rc ); forma.quadraticCurveTo( bx, bz, bx - rc, bz );
+				forma.lineTo( ax + rc, bz ); forma.quadraticCurveTo( ax, bz, ax, bz - rc );
+				forma.lineTo( ax, az + rc ); forma.quadraticCurveTo( ax, az, ax + rc, az );
+				const puntos = forma.getSpacedPoints( 160 ).map( ( q ) => new THREE.Vector3( q.x, yv, q.y ) );
+				const curva = new THREE.CatmullRomCurve3( puntos, true );
+				this.add( vivo, new THREE.TubeGeometry( curva, 240, 0.0035, 6, true ) );
+
+			}
+
+		}
 		return this.add( k, suave );
 
 	}
@@ -172,7 +200,7 @@ export class Pieza {
 			const sx = pos.getX( i ), sy = pos.getY( i ), sz = pos.getZ( i );
 			const ang = Math.atan2( sy, sx ), rad = Math.hypot( sx, sy );
 			const c = Math.cos( ang ), s = Math.sin( ang );
-			const sq = ( v: number ) => Math.sign( v ) * Math.abs( v ) ** 0.7;
+			const sq = ( v: number ) => Math.sign( v ) * Math.abs( v ) ** 0.55;
 			// esquinas un poco hacia dentro (pellizco de la costura)
 			const pellizco = 1 - 0.05 * Math.abs( Math.sin( 2 * ang ) ) ** 3;
 			const x = sq( c ) * rad * pellizco * w / 2, y = sq( s ) * rad * pellizco * h / 2;
@@ -202,6 +230,63 @@ export class Pieza {
 			// los bordes caen un poco
 			const borde = Math.max( Math.abs( z ) / ( d / 2 ), Math.abs( x ) / ( w / 2 ) ) ** 6;
 			pos.setY( i, pos.getY( i ) + e / 2 + alto * ola * ( 1 - borde * 0.5 ) - borde * alto );
+
+		}
+		g.deleteAttribute( 'uv' );
+		g.deleteAttribute( 'normal' );
+		const suave = mergeVertices( g, 1e-4 );
+		suave.computeVertexNormals();
+		return this.add( k, suave );
+
+	}
+
+	/**
+	 * Edredón sobre una cama: tela de `e` de grueso que cubre W × L con la cara
+	 * de arriba a la altura `arriba`, cae `caida` m por los lados y por los pies
+	 * (z = +L/2) con pliegues, y se abomba un poco con arrugas suaves. Centrado en
+	 * x; z de −L/2 (cabecero) a +L/2 (pies).
+	 */
+	edredon( k: Clave, W: number, L: number, arriba: number, caida = 0.25, e = 0.03, semilla = 1 ) {
+
+		const R = 0.05, curva = Math.PI * R / 2;
+		const ancho = W + 2 * ( curva + caida ), largo = L + curva + caida;
+		const g = new THREE.BoxGeometry( ancho, e, largo, 90, 1, 70 );
+		g.translate( 0, e / 2, ( largo - L ) / 2 );
+		const pos = g.getAttribute( 'position' );
+		// dobla una coordenada (recorrido sobre la tela) por el borde: devuelve [horizontal, caída, en vertical]
+		const doblar = ( t: number, borde: number, grueso: number ) => {
+
+			const a = t - borde;
+			if ( a <= 0 ) return [ t, 0, 0 ] as const;
+			if ( a < curva ) {
+
+				const th = a / R;
+				return [ borde + ( R + grueso ) * Math.sin( th ) , R - ( R + grueso ) * Math.cos( th ) + grueso, th / ( Math.PI / 2 ) ] as const;
+
+			}
+			return [ borde + R + grueso, R + ( a - curva ) + grueso, 1 ] as const;
+
+		};
+		for ( let i = 0; i < pos.count; i ++ ) {
+
+			const xl = pos.getX( i ), yl = pos.getY( i ), zl = pos.getZ( i );
+			const [ hx, cx, vx ] = doblar( Math.abs( xl ), W / 2, yl );
+			const [ hz, cz, vz ] = doblar( zl, L / 2, yl );
+			let x = Math.sign( xl ) * hx, z = hz;
+			// caída: lo que baja por el lado o por los pies (y en la esquina, lo mayor)
+			let y = arriba + ( vx || vz ? 0 : yl ) - Math.max( cx, cz );
+			// pliegues en lo que cuelga (más abajo, más marcados)
+			const colgado = Math.max( vx, vz );
+			if ( vx >= 1 ) x += Math.sign( xl ) * 0.009 * Math.sin( zl * 14 + semilla ) * Math.min( 1, cx / caida );
+			if ( vz >= 1 ) z += 0.009 * Math.sin( xl * 14 + semilla * 2 ) * Math.min( 1, cz / caida );
+			// arriba: abombado y arrugas anchas
+			if ( ! colgado ) {
+
+				const u = xl / ( W / 2 ), v = zl / ( L / 2 );
+				y += 0.025 * ( 1 - u * u ) * ( 1 - v * v * 0.6 ) + 0.005 * Math.sin( xl * 7.3 + zl * 3.1 + semilla ) + 0.004 * Math.sin( zl * 11 - xl * 4 + semilla * 3 );
+
+			}
+			pos.setXYZ( i, x, y, z );
 
 		}
 		g.deleteAttribute( 'uv' );

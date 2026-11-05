@@ -136,8 +136,8 @@ const sofa: Gen = ( k, c ) => {
 
 		const x0 = - W / 2 + brazo + i * w;
 		// asiento relleno, con el hundido del uso
-		k.acolchada( tela, x0 + 0.004, y0 + 0.2, z0 + 0.2, x0 + w - 0.004, y0 + 0.37, z1 - 0.01, 0.06, 0.014, 0.012, i + 1 );
-		const resp = k.acolchada( tela, x0 + 0.01, - 0.2, - 0.09, x0 + w - 0.01, 0.2, 0.09, 0.07, 0.02, 0.004, i + 11 );
+		k.acolchada( tela, x0 + 0.004, y0 + 0.2, z0 + 0.2, x0 + w - 0.004, y0 + 0.37, z1 - 0.01, 0.06, 0.014, 0.012, i + 1, 0.004, tela );
+		const resp = k.acolchada( tela, x0 + 0.01, - 0.2, - 0.09, x0 + w - 0.01, 0.2, 0.09, 0.07, 0.02, 0.004, i + 11, 0.001 );
 		resp.rotateX( - 0.2 );
 		resp.translate( 0, y0 + 0.56, z0 + 0.28 );
 
@@ -384,19 +384,24 @@ const cama: Gen = ( k, c ) => {
 	const z0 = - D / 2, z1 = D / 2, cab = 0.09;
 	k.caja( 'zocalo', - W / 2 + 0.06, 0, z0 + cab + 0.06, W / 2 - 0.06, 0.08, z1 - 0.06 );
 	k.blanda( base, - W / 2, 0.08, z0 + cab, W / 2, 0.33, z1, 0.035 );
-	k.blanda( ropa, - W / 2 + 0.01, 0.32, z0 + cab + 0.01, W / 2 - 0.01, 0.55, z1 - 0.01, 0.06, 4 );
-	// edredón que cae por los laterales y embozo doblado
+	// colchón con la sábana bajera
+	k.acolchada( ropa, - W / 2 + 0.01, 0.32, z0 + cab + 0.01, W / 2 - 0.01, 0.55, z1 - 0.01, 0.06, 0.008, 0.004, 7, 0.001 );
+	// edredón: cubre desde el embozo hasta los pies y cae por los lados con pliegues
 	const largo = ( D - cab ) * 0.74;
-	k.blanda( ropa, - W / 2 - 0.03, 0.24, z1 - largo, W / 2 + 0.03, 0.58, z1 + 0.025, 0.06, 4 );
-	k.blanda( ropa, - W / 2 - 0.035, 0.5, z1 - largo - 0.03, W / 2 + 0.035, 0.605, z1 - largo + 0.26, 0.05, 4 );
+	const ed = k.edredon( ropa, W, largo, 0.55, 0.26, 0.035, W * 3 );
+	ed.translate( 0, 0, z1 - largo / 2 );
+	// embozo: la sábana y el edredón doblados hacia atrás bajo las almohadas
+	const embozo = k.acolchada( ropa, - W / 2 - 0.02, 0, - 0.12, W / 2 + 0.02, 0.07, 0.12, 0.035, 0.012, 0.002, 5, 0.003 );
+	embozo.translate( 0, 0.55, z1 - largo + 0.06 );
 	// almohadas y cojines
 	const nA = doble ? 2 : 1;
 	const aw = doble ? ( W - 0.16 ) / 2 : W - 0.24;
 	for ( let i = 0; i < nA; i ++ ) {
 
 		const x = doble ? ( i === 0 ? - W / 4 : W / 4 ) : 0;
-		const alm = k.blanda( almohada, - aw / 2, - 0.075, - 0.2, aw / 2, 0.075, 0.2, 0.065, 4 );
-		alm.rotateX( - 0.42 );
+		// almohada de verdad, recostada contra el cabecero
+		const alm = k.almohada( almohada, aw, 0.42, 0.18, i + 3 );
+		alm.rotateX( - Math.PI / 2 + 0.55 );
 		alm.translate( x, 0.66, z0 + cab + 0.24 );
 
 	}
@@ -412,9 +417,10 @@ const cama: Gen = ( k, c ) => {
 	const pie = s( c, 'plaid', '' );
 	if ( pie ) {
 
+		// plaid doblado a los pies, encima del edredón, que cae por los lados
 		const z = z1 - 0.42;
-		k.blanda( pie, - W / 2 - 0.04, 0.575, z, W / 2 + 0.04, 0.6, z + 0.36, 0.012, 2 );
-		for ( const sx of [ - 1, 1 ] ) k.blanda( pie, sx > 0 ? W / 2 + 0.02 : - W / 2 - 0.045, 0.3, z, sx > 0 ? W / 2 + 0.045 : - W / 2 - 0.02, 0.6, z + 0.36, 0.012, 2 );
+		const plaid = k.edredon( pie, W + 0.07, 0.36, 0.585, 0.22, 0.012, W * 5 );
+		plaid.translate( 0, 0, z + 0.18 );
 
 	}
 
