@@ -1,35 +1,37 @@
 // Función «exportacion» de Supabase: la exportación de una promoción (o de una
-// promotora) que se va a eliminar, para quien la administra (decisión 70,
-// 045_cierre_y_eliminacion.sql). No interviene Claude.
+// promotora) que se va a eliminar, para quien la administra, y la lista de
+// eliminaciones fuera de Supabase (decisión 70, 045_cierre_y_eliminacion.sql).
+// No interviene Claude.
 //
-// MUNE Studio prepara la exportación (solo los materiales de la promotora), la
-// sube al almacén privado «exportaciones» y la comprueba. Aquí:
-//  · «enviar» (la administradora): manda a quien administra la promotora un
-//    email con un enlace privado. El enlace lleva una clave que solo se guarda
-//    como huella; cada envío invalida el anterior. Caduca a los días elegidos
-//    (30 por defecto). Si el email no sale, la exportación queda «lista» y se
-//    puede reintentar. Nunca va adjunta ni en una dirección permanente.
-//  · «revocar» (la administradora): el enlace deja de funcionar y se borran sus
-//    archivos.
-//  · «descargar» (con la clave del enlace, sin sesión): devuelve las partes con
-//    direcciones de descarga que caducan en 10 minutos.
-//  · «caducar» (cualquiera; lo llama la vigilancia): borra los archivos de las
-//    exportaciones caducadas y de las preparaciones abandonadas.
-//  · «apuntar-eliminaciones» (con sesión): pide a GitHub que guarde fuera de
-//    Supabase la lista de eliminaciones (eliminaciones.yml), para que una
-//    recuperación no reabra nada eliminado.
+// Quién puede hacer cada cosa (se comprueba aquí y en la base de datos, porque
+// la función tiene «Verify JWT» apagado):
+//  · «enviar» y «revocar»: solo la administradora de MUNE con el código del
+//    móvil. Se comprueba con su sesión en la base de datos (es_admin(): firma
+//    de la sesión, nivel aal2 y lista de administradores); una sesión
+//    inventada o de una promotora recibe 403. Los destinatarios no los elige
+//    nadie: son quienes administran esa promotora en MUNE Portal.
+//    «enviar» deja la exportación «enviando» y lanza aviso-exportacion.yml solo
+//    con su identificador: el proceso crea allí el enlace (en Supabase queda su
+//    huella), envía el email y lo confirma; si falla, vuelve a «lista».
+//  · «descargar»: sin sesión, solo con la clave del enlace (32 bytes al azar;
+//    se busca por su huella). Devuelve, de esa exportación y de ninguna otra,
+//    direcciones firmadas que caducan en 10 minutos. Caducada, revocada o con
+//    un envío que no salió: 404.
+//  · «caducar» y «sincronizar»: sin sesión y sin datos que devolver. «caducar»
+//    solo borra lo que ya ha caducado; «sincronizar» solo pide guardar fuera
+//    las eliminaciones si hay alguna sin guardar, como mucho una vez por
+//    minuto. Los llaman la propia base de datos (pg_net), MUNE Studio y la
+//    vigilancia.
 //
 // Se pega en Supabase → Edge Functions con el nombre «exportacion», con
-// «Verify JWT» desactivado (la descarga llega sin sesión; las demás órdenes
-// comprueban la sesión aquí).
+// «Verify JWT» desactivado.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? 'https://iowtdenlkxjqzlpwizgb.supabase.co';
 const CLAVE_PUBLICA = Deno.env.get('CLAVE_PUBLICA') ?? 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR';
-const PORTAL = Deno.env.get('PORTAL_URL') ?? 'https://portal.mune-projects.workers.dev/';
 const GITHUB = Deno.env.get('GITHUB_API') ?? 'https://api.github.com';
-const AVISO = `${GITHUB}/repos/MUNE-Projects/studio/actions/workflows/aviso-promotora.yml/dispatches`;
+const AVISO = `${GITHUB}/repos/MUNE-Projects/studio/actions/workflows/aviso-exportacion.yml/dispatches`;
 const ELIMINACIONES = `${GITHUB}/repos/MUNE-Projects/studio/actions/workflows/eliminaciones.yml/dispatches`;
 const ORIGENES = [
 	'https://studio.mune-projects.workers.dev', 'https://revision-studio.mune-projects.workers.dev',
@@ -51,13 +53,12 @@ function claveServicio(): string | undefined {
 const sinSesion = { persistSession: false, autoRefreshToken: false };
 const huella = async (t: string) =>
 	[...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)))].map((b) => b.toString(16).padStart(2, '0')).join('');
-const claveNueva = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-const fecha = (iso: string) => new Date(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Madrid' });
 
 type Parte = { ruta: string; tamano: number; huella: string };
 type Exportacion = {
 	id: string; promotora_id: string; promocion_id: string | null; titulo: string; estado: string; partes: Parte[];
 	archivos: number | null; tamano: number | null; dias: number; caduca_en: string | null; descargas: number;
+	token_huella: string | null; enviando_desde: string | null; creada_en: string;
 };
 
 Deno.serve(async (req) => {
@@ -69,7 +70,7 @@ Deno.serve(async (req) => {
 		Vary: 'Origin',
 	};
 	const responder = (estado: number, datos: Record<string, unknown>) =>
-		new Response(JSON.stringify(datos), { status: estado, headers: { ...cors, 'Content-Type': 'application/json' } });
+		new Response(JSON.stringify(datos), { status: estado, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 	if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 	if (req.method !== 'POST') return responder(405, { error: 'Método no permitido' });
 
@@ -83,6 +84,14 @@ Deno.serve(async (req) => {
 	if (!clave) return responder(500, { error: 'Falta la configuración del servidor' });
 	const servicio = createClient(SUPABASE_URL, clave, { auth: sinSesion });
 	const accion = String(cuerpo.accion ?? '');
+	const llave = Deno.env.get('GITHUB_EJECUTOR');
+	const lanzar = (url: string, inputs: Record<string, string>) => llave
+		? fetch(url, {
+			method: 'POST',
+			headers: { Authorization: `Bearer ${llave}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'mune-exportacion' },
+			body: JSON.stringify({ ref: 'main', inputs }),
+		}).catch(() => null)
+		: Promise.resolve(null);
 	const borrarArchivos = async (e: Exportacion) => {
 		const rutas = (e.partes ?? []).map((p) => p.ruta);
 		const { data: sueltas } = await servicio.storage.from('exportaciones').list(e.id, { limit: 1000 });
@@ -101,7 +110,7 @@ Deno.serve(async (req) => {
 		if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) return invalido();
 		const { data: e } = await servicio.from('exportaciones').select('*').eq('token_huella', await huella(token)).maybeSingle();
 		const exp = e as Exportacion | null;
-		if (!exp || exp.estado !== 'enviada' || !exp.caduca_en || new Date(exp.caduca_en) <= new Date()) return invalido();
+		if (!exp || !['enviando', 'enviada'].includes(exp.estado) || !exp.caduca_en || new Date(exp.caduca_en) <= new Date()) return invalido();
 		const partes = [];
 		for (const [i, p] of exp.partes.entries()) {
 			const nombre = `MUNE-${exp.titulo.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w-]+/g, '-').slice(0, 60)}-parte-${i + 1}.zip`;
@@ -115,15 +124,19 @@ Deno.serve(async (req) => {
 
 	if (accion === 'caducar') {
 		const ahora = new Date();
+		const hace1h = new Date(ahora.getTime() - 3600000).toISOString();
 		const hace2 = new Date(ahora.getTime() - 2 * 86400000).toISOString();
 		const hace7 = new Date(ahora.getTime() - 7 * 86400000).toISOString();
+		// un envío sin confirmar en una hora: vuelve a «lista», sin enlace válido
+		await servicio.from('exportaciones').update({ estado: 'lista', token_huella: null, enviando_desde: null, error: 'El email no se ha confirmado: vuelve a enviarlo' })
+			.eq('estado', 'enviando').lt('enviando_desde', hace1h);
 		const { data: filas } = await servicio.from('exportaciones').select('*')
-			.or(`and(estado.in.(enviada,lista),caduca_en.lt.${ahora.toISOString()}),and(estado.in.(preparando,fallida),creada_en.lt.${hace2}),and(estado.eq.lista,caduca_en.is.null,creada_en.lt.${hace7})`);
+			.or(`and(estado.in.(enviada,enviando,lista),caduca_en.lt.${ahora.toISOString()}),and(estado.in.(preparando,fallida),creada_en.lt.${hace2}),and(estado.eq.lista,caduca_en.is.null,creada_en.lt.${hace7})`);
 		let n = 0;
 		for (const e of (filas ?? []) as Exportacion[]) {
 			try {
 				await borrarArchivos(e);
-				await servicio.from('exportaciones').update({ estado: e.estado === 'enviada' || e.estado === 'lista' ? 'caducada' : 'fallida', token_huella: null, terminada_en: ahora.toISOString() }).eq('id', e.id);
+				await servicio.from('exportaciones').update({ estado: ['enviada', 'enviando', 'lista'].includes(e.estado) ? 'caducada' : 'fallida', token_huella: null, terminada_en: ahora.toISOString() }).eq('id', e.id);
 				n++;
 			} catch (err) {
 				console.error('caducar', e.id, err);
@@ -132,75 +145,66 @@ Deno.serve(async (req) => {
 		return responder(200, { ok: true, caducadas: n });
 	}
 
-	// ── Con sesión ──────────────────────────────────────────────────────────
+	if (accion === 'sincronizar') {
+		const { count } = await servicio.from('eliminaciones').select('id', { count: 'exact', head: true }).is('guardada_en', null);
+		if (!count) return responder(200, { ok: true });
+		const hace = new Date(Date.now() - 60000).toISOString();
+		const { data: turno } = await servicio.from('sincronizacion').update({ ultima_peticion: new Date().toISOString() })
+			.eq('id', 1).or(`ultima_peticion.is.null,ultima_peticion.lt.${hace}`).select('id');
+		if (!turno?.length) return responder(202, { ok: true });
+		const r = await lanzar(ELIMINACIONES, {});
+		if (!r?.ok) {
+			await servicio.from('sincronizacion').update({ ultima_peticion: null }).eq('id', 1);
+			return responder(502, { error: 'No se ha podido pedir que se guarden las eliminaciones; se vuelve a intentar sola.' });
+		}
+		return responder(202, { ok: true });
+	}
+
+	// ── Solo la administradora de MUNE (con el código del móvil) ─────────────
 	const auth = req.headers.get('authorization');
 	if (!auth?.startsWith('Bearer ')) return responder(401, { error: 'Sin sesión' });
 	const sb = createClient(SUPABASE_URL, CLAVE_PUBLICA, { global: { headers: { Authorization: auth } }, auth: sinSesion });
-	const llave = Deno.env.get('GITHUB_EJECUTOR');
-	const lanzar = (url: string, inputs: Record<string, string>) => llave
-		? fetch(url, {
-			method: 'POST',
-			headers: { Authorization: `Bearer ${llave}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'mune-exportacion' },
-			body: JSON.stringify({ ref: 'main', inputs }),
-		}).catch(() => null)
-		: Promise.resolve(null);
-
-	if (accion === 'apuntar-eliminaciones') {
-		const { data: { user } } = await sb.auth.getUser();
-		if (!user) return responder(401, { error: 'Sin sesión' });
-		const r = await lanzar(ELIMINACIONES, {});
-		return r?.ok ? responder(202, { ok: true }) : responder(502, { error: 'No se ha podido pedir que se guarden las eliminaciones; se guardarán esta noche con la copia.' });
-	}
-
 	const { data: esAdmin } = await sb.rpc('es_admin');
 	if (esAdmin !== true) return responder(403, { error: 'Solo la administradora, con el código del móvil.' });
 	const id = String(cuerpo.id ?? '');
-	if (!/^[0-9a-f-]{36}$/.test(id)) return responder(400, { error: 'Exportación no válida' });
+	if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) return responder(400, { error: 'Exportación no válida' });
 	const { data: fila } = await servicio.from('exportaciones').select('*').eq('id', id).maybeSingle();
 	const e = fila as Exportacion | null;
 	if (!e) return responder(404, { error: 'No existe esa exportación' });
 
 	if (accion === 'revocar') {
-		if (!['lista', 'enviada', 'fallida', 'preparando'].includes(e.estado)) return responder(409, { error: 'Esa exportación ya no está disponible' });
+		if (!['lista', 'enviando', 'enviada', 'fallida', 'preparando'].includes(e.estado)) return responder(409, { error: 'Esa exportación ya no está disponible' });
+		// primero el enlace (deja de valer al momento), después los archivos
+		await servicio.from('exportaciones').update({ estado: 'revocada', token_huella: null, enviando_desde: null, terminada_en: new Date().toISOString() }).eq('id', id);
 		try {
 			await borrarArchivos(e);
 		} catch {
-			return responder(500, { error: 'No se han podido borrar los archivos. Vuelve a probar.' });
+			return responder(500, { error: 'El enlace ya no funciona, pero no se han podido borrar los archivos: se borrarán solos esta semana.' });
 		}
-		await servicio.from('exportaciones').update({ estado: 'revocada', token_huella: null, terminada_en: new Date().toISOString() }).eq('id', id);
 		await sb.from('registro').insert({ accion: 'revoca una exportación', detalle: { exportacion: id, promotora: e.promotora_id, promocion: e.promocion_id } });
 		return responder(200, { ok: true });
 	}
 
 	if (accion !== 'enviar') return responder(400, { error: 'Orden no válida' });
-	if (!['lista', 'enviada'].includes(e.estado)) return responder(409, { error: 'La exportación todavía no está preparada y comprobada' });
+	if (!['lista', 'enviada'].includes(e.estado)) {
+		return responder(409, { error: e.estado === 'enviando' ? 'Ya se está enviando: espera un par de minutos.' : 'La exportación todavía no está preparada y comprobada' });
+	}
 	if (e.caduca_en && new Date(e.caduca_en) <= new Date()) return responder(409, { error: 'Esta exportación ha caducado: prepara otra.' });
-
-	// Quien administra la promotora (o esa promoción), con su acceso activo.
-	let consulta = servicio.from('miembros').select('email').eq('promotora_id', e.promotora_id).eq('activo', true).eq('administra', true);
-	consulta = e.promocion_id ? consulta.or(`promocion_id.is.null,promocion_id.eq.${e.promocion_id}`) : consulta.is('promocion_id', null);
-	const { data: responsables } = await consulta;
-	const para = [...new Set(((responsables ?? []) as { email: string }[]).map((m) => m.email.trim().toLowerCase()).filter((x) => /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(x)))];
-	if (!para.length) {
+	const { count: responsables } = await servicio.from('miembros').select('id', { count: 'exact', head: true })
+		.eq('promotora_id', e.promotora_id).eq('activo', true).eq('administra', true)
+		.or(e.promocion_id ? `promocion_id.is.null,promocion_id.eq.${e.promocion_id}` : 'promocion_id.is.null');
+	if (!responsables) {
 		return responder(409, { error: 'Nadie administra esta promotora en MUNE Portal. Dale a la persona responsable un acceso de administración y vuelve a enviar.' });
 	}
-
-	const token = claveNueva();
-	const caduca = e.caduca_en ?? new Date(Date.now() + e.dias * 86400000).toISOString();
-	const enlace = `${PORTAL}descarga/#${token}`;
-	const que = e.promocion_id ? `la promoción «${e.titulo}»` : `las promociones de ${e.titulo}`;
-	const asunto = `${e.titulo} · tu exportación de MUNE`;
-	const texto = `El equipo de MUNE ha preparado la exportación de ${que}: la documentación que subisteis, con todas sus versiones, los planos y materiales entregados y los datos de la promoción.\n\n`
-		+ `Descárgala con el enlace de este email. Es personal: no lo reenvíes. Funciona hasta el ${fecha(caduca)}; después se borra.\n\n`
-		+ `Cuando MUNE elimine la información de ${e.promocion_id ? 'la promoción' : 'la promotora'}, esta exportación será la copia que te queda. Si tienes cualquier duda, responde a este email.`;
-	const r = await lanzar(AVISO, { para: para.join(','), asunto, texto, enlace });
+	// Un solo envío a la vez (dos clics seguidos no mandan dos emails). Un enlace anterior deja de valer.
+	const { data: turno } = await servicio.from('exportaciones')
+		.update({ estado: 'enviando', enviando_desde: new Date().toISOString(), token_huella: null, error: null })
+		.eq('id', id).eq('estado', e.estado).select('id');
+	if (!turno?.length) return responder(409, { error: 'Ya se está enviando: espera un par de minutos.' });
+	const r = await lanzar(AVISO, { exportacion: id });
 	if (!r?.ok) {
-		await servicio.from('exportaciones').update({ error: llave ? `El email no ha salido (GitHub ${r?.status ?? 'sin respuesta'})` : 'Falta la llave A (GITHUB_EJECUTOR)' }).eq('id', id);
+		await servicio.from('exportaciones').update({ estado: 'lista', enviando_desde: null, error: llave ? `No se ha podido pedir el email (GitHub ${r?.status ?? 'sin respuesta'})` : 'Falta la llave A (GITHUB_EJECUTOR)' }).eq('id', id);
 		return responder(502, { error: 'No se ha podido enviar el email. La exportación sigue preparada: vuelve a pulsar «Enviar» en un momento.' });
 	}
-	await servicio.from('exportaciones').update({
-		estado: 'enviada', token_huella: await huella(token), caduca_en: caduca, enviada_en: new Date().toISOString(), destinatarios: para.length, error: null,
-	}).eq('id', id);
-	await sb.from('registro').insert({ accion: 'envía una exportación a la promotora', detalle: { exportacion: id, promotora: e.promotora_id, promocion: e.promocion_id, destinatarios: para.length, caduca_en: caduca } });
-	return responder(200, { ok: true, destinatarios: para.length, caduca_en: caduca });
+	return responder(202, { ok: true, destinatarios: responsables });
 });

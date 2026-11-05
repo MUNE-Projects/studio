@@ -572,8 +572,10 @@ function pintarZonaBorrado(zona: HTMLElement, b: Borrado): void {
 		if (!coincide() || !confirm(`¿Eliminar ${b.nombre} para siempre?\n\nNo se puede deshacer.`)) return;
 		boton.disabled = true;
 		error.textContent = '';
-		boton.textContent = 'Borrando archivos…';
 		try {
+			// 0. Antes de nada, que la eliminación quede guardada fuera de Supabase (045): si no, no se elimina.
+			await esperarEliminacionGuardada(b.promocion ? 'promocion' : 'promotora', b.promocion ?? b.promotora, campo.value, (t) => { boton.textContent = t; });
+			boton.textContent = 'Borrando archivos…';
 			// 1. Los archivos, con la API de almacenamiento (de 100 en 100).
 			const { data: lista, error: e1 } = await b.archivos();
 			if (e1) throw e1;
@@ -589,9 +591,7 @@ function pintarZonaBorrado(zona: HTMLElement, b: Borrado): void {
 			boton.textContent = 'Borrando…';
 			const { error: e3 } = await b.borrar(campo.value);
 			if (e3) throw e3;
-			// 3. Guardar fuera de Supabase lo eliminado (para que una recuperación no lo reabra)
-			void sb.functions.invoke('exportacion', { body: { accion: 'apuntar-eliminaciones' } });
-			// 4. Retirarla de internet (037): la web se vuelve a montar sin ella.
+			// 3. Retirarla de internet (037): la web se vuelve a montar sin ella.
 			if (b.retirar) {
 				boton.textContent = 'Retirando de la web…';
 				const { error: e4 } = await sb.functions.invoke('ejecutar', { body: { accion: 'retirar', promocion: b.retirar } });
@@ -606,6 +606,29 @@ function pintarZonaBorrado(zona: HTMLElement, b: Borrado): void {
 			boton.disabled = false;
 		}
 	});
+}
+
+/**
+ * Apunta la eliminación y espera a que eliminaciones.yml la guarde fuera de Supabase (lo lanza la propia
+ * base de datos; aquí solo se vuelve a pedir por si acaso). Sin eso, borrar_* no deja eliminar.
+ */
+async function esperarEliminacionGuardada(tipo: 'promocion' | 'promotora', id: string, nombre: string, aviso: (t: string) => void): Promise<void> {
+	const inicio = Date.now();
+	let pedida = 0;
+	for (;;) {
+		const { data, error } = await sb.rpc('pedir_eliminacion', { p_tipo: tipo, p_id: id, p_nombre: nombre });
+		if (error) throw error;
+		if (data === 'guardada') return;
+		if (Date.now() - pedida > 60000) {
+			pedida = Date.now();
+			void sb.functions.invoke('exportacion', { body: { accion: 'sincronizar' } });
+		}
+		if (Date.now() - inicio > 5 * 60000) {
+			throw new Error('Todavía no se ha podido guardar la eliminación fuera de MUNE. No se ha eliminado nada: vuelve a pulsar «Eliminar para siempre» en unos minutos (si sigue igual, díselo a Claude).');
+		}
+		aviso(`Guardando la eliminación fuera de Supabase… (${Math.round((Date.now() - inicio) / 1000)} s)`);
+		await new Promise((ok) => setTimeout(ok, 5000));
+	}
 }
 
 /** Paso 1: la exportación para la promotora (o la petición de eliminar sin ella). */
@@ -630,9 +653,16 @@ async function pintarPasoExportacion(caja: HTMLElement, b: Borrado, permitir: (s
 			aviso.classList.add('error');
 			return;
 		}
-		aviso.textContent = `✓ Enviada a ${cuantos(Number(data?.destinatarios ?? 0), 'persona', 'personas')}.`;
+		aviso.textContent = `Enviando el email a ${cuantos(Number(data?.destinatarios ?? 0), 'persona', 'personas')}…`;
 		recargar();
 	};
+
+	if (e?.estado === 'enviando') {
+		caja.innerHTML = `<p>Enviando el email a quien administra la promotora… Se confirma en un par de minutos.</p>
+			<p class="ayuda" role="status">Si en unos minutos no se confirma, la exportación vuelve a quedar preparada para enviarla otra vez.</p>`;
+		setTimeout(() => { if (caja.isConnected) recargar(); }, 10000);
+		return;
+	}
 
 	if (sinExp) {
 		caja.innerHTML = `<p class="ok">✓ Anotado el ${esc(fecha(sinExp.anotado_en))}: la promotora ha pedido eliminarla <strong>sin exportación</strong> (lo pidió ${esc(sinExp.solicitado_por)}; ${esc(sinExp.motivo)}).</p>`;
@@ -659,10 +689,17 @@ async function pintarPasoExportacion(caja: HTMLElement, b: Borrado, permitir: (s
 	if (e?.estado === 'lista') {
 		caja.innerHTML = `<p>Exportación preparada y comprobada: ${cuantos(e.partes.length, 'parte', 'partes')}, ${cuantos(e.archivos ?? 0, 'archivo', 'archivos')}, ${MB(e.tamano)}. Falta enviarla.</p>
 			${e.error ? `<p class="error">El último envío no salió: ${esc(e.error)}</p>` : ''}
-			<div class="acciones"><button class="boton pequeno" type="button" data-enviar>Enviar a quien administra la promotora</button></div>
+			<div class="acciones"><button class="boton pequeno" type="button" data-enviar>Enviar a quien administra la promotora</button>
+				<button class="boton secundario pequeno" type="button" data-descartar>Descartarla y preparar otra</button></div>
 			<p class="ayuda" data-aviso role="status"></p>`;
 		const aviso = caja.querySelector<HTMLElement>('[data-aviso]')!;
 		caja.querySelector('[data-enviar]')!.addEventListener('click', () => void enviar(e.id, aviso));
+		caja.querySelector('[data-descartar]')!.addEventListener('click', async () => {
+			if (!confirm('¿Descartar esta exportación? Se borran sus archivos y podrás preparar otra.')) return;
+			const { error } = await sb.functions.invoke('exportacion', { body: { accion: 'revocar', id: e.id } });
+			if (error) { aviso.textContent = 'No se ha podido descartar. Vuelve a probar.'; return; }
+			recargar();
+		});
 		return;
 	}
 	caja.innerHTML = `

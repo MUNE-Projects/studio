@@ -81,6 +81,15 @@ export function almacenCopias( repo, token ) {
 
 		},
 
+		/** Cambia el nombre de un adjunto (para sustituir uno sin quedarse sin él). */
+		async renombrarAdjunto( release, nombre, nuevo ) {
+
+			const adjunto = release.assets.find( ( a ) => a.name === nombre );
+			if ( ! adjunto ) throw new Error( `La release ${ release.name } no tiene ${ nombre }` );
+			await pedir( `${ API }/repos/${ repo }/releases/assets/${ adjunto.id }`, { method: 'PATCH', body: JSON.stringify( { name: nuevo } ) } );
+
+		},
+
 		async borrar( release ) {
 
 			await pedir( `${ API }/repos/${ repo }/releases/${ release.id }`, { method: 'DELETE' } );

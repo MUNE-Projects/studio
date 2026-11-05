@@ -76,10 +76,6 @@ jobs:
         if: steps.listo.outputs.si == 'si'
         run: node supabase/copias/copiar.mjs
 
-      - name: Guardar las eliminaciones fuera de Supabase (045)
-        if: steps.listo.outputs.si == 'si'
-        run: node supabase/copias/eliminaciones.mjs guardar
-
       - name: Apuntarlo en MUNE Studio
         if: steps.listo.outputs.si == 'si'
         run: node supabase/copias/registrar.mjs copia bien "$DETALLE"

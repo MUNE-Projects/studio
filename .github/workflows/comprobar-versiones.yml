@@ -1,6 +1,6 @@
 # Comprobación de solo lectura (decisión 70): las versiones antiguas de la web
 # pública y de la vista previa no tienen dirección propia; solo responden las
-# direcciones principales. Lista las versiones de los Workers «experience» y
+# direcciones principales, que siguen funcionando. Lista las versiones de los Workers «experience» y
 # «revision-experience» con la llave C y pide la portada de cada una por su
 # dirección de versión: si alguna responde, se para en rojo. No despliega nada.
 # Actions → «Comprobar versiones de Cloudflare» → Run workflow.
@@ -22,14 +22,22 @@ jobs:
         run: |
           set -u
           abiertas=0
+          rotas=0
           for w in experience revision-experience; do
             npx --yes wrangler@4.147.0 versions list --name "$w" --json > v.json 2> error.txt || { echo "No se han podido leer las versiones de $w"; tail -3 error.txt; exit 1; }
             node -e 'const v=JSON.parse(require("fs").readFileSync("v.json","utf8")); require("fs").writeFileSync("ids.txt", v.map((x)=>(x.id||"").slice(0,8)).filter(Boolean).join("\n")); console.log(process.argv[1]+": "+v.length+" versiones")' "$w"
-            echo "$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 https://$w.mune-projects.workers.dev/) dirección principal de $w"
+            # la dirección principal (web pública o vista previa legítima) tiene que seguir funcionando
+            for ruta in / /residencial-demo/ /acceso/; do
+              c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$w.mune-projects.workers.dev$ruta")
+              echo "$c https://$w.mune-projects.workers.dev$ruta"
+              if [ "$c" != "200" ]; then rotas=$((rotas+1)); fi
+            done
             while read -r id; do
               c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$id-$w.mune-projects.workers.dev/")
               if [ "$c" = "200" ]; then abiertas=$((abiertas+1)); echo "✗ responde la versión $id de $w"; fi
             done < ids.txt
           done
-          if [ "$abiertas" -gt 0 ]; then echo "::error::$abiertas versiones antiguas siguen visibles"; exit 1; fi
-          echo "✓ Ninguna versión antigua tiene dirección propia."
+          if [ "$rotas" -gt 0 ]; then echo "::error::$rotas direcciones principales no responden"; fi
+          if [ "$abiertas" -gt 0 ]; then echo "::error::$abiertas versiones antiguas siguen visibles"; fi
+          if [ "$rotas" -gt 0 ] || [ "$abiertas" -gt 0 ]; then exit 1; fi
+          echo "✓ La web pública y la vista previa funcionan, y ninguna versión antigua tiene dirección propia."
