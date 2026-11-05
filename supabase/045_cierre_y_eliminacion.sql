@@ -761,11 +761,14 @@ begin
 		raise exception 'Esta exportación no se está enviando';
 	end if;
 	if e.token_huella is not null then raise exception 'El enlace de este envío ya se ha creado'; end if;
+	-- de una promoción: quien administra esa promoción en MUNE Portal; de la promotora entera: quien administra la promotora
 	select array_agg(distinct lower(btrim(m.email))) into v_para from public.miembros m
 	where m.promotora_id = e.promotora_id and m.activo and m.administra
-		and (m.promocion_id is null or (e.promocion_id is not null and m.promocion_id = e.promocion_id))
+		and m.promocion_id is not distinct from e.promocion_id
 		and m.email ~ '^[^\s@,]+@[^\s@,]+\.[^\s@,]+$';
-	if v_para is null then raise exception 'Nadie administra esta promotora en MUNE Portal'; end if;
+	if v_para is null then
+		raise exception '%', case when e.promocion_id is null then 'Nadie administra esta promotora en MUNE Portal' else 'Nadie administra esta promoción en MUNE Portal' end;
+	end if;
 	v_token := rtrim(translate(encode(extensions.gen_random_bytes(32), 'base64'), '+/', '-_'), '=');
 	update public.exportaciones set token_huella = public.huella_de(v_token), destinatarios = cardinality(v_para),
 		caduca_en = coalesce(caduca_en, now() + make_interval(days => dias))

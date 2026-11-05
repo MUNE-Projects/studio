@@ -2552,6 +2552,8 @@ const sqlDirecto = ( sql ) => execFileSync( 'psql', [ DB_URL, '-q', '-v', 'ON_ER
 await exigir( admin.from( 'promociones' ).insert( { id: 'prueba-cierre', promotora_id: pA.id, nombre: 'Residencial que se cierra' } ), 'promoción que se cierra' );
 await exigir( admin.from( 'promociones' ).update( { activa: false } ).eq( 'id', 'prueba-cierre' ), 'desactivarla' );
 const planoCierre = await entregable( 'prueba-cierre', 'plano comercial que se cierra' );
+// el email de la exportación de una promoción va a quien administra esa promoción (no a quien administra la promotora)
+await altaEquipo( 'responsable.cierre@prueba.local', 'prueba-cierre', [], true );
 const NOMBRE_CIERRE = 'Residencial que se cierra';
 const ZIP = Buffer.from( 'PK\u0003\u0004 exportación inventada de prueba' );
 const nuevaExportacion = ( sb, extra = {} ) => sb.rpc( 'exportacion_nueva', { p_promotora: pA.id, p_promocion: 'prueba-cierre', p_dias: 30, ...extra } );
@@ -2700,7 +2702,7 @@ await caso( DEBE_FUNCIONAR, 'Cerrar y eliminar: se prepara y comprueba la export
 
 	const mal = Object.entries( {
 		envioFalla: envio.estado === 502,
-		paraLaPromotora: paraEnviar.para.includes( 'aprobadora.a@prueba.local' ) && ! paraEnviar.para.some( ( c ) => /\.b@|gestor\.a@|admin@|robot@/.test( c ) ),
+		paraQuienAdministraLaPromocion: JSON.stringify( paraEnviar.para ) === JSON.stringify( [ 'responsable.cierre@prueba.local' ] ),
 		tokenNoGuardado: ! JSON.stringify( await filaDe( 'exportaciones', exp ) ).includes( token ),
 		unSoloEnlace: falla( otraVez ),
 		descargaMientrasSeEnvia: descargaEnviando.estado === 200,
@@ -2743,11 +2745,14 @@ await caso( DEBE_FUNCIONAR, 'Cerrar y eliminar: con la petición de la promotora
 await exigir( admin.from( 'promociones' ).insert( { id: 'prueba-cierre-3', promotora_id: pA.id, nombre: 'Residencial (permisos de exportación)' } ), 'alta' );
 await exigir( admin.from( 'promociones' ).update( { activa: false } ).eq( 'id', 'prueba-cierre-3' ), 'desactivarla' );
 
-await caso( DEBE_FALLAR, '58. Exportación: otra promotora, la propia promotora, el robot, alguien sin sesión, la administradora sin el código del móvil o una sesión falsificada envían, revocan o ven una exportación; nadie más que la cuenta «ejecutor» crea el enlace, confirma el envío o marca eliminaciones guardadas; un enlace inventado, caducado o de un envío que no salió descarga algo; se prepara una segunda exportación con otra pendiente; se apunta una eliminación sin permiso', async () => {
+await caso( DEBE_FALLAR, '58. Exportación: otra promotora, la propia promotora, el robot, alguien sin sesión, la administradora sin el código del móvil o una sesión falsificada envían, revocan o ven una exportación; nadie más que la cuenta «ejecutor» crea el enlace, confirma el envío o marca eliminaciones guardadas; un enlace inventado, caducado o de un envío que no salió descarga algo; se prepara una segunda exportación con otra pendiente; se apunta una eliminación sin permiso; el email va a quien no administra la promoción', async () => {
 
 	const exp = await exigir( admin.rpc( 'exportacion_nueva', { p_promotora: pA.id, p_promocion: 'prueba-cierre-3', p_dias: 30 } ), 'preparar' );
 	await exigir( admin.storage.from( 'exportaciones' ).upload( `${ exp }/parte-1.zip`, ZIP, { contentType: 'application/zip' } ), 'subir' );
 	await exigir( admin.rpc( 'exportacion_lista', { p_id: exp, p_partes: [ { ruta: `${ exp }/parte-1.zip`, huella: huella( ZIP ), tamano: ZIP.length } ], p_archivos: 1 } ), 'lista' );
+	// sin nadie que administre la promoción no se envía (aunque haya quien administre la promotora)
+	const sinResponsable = await exportacion( admin, { accion: 'enviar', id: exp } );
+	await altaEquipo( 'responsable.cierre3@prueba.local', 'prueba-cierre-3', [], true );
 	const sesionAdmin = ( await admin.auth.getSession() ).data.session.access_token;
 	const falsa = sesionAdmin.slice( 0, -6 ) + ( sesionAdmin.slice( -6 ) === 'AAAAAA' ? 'BBBBBB' : 'AAAAAA' );
 	const conSesion = async ( token, orden ) => ( await fetch( EXPORTACION, { method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${ token }`, 'Content-Type': 'application/json' }, body: JSON.stringify( orden ) } ) ).status;
@@ -2792,7 +2797,9 @@ await caso( DEBE_FALLAR, '58. Exportación: otra promotora, la propia promotora,
 
 	// un envío que no sale deja el enlace sin valor; uno caducado, también
 	await exigir( servicio.from( 'exportaciones' ).update( { estado: 'enviando', enviando_desde: new Date().toISOString() } ).eq( 'id', exp ), 'enviando' );
-	const { token } = await exigir( ejecutor.rpc( 'exportacion_para_enviar', { p_id: exp } ), 'enlace' );
+	const { token, para } = await exigir( ejecutor.rpc( 'exportacion_para_enviar', { p_id: exp } ), 'enlace' );
+	if ( sinResponsable.estado !== 409 ) noFallan.push( `se envía sin nadie que administre la promoción (${ sinResponsable.estado })` );
+	if ( JSON.stringify( para ) !== JSON.stringify( [ 'responsable.cierre3@prueba.local' ] ) ) noFallan.push( 'el email va a alguien que no administra la promoción' );
 	const valia = ( await exportacion( null, { accion: 'descargar', token } ) ).estado;
 	await exigir( ejecutor.rpc( 'exportacion_no_enviada', { p_id: exp, p_error: 'Prueba: el email no ha salido' } ), 'no enviada' );
 	const trasNoEnviada = ( await exportacion( null, { accion: 'descargar', token } ) ).estado;

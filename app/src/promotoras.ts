@@ -531,7 +531,7 @@ const MB = (b: number | null) => (b ?? 0) < 102400 ? `${Math.max(1, Math.round((
 
 /**
  * Zona roja para eliminar (045, decisión 70). Desactivar no borra nada; eliminar
- * exige antes 1) enviar la exportación a quien administra la promotora, o
+ * exige antes 1) enviar la exportación a quien administra la promoción (o la promotora), o
  * anotar que la promotora la ha pedido sin exportación; 2) escribir el nombre.
  */
 function pintarZonaBorrado(zona: HTMLElement, b: Borrado): void {
@@ -644,6 +644,7 @@ async function pintarPasoExportacion(caja: HTMLElement, b: Borrado, permitir: (s
 	const vigente = e?.estado === 'enviada' && !!e.caduca_en && new Date(e.caduca_en) > new Date();
 	permitir(vigente || !!sinExp);
 	const recargar = () => void pintarPasoExportacion(caja, b, permitir);
+	const quien = b.promocion ? 'la promoción' : 'la promotora';
 	const enviar = async (id: string, aviso: HTMLElement) => {
 		aviso.textContent = 'Enviando el email…';
 		const { data, error } = await sb.functions.invoke('exportacion', { body: { accion: 'enviar', id } });
@@ -658,7 +659,7 @@ async function pintarPasoExportacion(caja: HTMLElement, b: Borrado, permitir: (s
 	};
 
 	if (e?.estado === 'enviando') {
-		caja.innerHTML = `<p>Enviando el email a quien administra la promotora… Se confirma en un par de minutos.</p>
+		caja.innerHTML = `<p>Enviando el email a quien administra ${quien}… Se confirma en un par de minutos.</p>
 			<p class="ayuda" role="status">Si en unos minutos no se confirma, la exportación vuelve a quedar preparada para enviarla otra vez.</p>`;
 		setTimeout(() => { if (caja.isConnected) recargar(); }, 10000);
 		return;
@@ -669,7 +670,7 @@ async function pintarPasoExportacion(caja: HTMLElement, b: Borrado, permitir: (s
 		return;
 	}
 	if (vigente && e) {
-		caja.innerHTML = `<p class="ok">✓ Exportación enviada el ${esc(fecha(e.enviada_en!))} a quien administra la promotora (${cuantos(e.destinatarios ?? 0, 'persona', 'personas')})
+		caja.innerHTML = `<p class="ok">✓ Exportación enviada el ${esc(fecha(e.enviada_en!))} a quien administra ${quien} (${cuantos(e.destinatarios ?? 0, 'persona', 'personas')})
 				(${cuantos(e.partes.length, 'parte', 'partes')}, ${cuantos(e.archivos ?? 0, 'archivo', 'archivos')}, ${MB(e.tamano)}). El enlace funciona hasta el ${esc(fecha(e.caduca_en!))}${e.descargas ? `; se ha abierto ${cuantos(e.descargas, 'vez', 'veces')}` : '; todavía no se ha abierto'}.</p>
 			<div class="acciones">
 				<button class="boton secundario pequeno" type="button" data-reenviar>Enviar un enlace nuevo</button>
@@ -689,7 +690,7 @@ async function pintarPasoExportacion(caja: HTMLElement, b: Borrado, permitir: (s
 	if (e?.estado === 'lista') {
 		caja.innerHTML = `<p>Exportación preparada y comprobada: ${cuantos(e.partes.length, 'parte', 'partes')}, ${cuantos(e.archivos ?? 0, 'archivo', 'archivos')}, ${MB(e.tamano)}. Falta enviarla.</p>
 			${e.error ? `<p class="error">El último envío no salió: ${esc(e.error)}</p>` : ''}
-			<div class="acciones"><button class="boton pequeno" type="button" data-enviar>Enviar a quien administra la promotora</button>
+			<div class="acciones"><button class="boton pequeno" type="button" data-enviar>Enviar a quien administra ${quien}</button>
 				<button class="boton secundario pequeno" type="button" data-descartar>Descartarla y preparar otra</button></div>
 			<p class="ayuda" data-aviso role="status"></p>`;
 		const aviso = caja.querySelector<HTMLElement>('[data-aviso]')!;
@@ -706,7 +707,7 @@ async function pintarPasoExportacion(caja: HTMLElement, b: Borrado, permitir: (s
 		${e?.estado === 'fallida' ? `<p class="error">La última preparación no se completó: ${esc(e.error ?? 'sin detalle')}. Puedes volver a prepararla.</p>` : ''}
 		${e?.estado === 'caducada' || e?.estado === 'revocada' ? `<p class="ayuda">La última exportación ${e.estado === 'caducada' ? 'caducó' : 'se revocó'}: prepara otra.</p>` : ''}
 		<form class="peticion-form" data-exportar-form novalidate>
-			<label class="opcion"><input type="radio" name="modo" value="exportar" checked> Enviar su exportación a quien administra la promotora</label>
+			<label class="opcion"><input type="radio" name="modo" value="exportar" checked> Enviar su exportación a quien administra ${quien} en MUNE Portal</label>
 			<p class="ayuda">MUNE la prepara (solo su documentación, los planos y materiales entregados y los datos de la promoción; nada interno de MUNE), la comprueba y envía un email con un enlace privado. No se descarga en tu ordenador.</p>
 			<label class="en-linea">El enlace caduca a los <input class="corto" name="dias" type="number" min="1" max="90" value="30"> días</label>
 			<label class="opcion"><input type="radio" name="modo" value="sin"> La promotora ha pedido eliminarla sin exportación</label>

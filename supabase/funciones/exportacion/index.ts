@@ -9,7 +9,8 @@
 //    móvil. Se comprueba con su sesión en la base de datos (es_admin(): firma
 //    de la sesión, nivel aal2 y lista de administradores); una sesión
 //    inventada o de una promotora recibe 403. Los destinatarios no los elige
-//    nadie: son quienes administran esa promotora en MUNE Portal.
+//    nadie: de una promoción, quienes administran esa promoción en MUNE
+//    Portal; de la promotora entera, quienes administran la promotora.
 //    «enviar» deja la exportación «enviando» y lanza aviso-exportacion.yml solo
 //    con su identificador: el proceso crea allí el enlace (en Supabase queda su
 //    huella), envía el email y lo confirma; si falla, vuelve a «lista».
@@ -192,9 +193,11 @@ Deno.serve(async (req) => {
 	if (e.caduca_en && new Date(e.caduca_en) <= new Date()) return responder(409, { error: 'Esta exportación ha caducado: prepara otra.' });
 	const { count: responsables } = await servicio.from('miembros').select('id', { count: 'exact', head: true })
 		.eq('promotora_id', e.promotora_id).eq('activo', true).eq('administra', true)
-		.or(e.promocion_id ? `promocion_id.is.null,promocion_id.eq.${e.promocion_id}` : 'promocion_id.is.null');
+		.or(e.promocion_id ? `promocion_id.eq.${e.promocion_id}` : 'promocion_id.is.null');
 	if (!responsables) {
-		return responder(409, { error: 'Nadie administra esta promotora en MUNE Portal. Dale a la persona responsable un acceso de administración y vuelve a enviar.' });
+		return responder(409, { error: e.promocion_id
+			? 'Nadie administra esta promoción en MUNE Portal. Dale a la persona responsable de la promoción un acceso de administración de esa promoción y vuelve a enviar.'
+			: 'Nadie administra esta promotora en MUNE Portal. Dale a la persona responsable un acceso de administración y vuelve a enviar.' });
 	}
 	// Un solo envío a la vez (dos clics seguidos no mandan dos emails). Un enlace anterior deja de valer.
 	const { data: turno } = await servicio.from('exportaciones')
