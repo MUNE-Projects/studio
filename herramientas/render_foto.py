@@ -159,13 +159,33 @@ def material(nombre):
         L.new(fr.outputs['Fresnel'], mx.inputs[0]); L.new(tr.outputs[0], mx.inputs[1]); L.new(gl.outputs[0], mx.inputs[2])
         L.new(mx.outputs[0], out.inputs[0])
     elif acabado == 'lienzo':
-        # lienzo abstracto: manchas grandes de sus colores, con borde de pincel
-        ns = N.new('ShaderNodeTexNoise'); ns.inputs['Scale'].default_value = 1.6; ns.inputs['Detail'].default_value = 3
-        L.new(coord.outputs['Object'], ns.inputs['Vector'])
-        rampa = N.new('ShaderNodeValToRGB'); L.new(ns.outputs['Fac'], rampa.inputs[0])
-        el = rampa.color_ramp.elements; el[0].position = 0.47; el[0].color = color; el[1].position = 0.5
-        el[1].color = hexrgb(p[3]) if len(p) > 3 else (0.3, 0.4, 0.3, 1)
-        L.new(rampa.outputs[0], bsdf.inputs['Base Color']); bsdf.inputs['Roughness'].default_value = 0.8
+        # pintura abstracta: grandes campos de color con trazos de pincel y textura de lienzo
+        c2 = hexrgb(p[3]) if len(p) > 3 else (0.3, 0.4, 0.3, 1)
+        claro_l = tuple(min(1, x * 1.35 + 0.08) for x in color[:3]) + (1,)
+        mp = N.new('ShaderNodeMapping'); L.new(coord.outputs['Object'], mp.inputs[0])
+        mp.inputs['Scale'].default_value = (1.2, 1.2, 1.2)
+        # el trazo: ruido estirado en una dirección (como una brocha ancha)
+        tr = N.new('ShaderNodeTexNoise'); tr.inputs['Scale'].default_value = 1.4; tr.inputs['Detail'].default_value = 6
+        tr.inputs['Roughness'].default_value = 0.62; tr.inputs['Distortion'].default_value = 0.9
+        es = N.new('ShaderNodeMapping'); es.inputs['Scale'].default_value = (1.0, 5.0, 1.0)
+        L.new(mp.outputs[0], es.inputs[0]); L.new(es.outputs[0], tr.inputs['Vector'])
+        manchas = N.new('ShaderNodeTexNoise'); manchas.inputs['Scale'].default_value = 0.9; manchas.inputs['Detail'].default_value = 2
+        L.new(mp.outputs[0], manchas.inputs['Vector'])
+        mezcla = N.new('ShaderNodeMath'); mezcla.operation = 'MULTIPLY_ADD'
+        L.new(tr.outputs['Fac'], mezcla.inputs[0]); mezcla.inputs[1].default_value = 0.35; L.new(manchas.outputs['Fac'], mezcla.inputs[2])
+        rampa = N.new('ShaderNodeValToRGB'); L.new(mezcla.outputs[0], rampa.inputs[0])
+        el = rampa.color_ramp.elements
+        el[0].position = 0.5; el[0].color = claro_l
+        el[1].position = 0.58; el[1].color = color
+        e3 = el.new(0.72); e3.color = c2
+        e4 = el.new(0.8); e4.color = tuple(x * 0.85 for x in c2[:3]) + (1,)
+        claro, rg, alto = real('lino', escala=0.6)
+        L.new(rampa.outputs[0], bsdf.inputs['Base Color'])
+        bsdf.inputs['Roughness'].default_value = 0.75
+        # relieve: el lienzo y el grosor del trazo
+        suma = N.new('ShaderNodeMath'); suma.operation = 'MULTIPLY_ADD'
+        L.new(tr.outputs['Fac'], suma.inputs[0]); suma.inputs[1].default_value = 2.0; L.new(alto, suma.inputs[2])
+        relieve(suma.outputs[0], 0.25, 0.0008)
     elif acabado == 'cuarzo':
         bsdf.inputs['Roughness'].default_value = 0.15
         bsdf.inputs['Coat Weight'].default_value = 0.3
