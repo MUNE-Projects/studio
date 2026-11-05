@@ -8,6 +8,7 @@ import * as THREE from 'three/webgpu';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import type { Equipamiento, Vivienda } from '../modelo/tipos';
 import { unir } from '../util/geo';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as M from './materiales';
 import { ACABADOS } from '../promocion/acabados';
 import { activoPara, construirActivo, activo as buscarActivo, type Ambientacion } from '../biblioteca/biblioteca';
@@ -118,6 +119,96 @@ export class Pieza {
 		const g = new RoundedBoxGeometry( w, h, d, seg, Math.min( r, w / 2 - 1e-3, h / 2 - 1e-3, d / 2 - 1e-3 ) );
 		g.translate( ( x0 + x1 ) / 2, ( y0 + y1 ) / 2, ( z0 + z1 ) / 2 );
 		return this.add( k, g );
+
+	}
+
+	/**
+	 * Pieza rellena (cojín de asiento o de respaldo): como `blanda`, pero
+	 * abombada en el centro de cada cara, con la cara de arriba algo hundida
+	 * (`hundido`, m) e irregularidades suaves, como la tela con relleno.
+	 */
+	acolchada( k: Clave, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, r = 0.06, inflado = 0.012, hundido = 0.008, semilla = 1 ) {
+
+		const w = x1 - x0, h = y1 - y0, d = z1 - z0;
+		const g = new RoundedBoxGeometry( w, h, d, 6, Math.min( r, w / 2 - 1e-3, h / 2 - 1e-3, d / 2 - 1e-3 ) );
+		const pos = g.getAttribute( 'position' );
+		const azar = ( a: number ) => Math.sin( a * 12.9898 + semilla * 78.233 ) * 0.5;
+		for ( let i = 0; i < pos.count; i ++ ) {
+
+			const x = pos.getX( i ) / ( w / 2 ), y = pos.getY( i ) / ( h / 2 ), z = pos.getZ( i ) / ( d / 2 );
+			// abombado: máximo en el centro de cada cara, nulo en los cantos
+			const bx = ( 1 - y * y ) * ( 1 - z * z ), by = ( 1 - x * x ) * ( 1 - z * z ), bz = ( 1 - x * x ) * ( 1 - y * y );
+			const ondas = 1 + 0.25 * azar( x * 3.1 + z * 1.7 ) + 0.2 * azar( y * 2.3 - x * 1.1 + 5 );
+			const dx = Math.sign( x ) * bx * inflado * ondas * Math.abs( x ) ** 4;
+			let dy = Math.sign( y ) * by * inflado * ondas * Math.abs( y ) ** 4;
+			const dz = Math.sign( z ) * bz * inflado * ondas * Math.abs( z ) ** 4;
+			// hundido de uso en la cara de arriba (más en el centro)
+			if ( y > 0.6 ) dy -= hundido * by * ( 0.8 + 0.4 * azar( x * 1.3 + 9 ) );
+			pos.setXYZ( i, pos.getX( i ) + dx, pos.getY( i ) + dy, pos.getZ( i ) + dz );
+
+		}
+		// normales suaves también entre caras (si no, se verían las costuras de la caja)
+		g.deleteAttribute( 'uv' );
+		g.deleteAttribute( 'normal' );
+		const suave = mergeVertices( g, 1e-4 );
+		suave.computeVertexNormals();
+		suave.translate( ( x0 + x1 ) / 2, ( y0 + y1 ) / 2, ( z0 + z1 ) / 2 );
+		return this.add( k, suave );
+
+	}
+
+	/**
+	 * Cojín decorativo con forma de almohada: grueso en el centro, fino en el
+	 * borde y con las cuatro esquinas pellizcadas. Centrado en el origen, en el
+	 * plano x–y (ancho w, alto h, grueso e).
+	 */
+	almohada( k: Clave, w: number, h: number, e: number, semilla = 1 ) {
+
+		const g = new THREE.SphereGeometry( 1, 40, 28 );
+		const pos = g.getAttribute( 'position' );
+		for ( let i = 0; i < pos.count; i ++ ) {
+
+			// de esfera a «cuadrado blando»: superelipse en x–y, grosor que cae hacia el borde
+			const sx = pos.getX( i ), sy = pos.getY( i ), sz = pos.getZ( i );
+			const ang = Math.atan2( sy, sx ), rad = Math.hypot( sx, sy );
+			const c = Math.cos( ang ), s = Math.sin( ang );
+			const sq = ( v: number ) => Math.sign( v ) * Math.abs( v ) ** 0.45;
+			// esquinas un poco hacia dentro (pellizco de la costura)
+			const pellizco = 1 - 0.1 * Math.abs( Math.sin( 2 * ang ) ) ** 3;
+			const x = sq( c ) * rad * pellizco * w / 2, y = sq( s ) * rad * pellizco * h / 2;
+			const borde = Math.max( 0, 1 - rad ** 2 );
+			const arruga = 1 + 0.06 * Math.sin( ang * 5 + semilla ) * rad;
+			const z = sz * e / 2 * ( 0.25 + 0.75 * Math.sqrt( borde + 0.02 ) ) * arruga;
+			pos.setXYZ( i, x, y, z );
+
+		}
+		g.computeVertexNormals();
+		return this.add( k, g );
+
+	}
+
+	/**
+	 * Tela doblada (manta, plaid): una lámina fina de w × d con pliegues suaves
+	 * a lo ancho, centrada en el origen y apoyada en y = 0.
+	 */
+	tela( k: Clave, w: number, d: number, e = 0.012, pliegues = 4, alto = 0.012, semilla = 1 ) {
+
+		const g = new THREE.BoxGeometry( w, e, d, 40, 1, 24 );
+		const pos = g.getAttribute( 'position' );
+		for ( let i = 0; i < pos.count; i ++ ) {
+
+			const x = pos.getX( i ), z = pos.getZ( i );
+			const ola = Math.sin( ( x / w + 0.5 ) * Math.PI * pliegues + semilla ) * 0.7 + Math.sin( ( z / d ) * 5.3 + x * 3.1 + semilla * 2 ) * 0.3;
+			// los bordes caen un poco
+			const borde = Math.max( Math.abs( z ) / ( d / 2 ), Math.abs( x ) / ( w / 2 ) ) ** 6;
+			pos.setY( i, pos.getY( i ) + e / 2 + alto * ola * ( 1 - borde * 0.5 ) - borde * alto );
+
+		}
+		g.deleteAttribute( 'uv' );
+		g.deleteAttribute( 'normal' );
+		const suave = mergeVertices( g, 1e-4 );
+		suave.computeVertexNormals();
+		return this.add( k, suave );
 
 	}
 

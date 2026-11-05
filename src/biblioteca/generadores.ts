@@ -102,8 +102,8 @@ function hojaPlana( k: Pieza, mat: string, base: THREE.Vector3, dir: THREE.Vecto
 /** Cojín mullido. */
 function cojin( k: Pieza, mat: string, x: number, y: number, z: number, w: number, h: number, inclinacion = 0.25, giro = 0 ) {
 
-	const g = k.blanda( mat, - w / 2, - h / 2, - 0.07, w / 2, h / 2, 0.07, 0.065, 4 );
-	g.scale( 1, 1, 0.9 );
+	// almohada de verdad: gruesa en el centro, fina en el borde, esquinas pellizcadas
+	const g = k.almohada( mat, w, h, 0.17, x * 7 + z * 3 );
 	g.rotateX( - inclinacion );
 	g.rotateY( giro );
 	g.translate( x, y, z );
@@ -126,8 +126,8 @@ const sofa: Gen = ( k, c ) => {
 	else k.blanda( 'zocalo', - W / 2 + 0.04, 0, z0 + 0.04, W / 2 - 0.04, 0.05, z1 - 0.04, 0.01 );
 	const y0 = Math.max( hPata, 0.05 );
 	k.blanda( tela, - W / 2, y0, z0, W / 2, y0 + 0.2, z1, r );
-	k.blanda( tela, - W / 2, y0, z0, - W / 2 + brazo, y0 + ( curvo ? 0.5 : 0.52 ), z1, r );
-	k.blanda( tela, W / 2 - brazo, y0, z0, W / 2, y0 + ( curvo ? 0.5 : 0.52 ), z1, r );
+	k.acolchada( tela, - W / 2, y0, z0, - W / 2 + brazo, y0 + ( curvo ? 0.5 : 0.52 ), z1, r, 0.006, 0.004, 3 );
+	k.acolchada( tela, W / 2 - brazo, y0, z0, W / 2, y0 + ( curvo ? 0.5 : 0.52 ), z1, r, 0.006, 0.004, 4 );
 	k.blanda( tela, - W / 2 + brazo - 0.02, y0 + 0.12, z0, W / 2 - brazo + 0.02, y0 + 0.66, z0 + 0.2, r );
 	const util = W - 2 * brazo;
 	const nA = Math.max( 1, Math.round( util / 0.75 ) );
@@ -135,9 +135,9 @@ const sofa: Gen = ( k, c ) => {
 	for ( let i = 0; i < nA; i ++ ) {
 
 		const x0 = - W / 2 + brazo + i * w;
-		// asiento con leve hundimiento hacia el centro
-		k.blanda( tela, x0 + 0.004, y0 + 0.2, z0 + 0.2, x0 + w - 0.004, y0 + 0.37, z1 - 0.01, 0.07, 4 );
-		const resp = k.blanda( tela, x0 + 0.01, - 0.2, - 0.09, x0 + w - 0.01, 0.2, 0.09, 0.08, 4 );
+		// asiento relleno, con el hundido del uso
+		k.acolchada( tela, x0 + 0.004, y0 + 0.2, z0 + 0.2, x0 + w - 0.004, y0 + 0.37, z1 - 0.01, 0.06, 0.014, 0.012, i + 1 );
+		const resp = k.acolchada( tela, x0 + 0.01, - 0.2, - 0.09, x0 + w - 0.01, 0.2, 0.09, 0.07, 0.02, 0.004, i + 11 );
 		resp.rotateX( - 0.2 );
 		resp.translate( 0, y0 + 0.56, z0 + 0.28 );
 
@@ -159,9 +159,10 @@ const sofa: Gen = ( k, c ) => {
 		// cae sobre el brazo derecho
 		k.blanda( manta, W / 2 - brazo - 0.02, y0 + 0.5, - 0.2, W / 2 + 0.01, y0 + 0.535, 0.28, 0.015, 2 );
 		k.blanda( manta, W / 2 - 0.005, y0 + 0.12, - 0.2, W / 2 + 0.02, y0 + 0.53, 0.28, 0.012, 2 );
-		const doblez = k.blanda( manta, - 0.3, - 0.018, - 0.25, 0.3, 0.018, 0.25, 0.015, 2 );
-		doblez.rotateZ( 0.05 );
-		doblez.translate( W / 2 - brazo - 0.35, y0 + 0.39, 0.05 );
+		// doblada sobre el asiento, con sus pliegues
+		const doblez = k.tela( manta, 0.62, 0.5, 0.03, 3, 0.012, W );
+		doblez.rotateY( 0.12 );
+		doblez.translate( W / 2 - brazo - 0.35, y0 + 0.36, 0.05 );
 
 	}
 

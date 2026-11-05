@@ -129,11 +129,11 @@ def material(nombre):
         bsdf.inputs['Coat Weight'].default_value = 0.15 if acabado != 'laminado' else 0.0
     elif acabado in ('textil', 'boucle'):
         claro, rg, alto = real('lino', escala=1.0 if acabado == 'textil' else 0.6)
-        L.new(tenir(claro, 0.06), bsdf.inputs['Base Color'])
+        L.new(tenir(claro, 0.12), bsdf.inputs['Base Color'])
         bsdf.inputs['Roughness'].default_value = 0.95
-        bsdf.inputs['Sheen Weight'].default_value = 0.6
-        bsdf.inputs['Sheen Roughness'].default_value = 0.5
-        relieve(alto, 0.35, 0.001)
+        bsdf.inputs['Sheen Weight'].default_value = 0.8
+        bsdf.inputs['Sheen Roughness'].default_value = 0.45
+        relieve(alto, 0.6, 0.0015)
     elif acabado == 'pintura':
         claro, rg, alto = real('microcemento', escala=2.3)
         L.new(tenir(claro, 0.008), bsdf.inputs['Base Color'])
