@@ -1,4 +1,5 @@
-# Email de la exportación a quien administra la promotora (decisión 70).
+# Email de la exportación a quien administra la promoción en MUNE Portal (o, si
+# es de la promotora entera, a quien administra la promotora) (decisión 70).
 #
 # Lo lanza la función «exportacion» de Supabase solo con el identificador de
 # la exportación: ni los correos ni el enlace pasan por los datos de entrada.
