@@ -32,7 +32,7 @@ Lo que se guarda es de dos tipos, y no se tratan igual:
 | Historial de procesos (Actions): título y datos de entrada | Ver qué se lanzó | En `aviso-promotora` y `publicar`, los emails de destino van como datos de entrada (se ven en la ficha de cada ejecución, solo para quien tiene acceso al almacén); en los registros salen tapados | **Depende de GitHub**: los registros de cada paso se borran a los 90 días por defecto (en un almacén privado se puede configurar de 1 a 400 días en *Settings → Actions → General*); la ficha de la ejecución puede quedarse más | Plazo de los registros de Actions. Propuesta para más adelante: pasar identificadores en lugar de emails, para que no queden en la ficha |
 | Avisos de GitHub (issues «lista para revisar», «⚠️ …») | Avisar por email | ninguno o el nombre de la promoción | Sin plazo (se cierran, no se borran) | Si se borran los cerrados |
 
-**Reducido en esta propuesta:** el título de «Publicar desde el Panel» ya no lleva el nombre de quien aprueba (queda en Supabase), el de «aviso a MUNE» no lleva el asunto, y el enlace de la exportación sale tapado en los registros, igual que los emails.
+**Reducido en esta propuesta:** el título de «Publicar desde el Panel» ya no lleva el nombre de quien aprueba (queda en Supabase), el de «aviso a MUNE» no lleva el asunto, y el email de la exportación (`aviso-exportacion.yml`) solo recibe el identificador de la exportación: ni los correos ni el enlace pasan por GitHub.
 
 ## 3. Cloudflare (Workers `experience`, `revision-experience`, `studio`, `portal`)
 
