@@ -209,7 +209,46 @@ esc.render.resolution_x, esc.render.resolution_y = ancho, alto
 # ------------------------------------------------------------------ sol y cielo
 
 d = a_blender(datos['sol']['direccion']).normalized()
-sol = bpy.data.lights.new('sol', 'SUN'); sol.energy = 4.5; sol.angle = math.radians(0.6)
+
+def elegir_sol(cam_ob, elevacion=math.radians(arg('--altura-sol', 32.0))):
+    """Como un fotógrafo que elige la hora: prueba el sol alrededor de la casa y
+    se queda con la dirección que mete más sol en el suelo que se ve en la foto."""
+    dg = bpy.context.evaluated_depsgraph_get()
+    cam_ob.data.sensor_fit = 'VERTICAL'
+    m = cam_ob.matrix_world
+    origen = m.translation
+    th = math.tan(cam_ob.data.angle / 2); tw = th * c['aspecto']
+    def rayo(p, v, saltos=6):
+        # atraviesa los vidrios (como la luz)
+        for _ in range(saltos):
+            hit, loc, nor, idx, ob, _m = esc.ray_cast(dg, p, v)
+            if not hit: return None
+            mat = ob.active_material.name if ob and ob.active_material else ''
+            if 'vidrio' in mat: p = loc + v * 0.002; continue
+            return loc, nor
+        return None
+    suelo = []
+    for j in range(14):
+        for i in range(22):
+            x = (i + 0.5) / 22 * 2 - 1; y = (j + 0.5) / 14 * 2 - 1
+            v = (m.to_3x3() @ Vector((x * tw, y * th, -1))).normalized()
+            r = rayo(origen, v)
+            if r and r[1].z > 0.8: suelo.append(r[0] + r[1] * 0.002)
+    if not suelo: return None, 0
+    mejor, cuenta = None, -1
+    for k in range(24):
+        az = k / 24 * 2 * math.pi
+        dsol = Vector((math.cos(elevacion) * math.sin(az), math.cos(elevacion) * math.cos(az), math.sin(elevacion)))
+        n = sum(1 for p in suelo if rayo(p, dsol) is None)
+        if n > cuenta: mejor, cuenta = dsol, n
+    return mejor, cuenta / len(suelo)
+
+if '--sol-fijo' not in sys.argv:
+    elegido, parte = elegir_sol(ob)
+    if elegido is not None and parte > 0.03:
+        d = elegido
+        print('sol elegido: %.0f%% del suelo visible al sol' % (parte * 100))
+sol = bpy.data.lights.new('sol', 'SUN'); sol.energy = arg('--fuerza-sol', 5.0); sol.angle = math.radians(1.5)
 so = bpy.data.objects.new('sol', sol); esc.collection.objects.link(so)
 so.rotation_mode = 'QUATERNION'; so.rotation_quaternion = (-d).to_track_quat('-Z', 'Y')
 mundo = bpy.data.worlds.new('cielo'); esc.world = mundo; mundo.use_nodes = True
@@ -223,7 +262,7 @@ try:
     cielo.sun_rotation = math.atan2(d.x, d.y)
 except Exception as e:
     print('cielo simple:', e)
-fondo = W['Background']; fondo.inputs['Strength'].default_value = 0.35
+fondo = W['Background']; fondo.inputs['Strength'].default_value = arg('--cielo', 1.0)
 WL.new(cielo.outputs[0], fondo.inputs[0])
 
 # ------------------------------------------------------------------ render
@@ -270,8 +309,8 @@ if '--exposicion' not in sys.argv:
     im = bpy.data.images.load(medida)
     px = np.array(im.pixels[:]).reshape(-1, 4)[:, :3]
     l = px @ np.array([0.2126, 0.7152, 0.0722])
-    lum = float(np.percentile(l, 60))  # la estancia, no la ventana (percentil: robusto ante el cielo y el grano)
-    esc.view_settings.exposure = float(np.clip(np.log2(arg('--brillo', 0.16) / lum), -2, 9))
+    lum = float(np.percentile(l, 45))  # la estancia, no la ventana (percentil: robusto ante el cielo y el grano)
+    esc.view_settings.exposure = float(np.clip(np.log2(arg('--brillo', 0.2) / lum), -2, 9))
     print('exposición automática: %.2f (luz media %.4f)' % (esc.view_settings.exposure, lum))
     os.remove(medida)
     esc.render.resolution_percentage = 100
