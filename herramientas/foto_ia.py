@@ -36,9 +36,12 @@ t0 = time.time()
 torch.set_num_threads(os.cpu_count() or 4)
 red = ControlNetModel.from_pretrained('lllyasviel/control_v11f1p_sd15_depth', variant='fp16', torch_dtype=torch.float32, use_safetensors=True)
 vae = AutoencoderKL.from_pretrained('stabilityai/sd-vae-ft-mse', torch_dtype=torch.float32, use_safetensors=True)
-tubo = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
-    'SG161222/Realistic_Vision_V6.0_B1_noVAE', controlnet=red, vae=vae, torch_dtype=torch.float32,
-    safety_checker=None, requires_safety_checker=False, use_safetensors=True)
+# Realistic Vision se publica como un único archivo .safetensors (sin código ejecutable dentro)
+from huggingface_hub import hf_hub_download
+pesos = hf_hub_download('SG161222/Realistic_Vision_V6.0_B1_noVAE', 'Realistic_Vision_V6.0_NV_B1_fp16.safetensors')
+tubo = StableDiffusionControlNetImg2ImgPipeline.from_single_file(
+    pesos, config='stable-diffusion-v1-5/stable-diffusion-v1-5', controlnet=red, vae=vae, torch_dtype=torch.float32,
+    safety_checker=None, requires_safety_checker=False)
 tubo.scheduler = DPMSolverMultistepScheduler.from_config(tubo.scheduler.config, use_karras_sigmas=True)
 print('modelos listos en %.0f s' % (time.time() - t0))
 
