@@ -197,6 +197,19 @@ def material(nombre):
         mx = N.new('ShaderNodeMixShader'); mx.inputs[0].default_value = 0.45
         L.new(dif.outputs[0], mx.inputs[1]); L.new(trl.outputs[0], mx.inputs[2])
         L.new(mx.outputs[0], out.inputs[0])
+    elif acabado == 'exterior':
+        # jardín de la urbanización: césped con manchas de color y briznas (lo que en el visor es procedural)
+        ns = N.new('ShaderNodeTexNoise'); ns.inputs['Scale'].default_value = 0.6; ns.inputs['Detail'].default_value = 8
+        L.new(coord.outputs['Object'], ns.inputs['Vector'])
+        rampa = N.new('ShaderNodeValToRGB'); L.new(ns.outputs['Fac'], rampa.inputs[0])
+        el = rampa.color_ramp.elements
+        el[0].position = 0.35; el[0].color = (0.09, 0.14, 0.045, 1)
+        el[1].position = 0.7; el[1].color = (0.2, 0.26, 0.09, 1)
+        L.new(rampa.outputs[0], bsdf.inputs['Base Color'])
+        bsdf.inputs['Roughness'].default_value = 0.95
+        brizna = N.new('ShaderNodeTexNoise'); brizna.inputs['Scale'].default_value = 400
+        L.new(coord.outputs['Object'], brizna.inputs['Vector'])
+        relieve(brizna.outputs['Fac'], 0.4, 0.004)
     elif acabado == 'cuarzo':
         bsdf.inputs['Roughness'].default_value = 0.15
         bsdf.inputs['Coat Weight'].default_value = 0.3
@@ -335,6 +348,13 @@ tinte = W.new('ShaderNodeMix'); tinte.data_type = 'RGBA'; tinte.blend_type = 'MU
 WL.new(brillo.outputs[0], tinte.inputs['A']); tinte.inputs['B'].default_value = (1.0, 0.93, 0.84, 1)
 WL.new(tinte.outputs['Result'], calido.inputs['B'])
 WL.new(calido.outputs['Result'], fondo.inputs[0])
+# «ventana» de fotógrafo: el cielo que se ve por la ventana, menos brillante (no ilumina menos la casa)
+camino = W.new('ShaderNodeLightPath')
+fuerza = W.new('ShaderNodeMath'); fuerza.operation = 'MULTIPLY_ADD'
+WL.new(camino.outputs['Is Camera Ray'], fuerza.inputs[0]); fuerza.inputs[1].default_value = arg('--cielo-visto', 0.35) - 1; fuerza.inputs[2].default_value = 1
+por = W.new('ShaderNodeMath'); por.operation = 'MULTIPLY'
+WL.new(fuerza.outputs[0], por.inputs[0]); por.inputs[1].default_value = arg('--cielo', 1.0)
+WL.new(por.outputs[0], fondo.inputs['Strength'])
 
 # ------------------------------------------------------------------ render
 

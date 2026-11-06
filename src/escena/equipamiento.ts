@@ -8,6 +8,7 @@ import * as THREE from 'three/webgpu';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import type { Equipamiento, Vivienda } from '../modelo/tipos';
 import { unir } from '../util/geo';
+import { existeModelo, ponerModelo } from '../biblioteca/modelos';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as M from './materiales';
 import { ACABADOS } from '../promocion/acabados';
@@ -94,6 +95,15 @@ export const asegurarMateriales = () => ( MAT ??= crearMateriales() );
 export class Pieza {
 
 	partes = new Map<Clave, THREE.BufferGeometry[]>();
+	/** Modelos reales de la biblioteca (biblioteca/modelos/) que van dentro de la pieza. */
+	modelos: { nombre: string; x: number; y: number; z: number; W: number; D: number; H: number; giro: number }[] = [];
+
+	/** Pone un modelo real (p. ej. follaje) dentro de la caja W × D × H apoyada en (x, y, z). */
+	modelo( nombre: string, x: number, y: number, z: number, W: number, D: number, H: number, giro = 0 ) {
+
+		this.modelos.push( { nombre, x, y, z, W, D, H, giro } );
+
+	}
 
 	add( k: Clave, g: THREE.BufferGeometry ) {
 
@@ -320,6 +330,15 @@ export class Pieza {
 			m.receiveShadow = true;
 			if ( transparente ) m.renderOrder = 2;
 			g.add( m );
+
+		}
+		for ( const md of this.modelos ) {
+
+			if ( ! existeModelo( md.nombre ) ) continue;
+			const sitio = new THREE.Group();
+			sitio.position.set( md.x, md.y, md.z );
+			ponerModelo( sitio, md.nombre, md.W, md.D, md.H, false, md.giro );
+			g.add( sitio );
 
 		}
 

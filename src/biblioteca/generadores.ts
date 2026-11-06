@@ -8,6 +8,7 @@
 
 import * as THREE from 'three/webgpu';
 import type { Pieza } from '../escena/equipamiento';
+import { existeModelo } from './modelos';
 
 /** Parámetros de una pieza: materiales (`tela:#hex`, `madera:#hex`…) y opciones de forma. */
 export type Params = Record<string, string | number | boolean>;
@@ -649,7 +650,18 @@ const jardinera: Gen = ( k, c ) => {
 	k.blanda( mat, - W / 2, 0, - D / 2, W / 2, hM, D / 2, 0.015 );
 	k.caja( 'terracota:#4a3b2e', - W / 2 + 0.03, hM - 0.03, - D / 2 + 0.03, W / 2 - 0.03, hM - 0.01, D / 2 - 0.03 );
 	const nB = Math.max( 2, Math.round( W / 0.3 ) );
-	for ( let i = 0; i < nB; i ++ ) {
+	if ( existeModelo( 'follaje_01' ) && ! c.p.bolas ) {
+
+		// follaje real (Poly Haven, CC0), una mata cada ~45 cm, girada y de tamaño algo distinto
+		const nF = Math.max( 1, Math.round( W / 0.45 ) );
+		for ( let i = 0; i < nF; i ++ ) {
+
+			const x = - W / 2 + ( i + 0.5 ) * W / nF, t = 0.9 + rnd() * 0.25;
+			k.modelo( 'follaje_01', x + ( rnd() - 0.5 ) * 0.05, hM - 0.06, ( rnd() - 0.5 ) * 0.04, ( W / nF ) * 1.25 * t, D * 1.3 * t, 0.62 * t, rnd() * Math.PI * 2 );
+
+		}
+
+	} else for ( let i = 0; i < nB; i ++ ) {
 
 		const x = - W / 2 + ( i + 0.5 ) * W / nB;
 		const r = 0.14 + rnd() * 0.06;

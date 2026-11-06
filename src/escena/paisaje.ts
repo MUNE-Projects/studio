@@ -4,6 +4,7 @@
 
 import * as THREE from 'three/webgpu';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { existeModelo } from '../biblioteca/modelos';
 import { Pieza } from './equipamiento';
 import { azar } from '../biblioteca/generadores';
 import type { Vivienda } from '../modelo/tipos';
@@ -65,7 +66,9 @@ export function construirPaisaje( v: Vivienda ) {
 	for ( let t = m.t0 - 1.5; t < m.t1 + 1.5; t += 0.55 ) {
 
 		const [ x, z ] = P( t + ( rnd() - 0.5 ) * 0.1, 0.5 );
-		copa( k, 'hoja:#5b7442', x, 0.2, z, 0.34, rnd, 1.0 );
+		// follaje real (Poly Haven, CC0, versión ligera); si no está, la copa de siempre
+		if ( existeModelo( 'follaje_ligero' ) ) k.modelo( 'follaje_ligero', x, - 0.05, z, 0.75, 0.75, 0.6 + rnd() * 0.12, rnd() * Math.PI * 2 );
+		else copa( k, 'hoja:#5b7442', x, 0.2, z, 0.34, rnd, 1.0 );
 
 	}
 
@@ -87,7 +90,9 @@ export function construirPaisaje( v: Vivienda ) {
 
 		const t = m.t0 - 4 + i * 1.6 + rnd() * 0.6;
 		const [ x, z ] = P( t, 4.1 + rnd() * 0.5 );
-		copa( k, i % 3 ? 'hoja:#667d4c' : 'hoja:#8a8f5c', x, 0.35, z, 0.45 + rnd() * 0.25, rnd, 0.9 );
+		const r = 0.45 + rnd() * 0.25;
+		if ( existeModelo( 'follaje_ligero' ) ) k.modelo( 'follaje_ligero', x, 0, z, r * 2.2, r * 2.2, r * 1.9, rnd() * Math.PI * 2 );
+		else copa( k, i % 3 ? 'hoja:#667d4c' : 'hoja:#8a8f5c', x, 0.35, z, r, rnd, 0.9 );
 
 	}
 

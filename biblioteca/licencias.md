@@ -29,6 +29,13 @@ Uso comercial y redistribución permitidos, sin obligación de atribución
 | `ceramic_vase_04.glb` | Ceramic Vase 04 | James Ray Cock | `jarra-ceramica` |
 | `modern_ceiling_lamp_01.glb` | Modern Ceiling Lamp 01 | James Ray Cock | (aún sin activo) |
 | `modern_coffee_table_01.glb` | Modern Coffee Table 01 | Amin | `mesa-centro-hormigon` |
+| `potted_plant_01.glb` | Potted Plant 01 (aligerado con `herramientas/modelos_blender.py`) | Rico Cilliers | `planta-grande-ficus` |
+| `follaje_01.glb` | Potted Plant 01, solo hojas y tallos | Rico Cilliers | follaje de las jardineras |
+| `follaje_ligero.glb` | Potted Plant 01, solo hojas y tallos, más ligero | Rico Cilliers | setos y macizos de la urbanización |
+
+## Programas gratuitos que se usan para producir (no van en la web)
+
+- Blender (GPL), como módulo de Python «bpy»: render foto (`herramientas/render_foto.py`) y preparación de modelos (`herramientas/modelos_blender.py`). Las imágenes que produce son nuestras, sin condiciones.
 
 ## Otras fuentes ya en uso
 

@@ -1014,7 +1014,8 @@
     "Kenay Home"
    ],
    "referencia": "PLANTA-GRANDE-FICUS",
-   "miniatura": null
+   "miniatura": null,
+   "modelo": "potted_plant_01"
   },
   {
    "id": "planta-olivo",
