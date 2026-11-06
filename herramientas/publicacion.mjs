@@ -183,6 +183,79 @@ function comprobarSuperficies( id ) {
 
 }
 
+// Paso libre alrededor de las camas: nada en el suelo (sillones, plantas, cestas,
+// otros muebles) en los 55 cm junto a los lados y a los pies de una cama, salvo
+// donde la cama toca la pared. Se pidió el 6/11/2026: un sillón a los pies
+// impedía pasar al otro lado de la cama.
+const PASO_CAMA = 0.55;
+
+function enPoligono( x, y, pol ) {
+
+	let dentro = false;
+	for ( let i = 0, j = pol.length - 1; i < pol.length; j = i ++ ) {
+
+		const [ xi, yi ] = pol[ i ], [ xj, yj ] = pol[ j ];
+		if ( ( yi > y ) !== ( yj > y ) && x < ( xj - xi ) * ( y - yi ) / ( yj - yi ) + xi ) dentro = ! dentro;
+
+	}
+	return dentro;
+
+}
+
+function comprobarPaso( id ) {
+
+	const carpeta = join( TRABAJO, id, 'tipologias' );
+	const biblioteca = leerJSON( join( RAIZ, 'biblioteca', 'biblioteca.json' ) );
+	const dims = Object.fromEntries( biblioteca.activos.map( ( a ) => [ a.id, a ] ) );
+	const problemas = [];
+	const corta = ( a, b ) => a[ 0 ] < b[ 2 ] - 0.01 && b[ 0 ] < a[ 2 ] - 0.01 && a[ 1 ] < b[ 3 ] - 0.01 && b[ 1 ] < a[ 3 ] - 0.01;
+	for ( const t of existsSync( carpeta ) ? readdirSync( carpeta ) : [] ) {
+
+		const rv = join( carpeta, t, 'vivienda.json' ), ra = join( carpeta, t, 'ambientacion.json' );
+		if ( ! existsSync( rv ) ) continue;
+		const v = leerJSON( rv );
+		const amb = existsSync( ra ) ? leerJSON( ra ) : { decoracion: [] };
+		// lo que ocupa suelo: decoración apoyada (no alfombras) y muebles que no sean camas ni mesillas
+		const obstaculos = [];
+		for ( const d of amb.decoracion ?? [] ) {
+
+			const a = dims[ d.activo ];
+			if ( ! a || d.elev > 0.05 || a.categoria === 'alfombras' || d.pisable ) continue;
+			const [ W, D ] = d.dims ?? a.dims;
+			const g = ( d.rot ?? 0 ) * Math.PI / 180;
+			const hx = ( Math.abs( Math.cos( g ) ) * W + Math.abs( Math.sin( g ) ) * D ) / 2, hy = ( Math.abs( Math.sin( g ) ) * W + Math.abs( Math.cos( g ) ) * D ) / 2;
+			obstaculos.push( { nombre: a.nombre ?? d.activo, r: [ d.pos[ 0 ] - hx, d.pos[ 1 ] - hy, d.pos[ 0 ] + hx, d.pos[ 1 ] + hy ] } );
+
+		}
+		for ( const e of v.equipamiento ?? [] ) if ( e.rect && ! [ 'cama', 'mesilla' ].includes( e.tipo ) ) obstaculos.push( { nombre: e.tipo, r: e.rect } );
+		for ( const cama of ( v.equipamiento ?? [] ).filter( ( e ) => e.tipo === 'cama' && e.rect ) ) {
+
+			const [ x0, y0, x1, y1 ] = cama.rect, P = PASO_CAMA, cab = 0.45;
+			// franjas de paso según hacia dónde dan los pies (frente): los dos lados largos y los pies
+			const f = cama.frente ?? 's';
+			const franjas = {
+				o: [ [ x0, y1, x1 - cab, y1 + P ], [ x0, y0 - P, x1 - cab, y0 ], [ x0 - P, y0, x0, y1 ] ],
+				e: [ [ x0 + cab, y1, x1, y1 + P ], [ x0 + cab, y0 - P, x1, y0 ], [ x1, y0, x1 + P, y1 ] ],
+				s: [ [ x0 - P, y0, x0, y1 - cab ], [ x1, y0, x1 + P, y1 - cab ], [ x0, y0 - P, x1, y0 ] ],
+				n: [ [ x0 - P, y0 + cab, x0, y1 ], [ x1, y0 + cab, x1 + P, y1 ], [ x0, y1, x1, y1 + P ] ],
+			}[ f ] ?? [];
+			const estancia = ( v.estancias ?? [] ).find( ( e ) => e.poligono && enPoligono( ( x0 + x1 ) / 2, ( y0 + y1 ) / 2, e.poligono ) );
+			for ( const fr of franjas ) {
+
+				// contra la pared (la franja queda fuera de la estancia): no hay paso que guardar
+				if ( estancia && ! enPoligono( ( fr[ 0 ] + fr[ 2 ] ) / 2, ( fr[ 1 ] + fr[ 3 ] ) / 2, estancia.poligono ) ) continue;
+				for ( const o of obstaculos ) if ( corta( fr, o.r ) ) problemas.push( `tipología «${ t }»: «${ o.nombre }» corta el paso junto a la cama ${ cama.id } (deja menos de ${ Math.round( PASO_CAMA * 100 ) } cm para pasar)` );
+
+			}
+
+		}
+
+	}
+	if ( problemas.length ) fallo( `No se puede pasar alrededor de alguna cama:\n  · ${ [ ...new Set( problemas ) ].join( '\n  · ' ) }\n  Mueve ese elemento (ambientacion.json) a un sitio que deje paso.` );
+	ok( 'Paso libre alrededor de las camas' );
+
+}
+
 /** Registro de versiones de la promoción en Supabase, con la sesión indicada. */
 async function registro( cabeceras, id ) {
 
@@ -547,6 +620,7 @@ async function preparar( id ) {
 	if ( distintos.length ) fallo( `Los datos de trabajo/${ id }/ no son los guardados en Supabase. Lo publicado debe ser exactamente lo guardado:\n  · ${ distintos.join( '\n  · ' ) }\n  Súbelos (node herramientas/promociones.mjs subir ${ id } --nota "…") o vuelve a bajarlos.` );
 	ok( `Datos de la promoción: los guardados en Supabase el ${ guardada.guardado_en.slice( 0, 16 ).replace( 'T', ' ' ) } (huella ${ guardada.huella.slice( 0, 12 ) })` );
 	comprobarSuperficies( id );
+	comprobarPaso( id );
 
 	// número siguiente: el mayor del registro de versiones y de las copias del modelo
 	const versiones = await registro( robot, id );
@@ -716,6 +790,7 @@ async function comprobar( id ) {
 
 	comprobarPromocion( id );
 	comprobarSuperficies( id );
+	comprobarPaso( id );
 	const destino = join( RAIZ, 'salida', 'comprobar', id );
 	rmSync( destino, { recursive: true, force: true } );
 	const planos = await generarPlanos( id, 'v0', destino );
