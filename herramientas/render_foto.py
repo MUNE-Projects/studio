@@ -242,6 +242,32 @@ cam.clip_start = 0.05
 esc.camera = ob
 esc.render.resolution_x, esc.render.resolution_y = ancho, alto
 
+def camara_de_fotografo(ob, altura=arg('--altura-camara', 1.3)):
+    """Como un fotógrafo de interiores: cámara a ~1,30 m del suelo y nivelada
+    (verticales rectas). Lo que la vista miraba hacia arriba o abajo se recupera
+    descentrando el objetivo, como una cámara de arquitectura, sin inclinarla."""
+    dg = bpy.context.evaluated_depsgraph_get()
+    m = ob.matrix_world.copy()
+    fwd = (m.to_3x3() @ Vector((0, 0, -1))).normalized()
+    hit, loc, nor, *_ = esc.ray_cast(dg, ob.location, Vector((0, 0, -1)))
+    suelo = loc.z if hit else ob.location.z - 1.5
+    cabeza = ob.location.z - suelo
+    # la vista miraba al punto donde cruzaba la altura de sus ojos; se conserva el encuadre
+    inclinacion = math.asin(max(-0.95, min(0.95, fwd.z)))
+    ob.location.z = suelo + altura
+    rumbo = math.atan2(-fwd.x, fwd.y)
+    ob.rotation_mode = 'XYZ'
+    ob.rotation_euler = (math.pi / 2, 0, rumbo)
+    vfov = ob.data.angle
+    desplazamiento = math.tan(inclinacion) / (2 * math.tan(vfov / 2) * c['aspecto'])
+    # al bajar la cámara, el centro de la imagen sube un poco para no ver tanto suelo
+    desplazamiento += (cabeza - altura) * 0.02
+    ob.data.shift_y = max(-0.2, min(0.2, desplazamiento))
+    print('cámara de fotógrafo: %.2f m del suelo, descentrado %.3f (antes %.2f m e inclinada %.0f°)' % (altura, ob.data.shift_y, cabeza, math.degrees(inclinacion)))
+
+if '--camara-visor' not in sys.argv:
+    camara_de_fotografo(ob)
+
 # ------------------------------------------------------------------ sol y cielo
 
 d = a_blender(datos['sol']['direccion']).normalized()
@@ -369,4 +395,31 @@ if '--exposicion' not in sys.argv:
 esc.render.image_settings.file_format = 'PNG'
 esc.render.filepath = salida
 bpy.ops.render.render(write_still=True)
+
+# ------------------------------------------------------------------ revelado de fotógrafo
+# lo que hace una cámara real: un poco de brillo alrededor de las luces fuertes,
+# viñeta suave, la mínima aberración del objetivo y un grano finísimo
+if '--sin-revelado' not in sys.argv:
+    import numpy as np
+    from PIL import Image, ImageFilter
+    im = Image.open(salida).convert('RGB')
+    a = np.asarray(im).astype(np.float32) / 255
+    h, w = a.shape[:2]
+    # brillo (bloom): lo muy claro se difumina y se suma
+    luz = np.clip((a - 0.82) / 0.18, 0, 1) * a
+    halo = np.asarray(Image.fromarray((luz * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(radius=w / 90))).astype(np.float32) / 255
+    a = a + halo * 0.35
+    # aberración cromática muy leve hacia los bordes (rojo y azul se separan 1 px)
+    a[:, :, 0] = np.roll(a[:, :, 0], 1, axis=1); a[:, :, 2] = np.roll(a[:, :, 2], -1, axis=1)
+    # viñeta suave
+    yy, xx = np.mgrid[0:h, 0:w]
+    r = np.hypot((xx - w / 2) / (w / 2), (yy - h / 2) / (h / 2))
+    a = a * (1 - 0.12 * np.clip(r - 0.55, 0, 1) ** 1.6)[..., None]
+    # grano fino de sensor
+    rng = np.random.default_rng(7)
+    a = a + rng.normal(0, 0.005, (h, w, 1))
+    im = Image.fromarray((np.clip(a, 0, 1) * 255 + 0.5).astype(np.uint8))
+    # nitidez de revelado
+    im = im.filter(ImageFilter.UnsharpMask(radius=1.2, percent=40, threshold=2))
+    im.save(salida)
 print('listo', salida)
