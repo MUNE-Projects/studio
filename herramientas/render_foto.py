@@ -429,6 +429,44 @@ esc.render.image_settings.file_format = 'PNG'
 esc.render.filepath = salida
 bpy.ops.render.render(write_still=True)
 
+# ------------------------------------------------------------------ mapa de profundidad (para la IA)
+# --profundidad salida.png: a qué distancia está cada punto (claro = cerca), para
+# que la pasada de IA (herramientas/foto_ia.py) respete la forma exacta de la estancia
+prof = arg('--profundidad', '')
+if prof:
+    import glob, numpy as np
+    # OpenImageIO viene con Blender (dentro del paquete bpy)
+    raiz_blender = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(bpy.__file__))))  # …/bpy/5.x
+    sys.path += glob.glob(os.path.join(raiz_blender, 'python', 'lib', 'python3*', 'site-packages'))
+    import OpenImageIO as oiio
+    from PIL import Image
+    esc.cycles.samples = 1
+    esc.cycles.use_denoising = False
+    bpy.context.view_layer.use_pass_z = True
+    try:
+        esc.render.image_settings.media_type = 'MULTI_LAYER_IMAGE'  # Blender 5
+    except Exception:
+        pass
+    esc.render.image_settings.file_format = 'OPEN_EXR_MULTILAYER' if 'OPEN_EXR_MULTILAYER' in [x.identifier for x in esc.render.image_settings.bl_rna.properties['file_format'].enum_items] else 'OPEN_EXR'
+    tmp = os.path.join(os.path.dirname(salida), '.profundidad.exr')
+    esc.render.filepath = tmp
+    bpy.ops.render.render(write_still=True)
+    # la profundidad va en su propia capa del EXR (en Blender 5, otra subimagen)
+    z = None
+    for sub in range(oiio.ImageBuf(tmp).nsubimages or 1):
+        buf = oiio.ImageBuf(tmp, sub, 0)
+        canales = list(buf.spec().channelnames)
+        for ic, n in enumerate(canales):
+            if n.endswith('Depth.Z') or n == 'Z':
+                z = buf.get_pixels(oiio.FLOAT)[:, :, ic]
+    if z is None: raise RuntimeError('El render no ha guardado la profundidad')
+    z = np.clip(z, 0, 30)
+    cerca, lejos = np.percentile(z, 1), np.percentile(z, 98)
+    d = 1 - np.clip((z - cerca) / max(lejos - cerca, 1e-3), 0, 1)
+    Image.fromarray((d * 255).astype(np.uint8)).save(os.path.abspath(prof))
+    os.remove(tmp)
+    print('profundidad:', prof)
+
 # ------------------------------------------------------------------ revelado de fotógrafo
 # lo que hace una cámara real: un poco de brillo alrededor de las luces fuertes,
 # viñeta suave, la mínima aberración del objetivo y un grano finísimo

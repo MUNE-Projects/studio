@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+"""Pasada de IA gratuita: convierte el render foto en una imagen fotográfica
+SIN mover nada de sitio (decisión 70).
+
+  python herramientas/foto_ia.py <render.png> <profundidad.png> <salida.png> [--fuerza 0.35] [--pasos 30] [--ancho 768]
+
+Usa modelos abiertos de Hugging Face, que permiten el uso comercial y no piden
+citar a nadie en las imágenes:
+  · Realistic Vision V6 (SG161222, licencia CreativeML OpenRAIL-M): fotografía realista;
+  · ControlNet de profundidad (lllyasviel, OpenRAIL): obliga a respetar la forma
+    exacta de la estancia (paredes, muebles, huecos), leída del mapa de
+    profundidad que saca render_foto.py (--profundidad);
+  · VAE ft-mse (Stability AI, MIT): colores más fieles.
+Parte del render (img2img): `--fuerza` es cuánto puede cambiar (0 = nada,
+1 = todo); con 0,3–0,4 cambia la textura y la luz, no los acabados.
+Funciona sin tarjeta gráfica (más lento). Nada sale de este ordenador.
+"""
+import os, sys, time
+import torch
+from PIL import Image
+from diffusers import AutoencoderKL, ControlNetModel, DPMSolverMultistepScheduler, StableDiffusionControlNetImg2ImgPipeline
+
+def arg(nombre, defecto):
+    return type(defecto)(sys.argv[sys.argv.index(nombre) + 1]) if nombre in sys.argv else defecto
+
+render, profundidad, salida = sys.argv[1:4]
+fuerza, pasos, ancho = arg('--fuerza', 0.35), arg('--pasos', 30), arg('--ancho', 768)
+semilla = arg('--semilla', 7)
+
+PROMPT = ('professional interior photography for a real estate brochure, photorealistic, natural daylight, '
+          'soft shadows, realistic fabric and wood textures, sharp focus, shot on a full frame camera, 24mm lens, high detail')
+NEGATIVO = ('cgi, 3d render, cartoon, illustration, painting, plastic, blurry, distorted, deformed, '
+            'extra furniture, people, text, watermark, oversaturated')
+
+t0 = time.time()
+torch.set_num_threads(os.cpu_count() or 4)
+red = ControlNetModel.from_pretrained('lllyasviel/control_v11f1p_sd15_depth', variant='fp16', torch_dtype=torch.float32, use_safetensors=True)
+vae = AutoencoderKL.from_pretrained('stabilityai/sd-vae-ft-mse', torch_dtype=torch.float32, use_safetensors=True)
+tubo = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
+    'SG161222/Realistic_Vision_V6.0_B1_noVAE', controlnet=red, vae=vae, torch_dtype=torch.float32,
+    safety_checker=None, requires_safety_checker=False, use_safetensors=True)
+tubo.scheduler = DPMSolverMultistepScheduler.from_config(tubo.scheduler.config, use_karras_sigmas=True)
+print('modelos listos en %.0f s' % (time.time() - t0))
+
+original = Image.open(render).convert('RGB')
+W = ancho // 8 * 8
+H = round(original.height * W / original.width) // 8 * 8
+img = original.resize((W, H), Image.LANCZOS)
+prof = Image.open(profundidad).convert('RGB').resize((W, H), Image.LANCZOS)
+
+t1 = time.time()
+resultado = tubo(prompt=PROMPT, negative_prompt=NEGATIVO, image=img, control_image=prof,
+                 strength=fuerza, num_inference_steps=pasos, guidance_scale=5.0,
+                 controlnet_conditioning_scale=arg('--control', 1.0),
+                 generator=torch.Generator().manual_seed(semilla)).images[0]
+print('imagen en %.0f s' % (time.time() - t1))
+# vuelve al tamaño del render
+resultado.resize(original.size, Image.LANCZOS).save(salida)
+print('listo', salida)
