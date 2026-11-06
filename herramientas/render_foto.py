@@ -35,6 +35,7 @@ def hexrgb(h):
     lin = lambda c: c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
     return tuple(lin(int(h[i:i + 2], 16) / 255) for i in (0, 2, 4)) + (1.0,)
 
+VENTANAS = []  # nodos del cristal que oscurecen lo que se ve por la ventana
 imagenes = {}
 def imagen(n):
     if n not in imagenes:
@@ -157,6 +158,15 @@ def material(nombre):
     elif acabado == 'vidrio':
         N.remove(bsdf)
         tr = N.new('ShaderNodeBsdfTransparent'); gl = N.new('ShaderNodeBsdfGlossy'); gl.inputs['Roughness'].default_value = 0.02
+        # lo que la cámara ve a través del cristal, más oscuro (como el fotógrafo que expone
+        # aparte la ventana); la luz que entra en la habitación no cambia
+        lp = N.new('ShaderNodeLightPath')
+        vista = N.new('ShaderNodeMix'); vista.data_type = 'RGBA'
+        L.new(lp.outputs['Is Camera Ray'], vista.inputs['Factor'])
+        vista.inputs['A'].default_value = (1, 1, 1, 1)
+        k = arg('--ventana', 0.45); vista.inputs['B'].default_value = (k, k, k, 1)
+        VENTANAS.append((vista, k))
+        L.new(vista.outputs['Result'], tr.inputs['Color'])
         fr = N.new('ShaderNodeLayerWeight'); fr.inputs['Blend'].default_value = 0.15
         mx = N.new('ShaderNodeMixShader')
         L.new(fr.outputs['Fresnel'], mx.inputs[0]); L.new(tr.outputs[0], mx.inputs[1]); L.new(gl.outputs[0], mx.inputs[2])
@@ -395,6 +405,8 @@ if '--exposicion' not in sys.argv:
     esc.cycles.use_denoising = False
     esc.render.image_settings.file_format = 'OPEN_EXR'
     medida = os.path.join(os.path.dirname(salida), '.medida.exr')
+    # se mide la estancia como es, sin el oscurecido de la ventana
+    for nodo, _k in VENTANAS: nodo.inputs['B'].default_value = (1, 1, 1, 1)
     esc.render.filepath = medida
     bpy.ops.render.render(write_still=True)
     im = bpy.data.images.load(medida)
@@ -409,6 +421,7 @@ if '--exposicion' not in sys.argv:
     esc.view_settings.exposure = float(np.clip(np.log2(arg('--brillo', 0.24) / lum), arg('--exp-min', 0.5), arg('--exp-max', 2.0)))
     print('exposición automática: %.2f (luz media %.4f)' % (esc.view_settings.exposure, lum))
     os.remove(medida)
+    for nodo, k in VENTANAS: nodo.inputs['B'].default_value = (k, k, k, 1)
     esc.render.resolution_percentage = 100
     esc.cycles.samples = muestras
     esc.cycles.use_denoising = True
