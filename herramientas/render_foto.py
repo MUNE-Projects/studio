@@ -128,12 +128,15 @@ def material(nombre):
         if acabado != 'tarima': relieve(alto, 0.15)
         bsdf.inputs['Coat Weight'].default_value = 0.15 if acabado != 'laminado' else 0.0
     elif acabado in ('textil', 'boucle'):
-        claro, rg, alto = real('lino', escala=1.0 if acabado == 'textil' else 0.6)
-        L.new(tenir(claro, 0.12), bsdf.inputs['Base Color'])
+        # escala de la trama (v0): 1 = tapicería fina; menos = punto grueso de manta
+        # (en la biblioteca, las mantas y plaids llevan escala 3: se dibujan como punto grueso)
+        escala_t = 0.45 if acabado == 'textil' and v0 >= 2 else (1.0 if acabado == 'textil' else 0.6)
+        claro, rg, alto = real('lino', escala=escala_t)
+        L.new(tenir(claro, 0.12 if escala_t >= 0.9 else 0.25), bsdf.inputs['Base Color'])
         bsdf.inputs['Roughness'].default_value = 0.95
         bsdf.inputs['Sheen Weight'].default_value = 0.8
         bsdf.inputs['Sheen Roughness'].default_value = 0.45
-        relieve(alto, 0.6, 0.0015)
+        relieve(alto, 0.6 if escala_t >= 0.9 else 1.0, 0.0015 / max(escala_t, 0.3))
     elif acabado == 'pintura':
         claro, rg, alto = real('microcemento', escala=2.3)
         L.new(tenir(claro, 0.008), bsdf.inputs['Base Color'])
@@ -186,12 +189,25 @@ def material(nombre):
         suma = N.new('ShaderNodeMath'); suma.operation = 'MULTIPLY_ADD'
         L.new(tr.outputs['Fac'], suma.inputs[0]); suma.inputs[1].default_value = 2.0; L.new(alto, suma.inputs[2])
         relieve(suma.outputs[0], 0.25, 0.0008)
+    elif acabado == 'pantalla':
+        # pantalla de tela: deja pasar la luz de la bombilla, cálida
+        N.remove(bsdf)
+        dif = N.new('ShaderNodeBsdfDiffuse'); dif.inputs['Color'].default_value = color
+        trl = N.new('ShaderNodeBsdfTranslucent'); trl.inputs['Color'].default_value = tuple(min(1, c * 1.05) for c in color[:3]) + (1,)
+        mx = N.new('ShaderNodeMixShader'); mx.inputs[0].default_value = 0.45
+        L.new(dif.outputs[0], mx.inputs[1]); L.new(trl.outputs[0], mx.inputs[2])
+        L.new(mx.outputs[0], out.inputs[0])
     elif acabado == 'cuarzo':
         bsdf.inputs['Roughness'].default_value = 0.15
         bsdf.inputs['Coat Weight'].default_value = 0.3
     elif acabado == 'marmol':
         bsdf.inputs['Roughness'].default_value = 0.1
         bsdf.inputs['Coat Weight'].default_value = 0.4
+    # bombillas y piezas que dan luz: encendidas, cálidas
+    emision = float(p[9]) if len(p) > 9 else 0.0
+    if emision > 0 and acabado not in ('vidrio', 'pantalla'):
+        bsdf.inputs['Emission Color'].default_value = (1.0, 0.78, 0.52, 1)
+        bsdf.inputs['Emission Strength'].default_value = emision * arg('--lamparas', 6.0)
     return m
 
 cambiados = {}
@@ -338,8 +354,13 @@ if '--exposicion' not in sys.argv:
     im = bpy.data.images.load(medida)
     px = np.array(im.pixels[:]).reshape(-1, 4)[:, :3]
     l = px @ np.array([0.2126, 0.7152, 0.0722])
-    lum = max(float(np.percentile(l, 30)), float(np.mean(l)) * 0.3, 1e-4)  # la estancia, no la ventana; nunca cero
-    esc.view_settings.exposure = float(np.clip(np.log2(arg('--brillo', 0.3) / lum), -2, 9))
+    # el brillo típico de la estancia: sin las ventanas y el sol directo (lo más claro)
+    # ni el grano oscuro de pocas muestras (lo más oscuro); media geométrica del resto
+    bajo, alto_p = np.percentile(l, 10), np.percentile(l, 85)
+    medio = l[(l >= bajo) & (l <= alto_p)]
+    lum = float(np.exp(np.mean(np.log(np.maximum(medio, 1e-4))))) if medio.size else 1e-3
+    # margen máximo de corrección: ninguna estancia quemada ni a oscuras
+    esc.view_settings.exposure = float(np.clip(np.log2(arg('--brillo', 0.24) / lum), arg('--exp-min', 0.5), arg('--exp-max', 2.0)))
     print('exposición automática: %.2f (luz media %.4f)' % (esc.view_settings.exposure, lum))
     os.remove(medida)
     esc.render.resolution_percentage = 100

@@ -156,11 +156,11 @@ const sofa: Gen = ( k, c ) => {
 	const manta = s( c, 'manta', '' );
 	if ( manta ) {
 
-		// cae sobre el brazo derecho
-		k.blanda( manta, W / 2 - brazo - 0.02, y0 + 0.5, - 0.2, W / 2 + 0.01, y0 + 0.535, 0.28, 0.015, 2 );
-		k.blanda( manta, W / 2 - 0.005, y0 + 0.12, - 0.2, W / 2 + 0.02, y0 + 0.53, 0.28, 0.012, 2 );
+		// cae por encima del brazo derecho, a los dos lados, con su grosor de lana
+		const sobreBrazo = k.edredon( manta, brazo + 0.02, 0.5, 0, 0.3, 0.02, W * 2, false, 2.5 );
+		sobreBrazo.translate( W / 2 - brazo / 2, y0 + ( curvo ? 0.5 : 0.52 ), 0.03 );
 		// doblada sobre el asiento, con sus pliegues
-		const doblez = k.tela( manta, 0.62, 0.5, 0.03, 3, 0.012, W );
+		const doblez = k.tela( manta, 0.6, 0.48, 0.04, 3, 0.016, W );
 		doblez.rotateY( 0.12 );
 		doblez.translate( W / 2 - brazo - 0.35, y0 + 0.36, 0.05 );
 
@@ -419,7 +419,7 @@ const cama: Gen = ( k, c ) => {
 
 		// plaid doblado a los pies, encima del edredón, que cae por los lados
 		const z = z1 - 0.42;
-		const plaid = k.edredon( pie, W + 0.07, 0.36, 0.585, 0.22, 0.012, W * 5 );
+		const plaid = k.edredon( pie, W + 0.07, 0.4, 0.59, 0.24, 0.025, W * 5, false, 2.5 );
 		plaid.translate( 0, 0, z + 0.18 );
 
 	}
@@ -491,7 +491,7 @@ const lamparaColgante: Gen = ( k, c ) => {
 	k.cilindro( 'metalNegro', 0, c.H + cable - 0.02, 0, 0.05, c.H + cable, 20 );
 	if ( c.p.forma === 'cesta' ) {
 
-		const mat = s( c, 'pantalla', 'tela:#b69468:2' );
+		const mat = s( c, 'pantalla', 'pantalla:#b69468:2' ).replace( /^tela:/, 'pantalla:' );
 		torno( k, mat, [ [ 0.03, c.H ], [ r * 0.5, c.H * 0.9 ], [ r, c.H * 0.35 ], [ r * 0.96, 0 ] ], 0, 0, 0, 40 );
 		k.cilindro( 'emisivo:#ffe2b8:2.5', 0, 0.02, 0, r * 0.93, 0.025, 32 );
 		return;
@@ -505,7 +505,7 @@ const lamparaColgante: Gen = ( k, c ) => {
 
 const lamparaMesa: Gen = ( k, c ) => {
 
-	const base = s( c, 'base', 'ceramica:#d9cdb8' ), pantalla = s( c, 'pantalla', 'tela:#f1ebe0' );
+	const base = s( c, 'base', 'ceramica:#d9cdb8' ), pantalla = s( c, 'pantalla', 'pantalla:#f1ebe0' ).replace( /^tela:/, 'pantalla:' );
 	const H = c.H, r = c.W / 2;
 	torno( k, base, [ [ 0, 0 ], [ r * 0.45, 0 ], [ r * 0.6, H * 0.12 ], [ r * 0.62, H * 0.3 ], [ r * 0.35, H * 0.52 ], [ 0.02, H * 0.56 ], [ 0, H * 0.56 ] ], 0, 0, 0, 32 );
 	k.cilindro( 'metal:#b8a07a', 0, H * 0.55, 0, 0.008, H * 0.72, 8 );

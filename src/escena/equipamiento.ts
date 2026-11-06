@@ -40,6 +40,8 @@ function crearDinamico( tipo: string, tono: string, extra?: string ): THREE.Mate
 	switch ( tipo ) {
 
 		case 'tela': m = M.textil( tono, extra ? Number( extra ) : 1 ); break;
+		// pantalla de lámpara: tela que deja pasar la luz (en el render foto, translúcida)
+		case 'pantalla': m = M.textil( tono, extra ? Number( extra ) : 1 ); m.userData.pantalla = true; break;
 		case 'boucle': m = M.boucle( tono ); break;
 		case 'madera': m = M.madera( tono, M.oscurecer( tono, 0.78 ), 0.55 ); break;
 		case 'metal': m = M.metalico( tono, 0.32 ); break;
@@ -192,26 +194,27 @@ export class Pieza {
 	 */
 	almohada( k: Clave, w: number, h: number, e: number, semilla = 1 ) {
 
-		const g = new THREE.SphereGeometry( 1, 40, 28 );
+		// una caja muy dividida que se «infla»: cuadrada de silueta, gruesa en el
+		// centro, fina en la costura del borde y con las esquinas un poco pellizcadas
+		const g = new THREE.BoxGeometry( w, h, e, 28, 28, 4 );
 		const pos = g.getAttribute( 'position' );
 		for ( let i = 0; i < pos.count; i ++ ) {
 
-			// de esfera a «cuadrado blando»: superelipse en x–y, grosor que cae hacia el borde
-			const sx = pos.getX( i ), sy = pos.getY( i ), sz = pos.getZ( i );
-			const ang = Math.atan2( sy, sx ), rad = Math.hypot( sx, sy );
-			const c = Math.cos( ang ), s = Math.sin( ang );
-			const sq = ( v: number ) => Math.sign( v ) * Math.abs( v ) ** 0.55;
-			// esquinas un poco hacia dentro (pellizco de la costura)
-			const pellizco = 1 - 0.05 * Math.abs( Math.sin( 2 * ang ) ) ** 3;
-			const x = sq( c ) * rad * pellizco * w / 2, y = sq( s ) * rad * pellizco * h / 2;
-			const borde = Math.max( 0, 1 - rad ** 2 );
-			const arruga = 1 + 0.06 * Math.sin( ang * 5 + semilla ) * rad;
-			const z = sz * e / 2 * ( 0.25 + 0.75 * Math.sqrt( borde + 0.02 ) ) * arruga;
-			pos.setXYZ( i, x, y, z );
+			const u = pos.getX( i ) / ( w / 2 ), v = pos.getY( i ) / ( h / 2 ), z = pos.getZ( i ) / ( e / 2 );
+			const lleno = Math.sqrt( Math.max( 0, ( 1 - u * u ) * ( 1 - v * v ) ) );
+			const arruga = 1 + 0.05 * Math.sin( u * 4.1 + v * 2.3 + semilla ) * lleno;
+			const grueso = ( 0.1 + 0.9 * lleno ** 0.7 ) * arruga;
+			// esquinas hacia dentro y lados un poco abombados
+			const esquina = 1 - 0.07 * ( u * v ) ** 2;
+			const lado = 1 + 0.025 * ( 1 - v * v ) * Math.abs( u ), ladoV = 1 + 0.025 * ( 1 - u * u ) * Math.abs( v );
+			pos.setXYZ( i, u * w / 2 * esquina * lado, v * h / 2 * esquina * ladoV, z * e / 2 * grueso );
 
 		}
-		g.computeVertexNormals();
-		return this.add( k, g );
+		g.deleteAttribute( 'uv' );
+		g.deleteAttribute( 'normal' );
+		const suave = mergeVertices( g, 1e-4 );
+		suave.computeVertexNormals();
+		return this.add( k, suave );
 
 	}
 
@@ -246,10 +249,10 @@ export class Pieza {
 	 * (z = +L/2) con pliegues, y se abomba un poco con arrugas suaves. Centrado en
 	 * x; z de −L/2 (cabecero) a +L/2 (pies).
 	 */
-	edredon( k: Clave, W: number, L: number, arriba: number, caida = 0.25, e = 0.03, semilla = 1 ) {
+	edredon( k: Clave, W: number, L: number, arriba: number, caida = 0.25, e = 0.03, semilla = 1, pies = true, ondas = 1 ) {
 
 		const R = 0.05, curva = Math.PI * R / 2;
-		const ancho = W + 2 * ( curva + caida ), largo = L + curva + caida;
+		const ancho = W + 2 * ( curva + caida ), largo = pies ? L + curva + caida : L;
 		const g = new THREE.BoxGeometry( ancho, e, largo, 90, 1, 70 );
 		g.translate( 0, e / 2, ( largo - L ) / 2 );
 		const pos = g.getAttribute( 'position' );
@@ -271,7 +274,7 @@ export class Pieza {
 
 			const xl = pos.getX( i ), yl = pos.getY( i ), zl = pos.getZ( i );
 			const [ hx, cx, vx ] = doblar( Math.abs( xl ), W / 2, yl );
-			const [ hz, cz, vz ] = doblar( zl, L / 2, yl );
+			const [ hz, cz, vz ] = pies ? doblar( zl, L / 2, yl ) : [ zl, 0, 0 ] as const;
 			let x = Math.sign( xl ) * hx, z = hz;
 			// caída: lo que baja por el lado o por los pies (y en la esquina, lo mayor)
 			let y = arriba + ( vx || vz ? 0 : yl ) - Math.max( cx, cz );
@@ -283,7 +286,7 @@ export class Pieza {
 			if ( ! colgado ) {
 
 				const u = xl / ( W / 2 ), v = zl / ( L / 2 );
-				y += 0.025 * ( 1 - u * u ) * ( 1 - v * v * 0.6 ) + 0.005 * Math.sin( xl * 7.3 + zl * 3.1 + semilla ) + 0.004 * Math.sin( zl * 11 - xl * 4 + semilla * 3 );
+				y += 0.025 * ( 1 - u * u ) * ( 1 - v * v * 0.6 ) * Math.min( 1, W ) + ondas * ( 0.005 * Math.sin( xl * 7.3 + zl * 3.1 + semilla ) + 0.004 * Math.sin( zl * 11 - xl * 4 + semilla * 3 ) );
 
 			}
 			pos.setXYZ( i, x, y, z );

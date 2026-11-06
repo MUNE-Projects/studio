@@ -62,7 +62,7 @@ function estandar( m: THREE.Material ): THREE.Material {
 
 	} else {
 
-		const a = ACABADOS[ u.acabado ] ?? 'liso';
+		const a = m.userData.pantalla ? 'pantalla' : ACABADOS[ u.acabado ] ?? 'liso';
 		const c = colorBase( u );
 		const rug = a === 'liso' ? u.v0 : a === 'tarima' ? ( P.suelo.rugosidad as any ).value : a === 'porcelanico' || a === 'alicatado' ? u.v2 : 0.7;
 		const s = new THREE.MeshStandardMaterial( { color: c, roughness: THREE.MathUtils.clamp( rug || 0.6, 0.02, 1 ), metalness: a === 'liso' ? u.v1 : 0 } );
@@ -76,7 +76,8 @@ function estandar( m: THREE.Material ): THREE.Material {
 		// acabado, color, segundo color, rugosidad y medidas de la pieza (v0 ancho, v3 largo, v1 junta, v6 aspecto)
 		// (laminado de cocina: v0 lleva cuánta veta tiene la opción elegida; 0 = lacado liso)
 		const v0 = a === 'laminado' ? ( P.cocina.veta as any ).value : u.v0;
-		s.name = [ 'mune', a, hex( c ), hex( u.c1 ), s.roughness.toFixed( 3 ), Number( v0 ).toFixed( 4 ), u.v3.toFixed( 4 ), u.v1.toFixed( 4 ), u.v6.toFixed( 0 ) ].join( ':' );
+		// … y la intensidad de la luz que emite (bombillas, 0 = no emite)
+		s.name = [ 'mune', a, hex( c ), hex( u.c1 ), s.roughness.toFixed( 3 ), Number( v0 ).toFixed( 4 ), u.v3.toFixed( 4 ), u.v1.toFixed( 4 ), u.v6.toFixed( 0 ), ( u.emision ?? 0 ).toFixed( 2 ) ].join( ':' );
 		r = s;
 
 	}
