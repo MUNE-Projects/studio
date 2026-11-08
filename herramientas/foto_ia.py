@@ -72,7 +72,8 @@ mezcla = ya[..., None] + co
 # 2) zonas protegidas (máscara del render): vuelven al render en esa proporción
 ruta_p = profundidad.replace('.png', '-proteger.png')
 if os.path.exists(ruta_p) and '--sin-proteger' not in sys.argv:
-    m = np.asarray(Image.open(ruta_p).convert('L').resize(original.size, Image.LANCZOS).filter(ImageFilter.GaussianBlur(2))).astype(np.float32)[..., None] / 255
+    # un poco más ancha que el objeto (la IA puede moverlo unos píxeles) y con el borde suave
+    m = np.asarray(Image.open(ruta_p).convert('L').resize(original.size, Image.LANCZOS).filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(4))).astype(np.float32)[..., None] / 255
     mezcla = mezcla * (1 - m) + o * m
 Image.fromarray(np.clip(mezcla, 0, 255).astype(np.uint8)).save(salida)
 print('listo', salida)
