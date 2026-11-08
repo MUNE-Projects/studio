@@ -1,11 +1,12 @@
-# Aviso por email a la promotora: lo lanza la función «avisar-promotora» de
-# Supabase (planos para validar, documento por corregir, versión publicada).
-# Envía un email a cada persona del equipo desde el Gmail de MUNE, con la
-# contraseña de aplicación guardada en el secreto AVISOS_GMAIL_CLAVE. Gratis.
+# Aviso por email a la promotora: lo lanzan la función «avisar-promotora» de
+# Supabase (planos para validar, documento por corregir, viviendas de
+# referencia) y el ejecutor (publicar.yml, versión publicada). Envía un email a
+# cada persona desde el Gmail de MUNE (secreto AVISOS_GMAIL_CLAVE). Gratis.
 #
-# Los correos llegan como dato de entrada: solo los ve quien tiene acceso a
-# este almacén privado, y en el registro del proceso aparecen ocultos, como el
-# enlace (el de una exportación lleva su clave privada).
+# Solo recibe el número del email: los correos, el asunto y el texto están en
+# el buzón de Supabase (046_correos.sql). El proceso los lee con la cuenta
+# «ejecutor» (EJECUTOR_CLAVE), envía y borra el email del buzón. En el registro
+# del proceso los correos y el enlace salen ocultos.
 
 name: Aviso por email a la promotora
 run-name: aviso a la promotora
@@ -13,16 +14,8 @@ run-name: aviso a la promotora
 on:
   workflow_dispatch:
     inputs:
-      para:
-        required: true
-        type: string
-      asunto:
-        required: true
-        type: string
-      texto:
-        required: true
-        type: string
-      enlace:
+      correo:
+        description: número del email en el buzón de Supabase
         required: true
         type: string
 
@@ -33,38 +26,48 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      PARA: ${{ inputs.para }}
-      ASUNTO: ${{ inputs.asunto }}
-      TEXTO: ${{ inputs.texto }}
-      ENLACE: ${{ inputs.enlace }}
+      CORREO: ${{ inputs.correo }}
+      EJECUTOR_CLAVE: ${{ secrets.EJECUTOR_CLAVE }}
       CLAVE: ${{ secrets.AVISOS_GMAIL_CLAVE }}
     steps:
-      - name: Ocultar los correos en el registro
-        run: |
-          IFS=',' read -ra correos <<< "$PARA"
-          for c in "${correos[@]}"; do echo "::add-mask::$c"; done
-          echo "::add-mask::$ENLACE"
       - name: Enviar
         shell: python3 {0}
         run: |
-          import html, os, re, smtplib, ssl, sys
+          import html, json, os, re, smtplib, ssl, sys, urllib.request
           from email.message import EmailMessage
           from email.utils import formataddr
 
+          SUPABASE = 'https://iowtdenlkxjqzlpwizgb.supabase.co'
+          PUBLICA = 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR'
           REMITENTE = 'hello.muneprojects@gmail.com'
           clave = os.environ.get('CLAVE', '').replace(' ', '')
           if not clave:
               sys.exit('::error::Falta el secreto AVISOS_GMAIL_CLAVE (contraseña de aplicación del Gmail de MUNE)')
-          para = [c.strip() for c in os.environ['PARA'].split(',') if c.strip()]
+          correo = os.environ['CORREO']
+          if not re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', correo):
+              sys.exit('::error::Número de email no válido')
+
+          def pedir(ruta, cuerpo, token=None):
+              cab = {'apikey': PUBLICA, 'Content-Type': 'application/json'}
+              if token: cab['Authorization'] = f'Bearer {token}'
+              r = urllib.request.Request(SUPABASE + ruta, data=json.dumps(cuerpo).encode(), headers=cab, method='POST')
+              with urllib.request.urlopen(r, timeout=30) as res:
+                  return json.loads(res.read().decode() or 'null')
+
+          sesion = pedir('/auth/v1/token?grant_type=password', {'email': 'hello.muneprojects+ejecutor@gmail.com', 'password': os.environ['EJECUTOR_CLAVE']})['access_token']
+          d = pedir('/rest/v1/rpc/correo_para_enviar', {'p_id': correo}, sesion)
+          para = [c.strip() for c in (d.get('para') or []) if c and c.strip()]
+          for c in para: print('::add-mask::' + c)
+          print('::add-mask::' + d['enlace'])
           if not para or len(para) > 50 or not all(re.fullmatch(r'[^\s@,<>]+@[^\s@,<>]+\.[^\s@,<>]+', c) for c in para):
               sys.exit('::error::Destinatarios no válidos')
-          asunto = os.environ['ASUNTO'].replace('\n', ' ')[:200]
-          texto = os.environ['TEXTO'][:3000]
-          enlace = os.environ['ENLACE']
+          asunto = d['asunto'].replace('\n', ' ')[:200]
+          texto = d['texto'][:3000]
+          enlace = d['enlace']
           if not re.fullmatch(r'https://(portal|experience|escaparate)\.mune-projects\.workers\.dev/[^\s"<>]*', enlace):
               sys.exit('::error::Enlace no válido')
 
-          etiqueta = 'Ver la experiencia publicada' if ('//experience.' in enlace or '//escaparate.' in enlace) else 'Descargar la exportación' if '/descarga/#' in enlace else 'Abrir MUNE Portal'
+          etiqueta = 'Ver la experiencia publicada' if ('//experience.' in enlace or '//escaparate.' in enlace) else 'Abrir MUNE Portal'
           parrafos = ''.join(f'<p style="margin:0 0 14px">{html.escape(p).replace(chr(10), "<br>")}</p>' for p in texto.split('\n\n'))
           cuerpo_html = f'''<!doctype html><html lang="es"><body style="margin:0;background:#f5f3ef;font-family:Helvetica,Arial,sans-serif;color:#1c1c1a">
             <div style="max-width:560px;margin:0 auto;padding:28px 20px">
@@ -88,4 +91,5 @@ jobs:
                   m.set_content(cuerpo_texto)
                   m.add_alternative(cuerpo_html, subtype='html')
                   smtp.send_message(m)
+          pedir('/rest/v1/rpc/correo_enviado', {'p_id': correo}, sesion)  # se borra del buzón
           print(f'Enviado a {len(para)} ' + ('persona.' if len(para) == 1 else 'personas.'))

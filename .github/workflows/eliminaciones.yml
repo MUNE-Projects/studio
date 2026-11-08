@@ -40,10 +40,10 @@ jobs:
       COPIAS_TOKEN: ${{ secrets.ESCAPARATE_TOKEN }}
       TITULO: ⚠️ La lista de eliminaciones no se ha podido guardar
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           sparse-checkout: supabase/copias
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - name: Guardar y comprobar

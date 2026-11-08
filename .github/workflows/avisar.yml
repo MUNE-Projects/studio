@@ -47,9 +47,9 @@ jobs:
           [[ "$VERSION" =~ ^v[0-9]{1,5}$ ]] || { echo "::error::Versión no válida"; exit 1; }
           [[ ${#CAMBIOS} -le 2000 ]] || { echo "::error::Texto de cambios demasiado largo"; exit 1; }
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
 
