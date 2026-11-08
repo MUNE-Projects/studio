@@ -57,6 +57,22 @@ resultado = tubo(prompt=PROMPT, negative_prompt=NEGATIVO, image=img, control_ima
                  controlnet_conditioning_scale=arg('--control', 1.0),
                  generator=torch.Generator().manual_seed(semilla)).images[0]
 print('imagen en %.0f s' % (time.time() - t1))
-# vuelve al tamaño del render
-resultado.resize(original.size, Image.LANCZOS).save(salida)
+
+# ---- fidelidad a los acabados (decisión 70): la IA aporta textura, luz y detalle;
+# los colores y lo protegido siguen siendo los del render
+import numpy as np
+from PIL import ImageFilter
+ia = resultado.resize(original.size, Image.LANCZOS)
+o = np.asarray(original).astype(np.float32); a = np.asarray(ia).astype(np.float32)
+def ycc(x):
+    y = x @ np.array([0.299, 0.587, 0.114]); return y, x - y[..., None]
+yo, co = ycc(o); ya, ca = ycc(a)
+# 1) color: la claridad (luz, textura) de la IA y el color del render
+mezcla = ya[..., None] + co
+# 2) zonas protegidas (máscara del render): vuelven al render en esa proporción
+ruta_p = profundidad.replace('.png', '-proteger.png')
+if os.path.exists(ruta_p) and '--sin-proteger' not in sys.argv:
+    m = np.asarray(Image.open(ruta_p).convert('L').resize(original.size, Image.LANCZOS).filter(ImageFilter.GaussianBlur(2))).astype(np.float32)[..., None] / 255
+    mezcla = mezcla * (1 - m) + o * m
+Image.fromarray(np.clip(mezcla, 0, 255).astype(np.uint8)).save(salida)
 print('listo', salida)

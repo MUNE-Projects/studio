@@ -35,6 +35,10 @@ def hexrgb(h):
     lin = lambda c: c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
     return tuple(lin(int(h[i:i + 2], 16) / 255) for i in (0, 2, 4)) + (1.0,)
 
+# protección frente a la IA, por acabado: lo que define la memoria de calidades
+# (suelos, revestimientos, encimeras) y lo que la IA tiende a inventarse (cuadros)
+PROTEGER = {'lienzo': 1.0, 'tarima': 0.8, 'porcelanico': 0.8, 'alicatado': 0.8, 'cuarzo': 0.8, 'laminado': 0.6,
+            'marmol': 0.8, 'puerta': 0.6, 'vidrio': 0.6, 'exterior': 0.5, 'textil': 0.35, 'boucle': 0.35, 'pantalla': 0.3}
 VENTANAS = []  # nodos del cristal que oscurecen lo que se ve por la ventana
 imagenes = {}
 def imagen(n):
@@ -231,6 +235,11 @@ def material(nombre):
     if emision > 0 and acabado not in ('vidrio', 'pantalla'):
         bsdf.inputs['Emission Color'].default_value = (1.0, 0.78, 0.52, 1)
         bsdf.inputs['Emission Strength'].default_value = emision * arg('--lamparas', 6.0)
+    # cuánto hay que proteger este acabado de la pasada de IA (herramientas/foto_ia.py):
+    # 1 = no se toca (cuadros), 0 = la IA puede darle textura y luz libremente
+    proteger = PROTEGER.get(acabado, 0.0)
+    aov = N.new('ShaderNodeOutputAOV'); aov.aov_name = 'proteger'
+    aov.inputs['Value'].default_value = proteger
     return m
 
 cambiados = {}
@@ -443,6 +452,8 @@ if prof:
     esc.cycles.samples = 1
     esc.cycles.use_denoising = False
     bpy.context.view_layer.use_pass_z = True
+    if 'proteger' not in [a.name for a in bpy.context.view_layer.aovs]:
+        a = bpy.context.view_layer.aovs.add(); a.name = 'proteger'; a.type = 'VALUE'
     try:
         esc.render.image_settings.media_type = 'MULTI_LAYER_IMAGE'  # Blender 5
     except Exception:
@@ -459,6 +470,9 @@ if prof:
         for ic, n in enumerate(canales):
             if n.endswith('Depth.Z') or n == 'Z':
                 z = buf.get_pixels(oiio.FLOAT)[:, :, ic]
+            if 'proteger' in n:
+                pr = np.clip(buf.get_pixels(oiio.FLOAT)[:, :, ic], 0, 1)
+                Image.fromarray((pr * 255).astype(np.uint8)).save(os.path.abspath(prof).replace('.png', '-proteger.png'))
     if z is None: raise RuntimeError('El render no ha guardado la profundidad')
     z = np.clip(z, 0, 30)
     cerca, lejos = np.percentile(z, 1), np.percentile(z, 98)
