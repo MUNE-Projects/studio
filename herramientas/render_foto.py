@@ -38,7 +38,7 @@ def hexrgb(h):
 # protección frente a la IA, por acabado: lo que define la memoria de calidades
 # (suelos, revestimientos, encimeras) y lo que la IA tiende a inventarse (cuadros)
 PROTEGER = {'lienzo': 1.0, 'tarima': 0.8, 'porcelanico': 0.8, 'alicatado': 0.8, 'cuarzo': 0.8, 'laminado': 0.6,
-            'marmol': 0.8, 'puerta': 0.6, 'vidrio': 0.6, 'exterior': 0.5, 'textil': 0.55, 'boucle': 0.55, 'pantalla': 0.3}
+            'marmol': 0.8, 'puerta': 0.6, 'vidrio': 0.62, 'exterior': 0.5, 'textil': 0.55, 'boucle': 0.55, 'pantalla': 0.3}
 VENTANAS = []  # nodos del cristal que oscurecen lo que se ve por la ventana
 imagenes = {}
 def imagen(n):
