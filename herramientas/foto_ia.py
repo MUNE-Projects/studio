@@ -34,7 +34,9 @@ NEGATIVO = ('cgi, 3d render, cartoon, illustration, painting, plastic, blurry, d
 
 t0 = time.time()
 torch.set_num_threads(os.cpu_count() or 4)
-red = ControlNetModel.from_pretrained('lllyasviel/control_v11f1p_sd15_depth', variant='fp16', torch_dtype=torch.float32, use_safetensors=True)
+red = [ControlNetModel.from_pretrained('lllyasviel/control_v11f1p_sd15_depth', variant='fp16', torch_dtype=torch.float32, use_safetensors=True),
+       # contornos del render: cada línea que hay sigue ahí, y donde no hay líneas no se inventan dibujos
+       ControlNetModel.from_pretrained('lllyasviel/control_v11p_sd15_canny', variant='fp16', torch_dtype=torch.float32, use_safetensors=True)]
 vae = AutoencoderKL.from_pretrained('stabilityai/sd-vae-ft-mse', torch_dtype=torch.float32, use_safetensors=True)
 # Realistic Vision se publica como un único archivo .safetensors (sin código ejecutable dentro)
 from huggingface_hub import hf_hub_download
@@ -50,11 +52,15 @@ W = ancho // 8 * 8
 H = round(original.height * W / original.width) // 8 * 8
 img = original.resize((W, H), Image.LANCZOS)
 prof = Image.open(profundidad).convert('RGB').resize((W, H), Image.LANCZOS)
+import cv2, numpy as np
+gris = cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2GRAY)
+bordes = cv2.Canny(cv2.GaussianBlur(gris, (3, 3), 0), arg('--canny-bajo', 40), arg('--canny-alto', 120))
+contornos = Image.fromarray(np.stack([bordes] * 3, -1))
 
 t1 = time.time()
-resultado = tubo(prompt=PROMPT, negative_prompt=NEGATIVO, image=img, control_image=prof,
+resultado = tubo(prompt=PROMPT, negative_prompt=NEGATIVO, image=img, control_image=[prof, contornos],
                  strength=fuerza, num_inference_steps=pasos, guidance_scale=5.0,
-                 controlnet_conditioning_scale=arg('--control', 1.0),
+                 controlnet_conditioning_scale=[arg('--control', 1.0), arg('--control-contornos', 0.9)],
                  generator=torch.Generator().manual_seed(semilla)).images[0]
 print('imagen en %.0f s' % (time.time() - t1))
 
@@ -67,13 +73,15 @@ o = np.asarray(original).astype(np.float32); a = np.asarray(ia).astype(np.float3
 def ycc(x):
     y = x @ np.array([0.299, 0.587, 0.114]); return y, x - y[..., None]
 yo, co = ycc(o); ya, ca = ycc(a)
-# 1) color: la claridad (luz, textura) de la IA y el color del render
-mezcla = ya[..., None] + co
+# 1) color: la claridad (luz, textura) de la IA y, sobre todo, el color del render
+k = arg('--color', 0.75)
+mezcla = ya[..., None] + co * k + ca * (1 - k)
 # 2) zonas protegidas (máscara del render): vuelven al render en esa proporción
 ruta_p = profundidad.replace('.png', '-proteger.png')
 if os.path.exists(ruta_p) and '--sin-proteger' not in sys.argv:
     # un poco más ancha que el objeto (la IA puede moverlo unos píxeles) y con el borde suave
-    m = np.asarray(Image.open(ruta_p).convert('L').resize(original.size, Image.LANCZOS).filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(4))).astype(np.float32)[..., None] / 255
+    # solo lo protegido del todo (cuadros: son contenido, no textura); lo demás lo retoca la IA
+    m = np.asarray(Image.open(ruta_p).convert('L').point(lambda v: 255 if v > 240 else 0).resize(original.size, Image.LANCZOS).filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(4))).astype(np.float32)[..., None] / 255
     mezcla = mezcla * (1 - m) + o * m
 Image.fromarray(np.clip(mezcla, 0, 255).astype(np.uint8)).save(salida)
 print('listo', salida)
