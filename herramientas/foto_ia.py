@@ -27,15 +27,16 @@ render, profundidad, salida = sys.argv[1:4]
 fuerza, pasos, ancho = arg('--fuerza', 0.35), arg('--pasos', 30), arg('--ancho', 768)
 semilla = arg('--semilla', 7)
 
-# la estancia y lo que hay en ella (--escena «bedroom, smooth upholstered headboard, oak floor…»)
-ESCENA = arg('--escena', 'modern apartment interior')
-PROMPT = (f'{ESCENA}, professional interior photography for a real estate brochure, photorealistic, RAW photo, '
-          'natural daylight, soft shadows, realistic fabric and wood textures, sharp focus, '
-          'shot on a full frame camera, 24mm lens, high detail, 8k')
+# lo que hay en la foto con su acabado: --escena, o la descripción que deja render_foto.py
+ruta_e = profundidad.replace('.png', '-escena.txt')
+ESCENA = arg('--escena', open(ruta_e).read().strip() if os.path.exists(ruta_e) else 'modern apartment interior')
+# la calidad va primero: la IA solo lee las primeras 77 «palabras» (tokens)
+PROMPT = f'RAW photo, professional interior photography, photorealistic, sharp focus, high detail, natural light, {ESCENA}'
 # lo que la IA tiende a inventarse y no puede añadir ni cambiar
-NEGATIVO = ('cgi, 3d render, cartoon, illustration, painting, plastic, blurry, distorted, deformed, '
-            'tufted, buttons, quilted pattern, light switch, power outlet, extra objects, extra furniture, '
-            'people, text, watermark, oversaturated, faded edges')
+NEGATIVO = ('cgi, 3d render, cartoon, illustration, blurry, soft, plastic, deformed, '
+            'tufted, buttons, wood grain on doors, light switch, power outlet, extra objects, extra furniture, '
+            'people, text, watermark, faded edges')
+print('escena:', ESCENA)
 
 t0 = time.time()
 torch.set_num_threads(os.cpu_count() or 4)
@@ -78,6 +79,16 @@ resultado = tubo(prompt=PROMPT, negative_prompt=NEGATIVO, image=img, control_ima
                  controlnet_conditioning_scale=[arg('--control', 1.0), arg('--control-contornos', 0.9)],
                  generator=torch.Generator().manual_seed(semilla)).images[0]
 print('imagen en %.0f s' % (time.time() - t1))
+# segunda pasada, suave y a tamaño completo: recupera la nitidez sin cambiar nada
+if arg('--detalle', 0.22) > 0:
+    W2 = min(original.width, arg('--ancho-detalle', 1400)) // 8 * 8
+    H2 = round(original.height * W2 / original.width) // 8 * 8
+    ctrl2 = [prof.resize((W2, H2), Image.LANCZOS), contornos.resize((W2, H2), Image.NEAREST)]
+    t2 = time.time()
+    resultado = tubo(prompt=PROMPT, negative_prompt=NEGATIVO, image=resultado.resize((W2, H2), Image.LANCZOS), control_image=ctrl2,
+                     strength=arg('--detalle', 0.22), num_inference_steps=pasos, guidance_scale=arg('--guia', 5.5),
+                     controlnet_conditioning_scale=[0.8, 0.8], generator=torch.Generator().manual_seed(semilla + 1)).images[0]
+    print('detalle en %.0f s' % (time.time() - t2))
 
 # ---- fidelidad a los acabados (decisión 70): la IA aporta textura, luz y detalle;
 # los colores y lo protegido siguen siendo los del render
@@ -89,7 +100,7 @@ def ycc(x):
     y = x @ np.array([0.299, 0.587, 0.114]); return y, x - y[..., None]
 yo, co = ycc(o); ya, ca = ycc(a)
 # 1) color: la claridad (luz, textura) de la IA y, sobre todo, el color del render
-k = arg('--color', 0.75)
+k = arg('--color', 0.88)
 mezcla = ya[..., None] + co * k + ca * (1 - k)
 # 2) zonas protegidas (máscara del render): vuelven al render en esa proporción
 ruta_p = profundidad.replace('.png', '-proteger.png')

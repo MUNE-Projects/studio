@@ -490,7 +490,56 @@ if prof:
     d = 1 - np.clip((z - cerca) / max(lejos - cerca, 1e-3), 0, 1)
     Image.fromarray((d * 255).astype(np.uint8)).save(os.path.abspath(prof))
     os.remove(tmp)
+    with open(os.path.abspath(prof).replace('.png', '-escena.txt'), 'w') as f:
+        f.write(', '.join(describir_escena()))
     print('profundidad:', prof)
+
+# ------------------------------------------------------------------ descripción de la escena (para la IA)
+# qué se ve en la foto y con qué acabado, para decírselo a la IA en sus palabras:
+# así no confunde materiales (madera en un armario lacado, botones en un cabecero liso)
+OBJETOS = [('cama', 'bed'), ('cabecero', 'headboard'), ('armario', 'wardrobe'), ('sofa', 'sofa'), ('sillon', 'armchair'),
+           ('mesilla', 'nightstand'), ('mesa', 'table'), ('silla', 'chair'), ('alfombra', 'rug'), ('cuadro', 'framed painting'),
+           ('lampara', 'lamp'), ('cocina', 'kitchen cabinets'), ('encimera', 'countertop'), ('balconera', 'window frame'),
+           ('ventana', 'window frame'), ('puerta', 'door'), ('suelo', 'floor'), ('muros', 'walls'), ('techo', 'ceiling'),
+           ('banera', 'bathtub'), ('ducha', 'shower'), ('lavabo', 'washbasin'), ('inodoro', 'toilet'), ('planta', 'plant'),
+           ('jardinera', 'planter'), ('mueble', 'cabinet'), ('televisor', 'tv'), ('cortina', 'curtain')]
+ACABADO_EN = {'tarima': 'wood plank', 'madera': 'wood', 'laminado': 'lacquered', 'pintura': 'painted', 'liso': 'matte',
+              'textil': 'linen', 'boucle': 'boucle', 'porcelanico': 'porcelain tile', 'alicatado': 'ceramic tile',
+              'marmol': 'marble', 'cuarzo': 'quartz', 'sate': 'rendered', 'lienzo': 'abstract', 'puerta': 'lacquered',
+              'pantalla': 'linen', 'hoja': 'green'}
+COLORES = [('white', (245, 245, 242)), ('off-white', (232, 226, 214)), ('beige', (212, 196, 172)), ('light grey', (190, 190, 188)),
+           ('grey', (128, 128, 126)), ('dark grey', (64, 66, 68)), ('black', (25, 25, 25)), ('light oak', (196, 160, 118)),
+           ('oak', (170, 128, 88)), ('walnut', (110, 78, 55)), ('terracotta', (190, 110, 80)), ('blush pink', (230, 170, 155)),
+           ('sage green', (150, 165, 135)), ('olive green', (95, 110, 65)), ('navy blue', (40, 50, 80)), ('light blue', (165, 190, 210)),
+           ('brass', (184, 160, 122)), ('taupe', (150, 135, 120))]
+
+def describir_escena():
+    dg = bpy.context.evaluated_depsgraph_get()
+    m = ob.matrix_world; origen = m.translation
+    th = math.tan(ob.data.angle / 2); tw = th * c['aspecto']; sy = ob.data.shift_y * 2 * tw
+    cuenta = {}
+    for j in range(24):
+        for i in range(36):
+            x = (i + 0.5) / 36 * 2 - 1; y = (j + 0.5) / 24 * 2 - 1
+            v = (m.to_3x3() @ Vector((x * tw, y * th + sy, -1))).normalized()
+            hit, loc, nor, idx, o, _m = esc.ray_cast(dg, origen, v)
+            if not hit or not o: continue
+            mat = o.active_material.name if o.active_material else ''
+            if 'vidrio' in mat: continue
+            nombre = o.name.lower()
+            obj = next((en for es, en in OBJETOS if es in nombre), None)
+            if obj is None:
+                obj = 'floor' if nor.z > 0.8 else 'ceiling' if nor.z < -0.8 else None
+            if obj is None or not mat.startswith('mune:'): continue
+            partes = mat.split(':')
+            acabado = ACABADO_EN.get(partes[1], '')
+            h = partes[2].lstrip('#'); rgb = tuple(int(h[k:k + 2], 16) for k in (0, 2, 4))
+            color = min(COLORES, key=lambda cn: sum((a - b) ** 2 for a, b in zip(cn[1], rgb)))[0]
+            if partes[1] in ('tarima', 'madera') and color in ('beige', 'off-white'): color = 'light oak'
+            frase = f'{color} {acabado} {obj}'.replace('  ', ' ').strip()
+            cuenta[frase] = cuenta.get(frase, 0) + 1
+    vistas = [f for f, n in sorted(cuenta.items(), key=lambda x: -x[1]) if n >= 4][:7]
+    return vistas
 
 # ------------------------------------------------------------------ revelado de fotógrafo
 # lo que hace una cámara real: un poco de brillo alrededor de las luces fuertes,
