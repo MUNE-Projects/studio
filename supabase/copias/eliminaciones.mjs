@@ -99,7 +99,7 @@ if ( orden === 'guardar' ) {
 		const todas = unir( antes.lista ?? [], filas );
 		let release = antes.release ?? await almacen.crear( RELEASE, 'Lista de eliminaciones (solo huellas, sin nombres). No caduca: impide reabrir lo eliminado al recuperar una copia. Receta 18.' );
 		const contenido = Buffer.from( JSON.stringify( { guardada: new Date().toISOString(), eliminaciones: todas }, null, '\t' ) );
-		const refrescar = async () => ( release = ( await almacen.lista() ).find( ( r ) => r.id === release.id ) );
+		const refrescar = async () => ( release = await almacen.obtener( release.id ) );
 		await refrescar();
 		await almacen.borrarAdjunto( release, NUEVA );
 		await almacen.subir( release, NUEVA, contenido );
