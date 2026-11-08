@@ -9,7 +9,8 @@
 --  · eliminar: borra la información de la promoción o de la promotora, y solo
 --    se puede si antes:
 --      a) se ha preparado su exportación y se ha enviado a quien administra la
---         promotora un enlace privado para descargarla, o
+--         promoción (o la promotora, si se elimina entera) un enlace privado
+--         para descargarla, o
 --      b) la promotora ha pedido eliminarla sin exportación (queda anotado).
 --
 -- 1. Exportaciones: almacén privado «exportaciones» (<id>/parte-N.zip). Solo la
@@ -22,8 +23,9 @@
 --    promoción; se retiran si la promotora retira la autorización.
 -- 3. Eliminaciones: un apunte por cada promoción, promotora, acceso o código de
 --    comprador eliminado o retirado, con solo una huella (sin nombres). Se
---    guarda también fuera de Supabase (proceso «eliminaciones» de GitHub) para
---    que, al recuperar una copia, no vuelva nada de lo eliminado.
+--    guarda también fuera de Supabase (proceso «eliminaciones» de GitHub, que
+--    se lanza solo) para que, al recuperar una copia, no vuelva nada de lo
+--    eliminado; una promoción o promotora no se elimina hasta que está guardada.
 -- 4. Recuperación: mientras una recuperación no se ha comprobado, nadie de las
 --    promotoras ni ningún comprador puede entrar, y no se publica.
 
