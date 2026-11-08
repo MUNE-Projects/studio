@@ -47,6 +47,13 @@ export function almacenCopias( repo, token ) {
 
 		},
 
+		/** Una release por su número (al momento; la lista tarda unos segundos en mostrar una recién creada). */
+		async obtener( id ) {
+
+			return ( await pedir( `${ API }/repos/${ repo }/releases/${ id }` ) ).json();
+
+		},
+
 		async crear( nombre, descripcion ) {
 
 			return ( await pedir( `${ API }/repos/${ repo }/releases`, {
