@@ -240,6 +240,12 @@ def material(nombre):
     proteger = PROTEGER.get(acabado, 0.0)
     aov = N.new('ShaderNodeOutputAOV'); aov.aov_name = 'proteger'
     aov.inputs['Value'].default_value = proteger
+    # un color distinto por material: de ahí salen los bordes exactos de cada cosa
+    # (alfombra, cabecero, zócalo…) aunque en la imagen apenas contrasten
+    import hashlib
+    hsh = hashlib.md5(nombre.encode()).digest()
+    ids = N.new('ShaderNodeOutputAOV'); ids.aov_name = 'materiales'
+    ids.inputs['Color'].default_value = (hsh[0] / 255, hsh[1] / 255, hsh[2] / 255, 1)
     return m
 
 cambiados = {}
@@ -454,6 +460,8 @@ if prof:
     bpy.context.view_layer.use_pass_z = True
     if 'proteger' not in [a.name for a in bpy.context.view_layer.aovs]:
         a = bpy.context.view_layer.aovs.add(); a.name = 'proteger'; a.type = 'VALUE'
+    if 'materiales' not in [a.name for a in bpy.context.view_layer.aovs]:
+        a = bpy.context.view_layer.aovs.add(); a.name = 'materiales'; a.type = 'COLOR'
     try:
         esc.render.image_settings.media_type = 'MULTI_LAYER_IMAGE'  # Blender 5
     except Exception:
@@ -470,6 +478,9 @@ if prof:
         for ic, n in enumerate(canales):
             if n.endswith('Depth.Z') or n == 'Z':
                 z = buf.get_pixels(oiio.FLOAT)[:, :, ic]
+            if n.endswith('materiales.R'):
+                mt = np.clip(buf.get_pixels(oiio.FLOAT)[:, :, ic:ic + 3], 0, 1)
+                Image.fromarray((mt * 255).astype(np.uint8)).save(os.path.abspath(prof).replace('.png', '-materiales.png'))
             if 'proteger' in n:
                 pr = np.clip(buf.get_pixels(oiio.FLOAT)[:, :, ic], 0, 1)
                 Image.fromarray((pr * 255).astype(np.uint8)).save(os.path.abspath(prof).replace('.png', '-proteger.png'))

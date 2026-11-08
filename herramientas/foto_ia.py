@@ -27,10 +27,15 @@ render, profundidad, salida = sys.argv[1:4]
 fuerza, pasos, ancho = arg('--fuerza', 0.35), arg('--pasos', 30), arg('--ancho', 768)
 semilla = arg('--semilla', 7)
 
-PROMPT = ('professional interior photography for a real estate brochure, photorealistic, natural daylight, '
-          'soft shadows, realistic fabric and wood textures, sharp focus, shot on a full frame camera, 24mm lens, high detail')
+# la estancia y lo que hay en ella (--escena «bedroom, smooth upholstered headboard, oak floor…»)
+ESCENA = arg('--escena', 'modern apartment interior')
+PROMPT = (f'{ESCENA}, professional interior photography for a real estate brochure, photorealistic, RAW photo, '
+          'natural daylight, soft shadows, realistic fabric and wood textures, sharp focus, '
+          'shot on a full frame camera, 24mm lens, high detail, 8k')
+# lo que la IA tiende a inventarse y no puede añadir ni cambiar
 NEGATIVO = ('cgi, 3d render, cartoon, illustration, painting, plastic, blurry, distorted, deformed, '
-            'extra furniture, people, text, watermark, oversaturated')
+            'tufted, buttons, quilted pattern, light switch, power outlet, extra objects, extra furniture, '
+            'people, text, watermark, oversaturated, faded edges')
 
 t0 = time.time()
 torch.set_num_threads(os.cpu_count() or 4)
@@ -55,11 +60,21 @@ prof = Image.open(profundidad).convert('RGB').resize((W, H), Image.LANCZOS)
 import cv2, numpy as np
 gris = cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2GRAY)
 bordes = cv2.Canny(cv2.GaussianBlur(gris, (3, 3), 0), arg('--canny-bajo', 40), arg('--canny-alto', 120))
+# + los bordes exactos entre materiales (mapa del render): la alfombra o el cabecero
+# no se disuelven aunque apenas contrasten
+ruta_m = profundidad.replace('.png', '-materiales.png')
+if os.path.exists(ruta_m):
+    mt = np.asarray(Image.open(ruta_m).convert('RGB').resize((W, H), Image.NEAREST)).astype(np.int32)
+    clave = mt[..., 0] * 65536 + mt[..., 1] * 256 + mt[..., 2]
+    borde_m = np.zeros_like(clave, dtype=bool)
+    borde_m[:, 1:] |= clave[:, 1:] != clave[:, :-1]
+    borde_m[1:, :] |= clave[1:, :] != clave[:-1, :]
+    bordes = np.maximum(bordes, borde_m.astype(np.uint8) * 255)
 contornos = Image.fromarray(np.stack([bordes] * 3, -1))
 
 t1 = time.time()
 resultado = tubo(prompt=PROMPT, negative_prompt=NEGATIVO, image=img, control_image=[prof, contornos],
-                 strength=fuerza, num_inference_steps=pasos, guidance_scale=5.0,
+                 strength=fuerza, num_inference_steps=pasos, guidance_scale=arg('--guia', 5.5),
                  controlnet_conditioning_scale=[arg('--control', 1.0), arg('--control-contornos', 0.9)],
                  generator=torch.Generator().manual_seed(semilla)).images[0]
 print('imagen en %.0f s' % (time.time() - t1))
