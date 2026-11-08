@@ -8,9 +8,11 @@
 //    quien lo ha hecho.
 // 2. marcar_aviso_subida / marcar_aviso_validacion comprueban que lo hizo esa
 //    persona y que no se ha avisado ya: cada cosa avisa una sola vez.
-// 3. Pide a GitHub que arranque .github/workflows/aviso-mune.yml del taller,
-//    con la llave A (secreto GITHUB_EJECUTOR, que solo permite arrancar
-//    procesos del taller). El email sale del Gmail de MUNE, uno por aviso.
+// 3. Deja el email en el buzón de Supabase (046_correos.sql) y pide a GitHub
+//    que arranque .github/workflows/aviso-mune.yml solo con su número, con la
+//    llave A (secreto GITHUB_EJECUTOR, que solo permite arrancar procesos del
+//    taller). El email sale del Gmail de MUNE, uno por aviso; nombres y textos
+//    no pasan por los datos de GitHub.
 // 4. Publicación al aprobar la promotora (022): si la promoción está en modo
 //    «automatica» y con esta aprobación queda validado todo lo que MUNE envió
 //    de la versión en revisión, arranca el ejecutor (publicar.yml) con esa
@@ -47,6 +49,16 @@ const ORIGENES = [
 ];
 
 const corto = (t: unknown, n: number) => String(t ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+
+function clavesServicio(): string[] {
+	const claves: string[] = [];
+	try {
+		claves.push(...Object.values(JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') ?? '{}') as Record<string, string>));
+	} catch { /* sin claves nuevas */ }
+	const legado = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+	if (legado) claves.push(legado);
+	return claves.filter(Boolean);
+}
 
 Deno.serve(async (req) => {
 	const origen = req.headers.get('origin') ?? '';
@@ -92,7 +104,32 @@ Deno.serve(async (req) => {
 				'User-Agent': 'mune-portal',
 			},
 			body: JSON.stringify({ ref: 'main', inputs }),
-		});
+		}).catch(() => null);
+	};
+	// Los emails se dejan en el buzón de Supabase (046_correos.sql) y al proceso de GitHub solo le llega
+	// su número: nombres, correos y textos no quedan en el historial de GitHub.
+	const buzon = async () => {
+		for (const clave of clavesServicio()) {
+			const prueba = createClient(SUPABASE_URL, clave, { auth: { persistSession: false, autoRefreshToken: false } });
+			const { error } = await prueba.from('correos_pendientes').select('id').limit(1);
+			if (!error) return prueba;
+		}
+		return null;
+	};
+	const encolar = async (c: { para?: string[] | null; asunto: string; texto: string; enlace: string }) => {
+		const servicio = await buzon();
+		if (!servicio) return null;
+		const { data, error } = await servicio.from('correos_pendientes')
+			.insert({ para: c.para?.length ? c.para : null, asunto: c.asunto.slice(0, 200), texto: c.texto.slice(0, 3000), enlace: c.enlace }).select('id').single();
+		return error || !data ? null : { id: data.id as string, quitar: () => servicio.from('correos_pendientes').delete().eq('id', data.id) };
+	};
+	/** Aviso al equipo de MUNE (aviso-mune.yml). null: falta la llave A o la clave de servicio. */
+	const avisarMune = async (c: { asunto: string; texto: string; enlace: string }) => {
+		const correo = await encolar(c);
+		if (!correo) return null;
+		const r = await llamarGitHub(PROCESO, { correo: correo.id });
+		if (!r?.ok) await correo.quitar();
+		return r;
 	};
 
 	// Comentarios nuevos de la promotora (lo nuevo, todavía sin avisar), como líneas del email.
@@ -111,7 +148,7 @@ Deno.serve(async (req) => {
 		if (!lista.length) return responder(200, { ok: true, avisado: false });
 		const { data: promo } = await sb.from('promociones').select('nombre').eq('id', comentarios).maybeSingle();
 		const nombre = corto(promo?.nombre, 120) || comentarios;
-		const r = await llamarGitHub(PROCESO, {
+		const r = await avisarMune({
 			asunto: `${nombre} · cambios pedidos en la personalización`,
 			texto: [`La promotora pide cambios (${lista.length === 1 ? '1 comentario' : `${lista.length} comentarios`}):`,
 				...lineasComentarios(lista).slice(0, 12), ...(lista.length > 12 ? [`Y ${lista.length - 12} más.`] : []),
@@ -171,11 +208,19 @@ Deno.serve(async (req) => {
 				const { data: equipo } = await sb.rpc('equipo_de_promotora', { p_promotora: promo.promotora_id });
 				const correos = [...new Set(((equipo ?? []) as { email: string; activo: boolean; promocion_id: string | null }[])
 					.filter((m) => m.activo && (m.promocion_id === null || m.promocion_id === fv.promocion_id)).map((m) => m.email))].slice(0, 50);
+				// el email «publicada» para el equipo se deja preparado en el buzón; publicar.yml lo envía al terminar
+				const nombrePromo = corto(fv.promociones?.nombre, 120) || fv.promocion_id;
+				const correo = correos.length ? await encolar({
+					para: correos, asunto: `${nombrePromo} · ${fv.version} publicada`,
+					texto: `Tu equipo ha validado todo lo que el equipo de MUNE preparó para la ${fv.version} de ${nombrePromo}, y ya está publicada. En unos minutos la verás en la web.`,
+					enlace: `https://experience.mune-projects.workers.dev/${fv.promocion_id}/`,
+				}) : null;
 				const r = await llamarGitHub(PUBLICAR, {
 					accion: 'aprobar', promocion: fv.promocion_id, version: fv.version, motivo: '',
 					por: 'Publicación al aprobar la promotora', solicitud: crypto.randomUUID(),
-					avisar_para: correos.join(','), nombre: corto(fv.promociones?.nombre, 120),
+					avisar_correo: correo?.id ?? '', nombre: nombrePromo,
 				});
+				if (!r?.ok) await correo?.quitar();
 				publicando = !!r?.ok;
 				if (r && !r.ok) console.error('publicar', r.status, await r.text());
 			}
@@ -200,7 +245,7 @@ Deno.serve(async (req) => {
 		if (todos) lineas.push(publicando
 			? `Está todo validado: la ${fv.version} se está publicando sola. Te llegará otro email cuando esté en la web.`
 			: `Está todo validado: ya puedes publicar la ${fv.version} desde MUNE Studio.`);
-		const r = await llamarGitHub(PROCESO, {
+		const r = await avisarMune({
 			asunto: fv.decision === 'aprobado' ? `${nombre} · ${quien} aprueba «${elemento}» (${fv.version})` : `${nombre} · cambios pedidos en «${elemento}» (${fv.version})`,
 			texto: lineas.join('\n\n'),
 			enlace: `${STUDIO}#/promocion/${fv.promocion_id}/resumen`,
@@ -231,7 +276,7 @@ Deno.serve(async (req) => {
 	const documentoNombre = corto(fila.requisitos?.elemento, 120);
 	const quien = corto(persona?.nombre, 120) || 'Alguien';
 	const promotora = corto(fila.promociones?.promotoras?.nombre, 120);
-	const r = await llamarGitHub(PROCESO, {
+	const r = await avisarMune({
 		asunto: `${nombre} · documentación nueva: ${documentoNombre}`,
 		texto: `${quien}${promotora ? ` (${promotora})` : ''} ha subido «${corto(fila.nombre, 200)}»${fila.version > 1 ? ` (versión ${fila.version})` : ''} en «${documentoNombre}».\n\nRevísalo en MUNE Studio, en la pestaña Documentación, o pídeme «revisa lo nuevo de ${nombre}».`,
 		enlace: `${STUDIO}#/promocion/${fila.promocion_id}/documentacion`,

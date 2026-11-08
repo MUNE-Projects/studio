@@ -2825,6 +2825,44 @@ await caso( DEBE_FALLAR, '58. Exportación: otra promotora, la propia promotora,
 
 } );
 
+// ─── Correos de los avisos sin pasar por GitHub (046_correos.sql) ───────────
+
+await caso( DEBE_FALLAR, '59. Buzón de correos: la promotora, el robot, la administradora o alguien sin sesión leen, escriben o borran los emails pendientes, o los piden para enviar; un email ya enviado se vuelve a leer', async () => {
+
+	const { data: fila, error } = await servicio.from( 'correos_pendientes' )
+		.insert( { para: [ 'persona.inventada@prueba.local' ], asunto: 'Prueba', texto: 'Texto de prueba', enlace: 'https://portal.mune-projects.workers.dev/' } ).select( 'id' ).single();
+	if ( error ) throw new Error( `la función no puede dejar un email: ${ error.message }` );
+	const r = {
+		promotoraLee: await aprobA.from( 'correos_pendientes' ).select( 'id' ),
+		robotLee: await robot.from( 'correos_pendientes' ).select( 'id' ),
+		adminLee: await admin.from( 'correos_pendientes' ).select( 'id' ),
+		anonimoLee: await anonimo.from( 'correos_pendientes' ).select( 'id' ),
+		promotoraEscribe: await aprobA.from( 'correos_pendientes' ).insert( { para: [ 'x@y.es' ], asunto: 'x', texto: 'x', enlace: 'https://portal.mune-projects.workers.dev/' } ).select( 'id' ),
+		promotoraBorra: await aprobA.from( 'correos_pendientes' ).delete().eq( 'id', fila.id ).select( 'id' ),
+		promotoraPide: await aprobA.rpc( 'correo_para_enviar', { p_id: fila.id } ),
+		robotPide: await robot.rpc( 'correo_para_enviar', { p_id: fila.id } ),
+		adminPide: await admin.rpc( 'correo_para_enviar', { p_id: fila.id } ),
+		anonimoPide: await anonimo.rpc( 'correo_para_enviar', { p_id: fila.id } ),
+		promotoraBorraEnviado: await aprobA.rpc( 'correo_enviado', { p_id: fila.id } ),
+		enlaceDeFuera: await servicio.from( 'correos_pendientes' ).insert( { para: [ 'x@y.es' ], asunto: 'x', texto: 'x', enlace: 'https://otra-web.example/' } ).select( 'id' ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	const sigue = await servicio.from( 'correos_pendientes' ).select( 'id' ).eq( 'id', fila.id );
+	if ( sigue.data?.length !== 1 ) noFallan.push( 'el email ha desaparecido' );
+	// el proceso de GitHub (cuenta «ejecutor») lo lee y, al enviarlo, lo borra: no se puede volver a leer
+	const leido = await ejecutor.rpc( 'correo_para_enviar', { p_id: fila.id } );
+	await ejecutor.rpc( 'correo_enviado', { p_id: fila.id } );
+	const otraVez = await ejecutor.rpc( 'correo_para_enviar', { p_id: fila.id } );
+	if ( JSON.stringify( leido.data?.para ) !== JSON.stringify( [ 'persona.inventada@prueba.local' ] ) ) noFallan.push( 'el ejecutor no lo lee' );
+	if ( ! falla( otraVez ) ) noFallan.push( 'un email enviado se vuelve a leer' );
+	// los avisos que no se han podido enviar (en esta prueba no hay llave de GitHub) no dejan correos guardados
+	const quedan = ( await servicio.from( 'correos_pendientes' ).select( 'id' ) ).data ?? [];
+	if ( quedan.length ) noFallan.push( `quedan ${ quedan.length } emails sin enviar en el buzón` );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
 // ─── Resumen ────────────────────────────────────────────────────────────────
 
 const fallidos = resultados.filter( ( r ) => ! r.ok );
