@@ -182,6 +182,8 @@ aplicar( '002_promociones.sql' );
 const robotId = await crearUsuario( 'robot@prueba.local' );
 aplicar( '003_peticiones.sql' );
 for ( const f of readdirSync( SQL ).filter( ( f ) => /^\d{3}_.*\.sql$/.test( f ) && f > '003' ).sort() ) aplicar( f );
+// La base de datos avisa a la función «exportacion» de esta prueba (dentro de Docker), nunca a la real
+execFileSync( 'psql', [ DB_URL, '-q', '-c', `update public.sincronizacion set url = 'http://kong:8000/functions/v1/exportacion', apikey = '${ SUPABASE_ANON_KEY }' where id = 1` ] );
 
 // Administradora con contraseña + código del móvil.
 const admin = await entrar( 'admin@prueba.local' );
@@ -285,6 +287,17 @@ async function caso( grupo, texto, prueba ) {
 
 const vacio = ( r ) => ! r.error && Array.isArray( r.data ) && r.data.length === 0;
 const falla = ( r ) => !! r.error;
+// 045: antes de eliminar, la exportación enviada o la petición de eliminar sin exportación
+// y la eliminación apuntada y guardada fuera de Supabase (aquí se simula eliminaciones.yml)
+const huellaDe = ( texto ) => createHash( 'sha256' ).update( texto, 'utf8' ).digest( 'hex' );
+const guardarFuera = () => execFileSync( 'psql', [ DB_URL, '-q', '-c', 'update public.eliminaciones set guardada_en = now() where guardada_en is null' ] );
+async function sinExportacion( promotora, promocion, nombre ) {
+
+	await exigir( admin.rpc( 'anotar_eliminacion_sin_exportacion', { p_promotora: promotora, p_promocion: promocion, p_solicitado_por: 'Gerencia (prueba)', p_motivo: 'Email de prueba' } ), 'anotar sin exportación' );
+	await exigir( admin.rpc( 'pedir_eliminacion', { p_tipo: promocion ? 'promocion' : 'promotora', p_id: promocion ?? promotora, p_nombre: nombre } ), 'apuntar la eliminación' );
+	guardarFuera();
+
+}
 const filaDe = async ( tabla, id ) => ( await servicio.from( tabla ).select( '*' ).eq( 'id', id ).single() ).data;
 
 const DEBE_FALLAR = 'Intentos que deben fallar';
@@ -673,6 +686,7 @@ await caso( DEBE_FUNCIONAR, 'La administradora borra una promoción desactivada:
 		await exigir( admin.storage.from( almacen ).remove( lista.filter( ( a ) => a.bucket === almacen ).map( ( a ) => a.nombre ) ), `borrar ${ almacen }` );
 
 	}
+	await sinExportacion( pA.id, 'prueba-borrar', 'Residencial que se borra' );
 	await exigir( admin.rpc( 'borrar_promocion', { p_id: 'prueba-borrar', p_nombre: ' Residencial que se borra ' } ), 'borrar promoción' );
 	const quedan = await Promise.all( [ 'requisitos', 'documentos', 'entregables', 'validaciones', 'miembros', 'peticiones' ].map( async ( t ) =>
 		( await servicio.from( t ).select( '*', { count: 'exact', head: true } ).eq( 'promocion_id', 'prueba-borrar' ) ).count ) );
@@ -718,6 +732,7 @@ await caso( DEBE_FUNCIONAR, 'La administradora borra una promotora desactivada c
 	const lista = await exigir( admin.rpc( 'archivos_de_promotora', { p_id: pC.id } ), 'lista de archivos de C' );
 	if ( lista.length !== 1 ) throw new Error( `esperaba 1 archivo y hay ${ lista.length }` );
 	await exigir( admin.storage.from( 'documentos' ).remove( lista.map( ( a ) => a.nombre ) ), 'borrar archivos de C' );
+	await sinExportacion( pC.id, null, 'Promotora C (se borra)' );
 	await exigir( admin.rpc( 'borrar_promotora', { p_id: pC.id, p_nombre: 'Promotora C (se borra)' } ), 'borrar promotora C' );
 	const { count: miembrosC } = await servicio.from( 'miembros' ).select( '*', { count: 'exact', head: true } ).eq( 'promotora_id', pC.id );
 	const { count: docsC } = await servicio.from( 'documentos' ).select( '*', { count: 'exact', head: true } ).eq( 'promocion_id', 'prueba-c' );
@@ -1963,6 +1978,7 @@ await caso( DEBE_FUNCIONAR, 'Modelo de la promoción: el robot guarda la versió
 	await exigir( guardarModelo( robot, MODELO, {}, 'prueba-modelo' ), 'modelo de prueba-modelo' );
 	await exigir( guardarModelo( robot, MODELO, { p_version: 'v1', p_codigo: COMMIT }, 'prueba-modelo' ), 'v1 de prueba-modelo' );
 	await exigir( admin.from( 'promociones' ).update( { activa: false } ).eq( 'id', 'prueba-modelo' ), 'desactivar' );
+	await sinExportacion( pA.id, 'prueba-modelo', 'Modelo (se borra)' );
 	await exigir( admin.rpc( 'borrar_promocion', { p_id: 'prueba-modelo', p_nombre: 'Modelo (se borra)' } ), 'borrar' );
 	const quedan = ( await servicio.from( 'modelo_promocion' ).select( 'id' ).eq( 'promocion_id', 'prueba-modelo' ) ).data;
 
@@ -2118,11 +2134,13 @@ await caso( DEBE_FUNCIONAR, 'Borrado completo: al borrar una promoción o una pr
 	await exigir( admin.from( 'promociones' ).update( { activa: false } ).eq( 'id', 'prueba-borra-web' ), 'desactivar' );
 	const deLaPromocion = await exigir( admin.rpc( 'archivos_de_promocion', { p_id: 'prueba-borra-web' } ), 'archivos de la promoción' );
 	await borrarTodo( deLaPromocion );
+	await sinExportacion( pA.id, 'prueba-borra-web', 'Con web (se borra)' );
 	await exigir( admin.rpc( 'borrar_promocion', { p_id: 'prueba-borra-web', p_nombre: 'Con web (se borra)' } ), 'borrar promoción' );
 	// promotora
 	await exigir( admin.from( 'promotoras' ).update( { activa: false } ).eq( 'id', pBorra.id ), 'desactivar promotora' );
 	const deLaPromotora = await exigir( admin.rpc( 'archivos_de_promotora', { p_id: pBorra.id } ), 'archivos de la promotora' );
 	await borrarTodo( deLaPromotora );
+	await sinExportacion( pBorra.id, null, 'Promotora que se borra entera' );
 	await exigir( admin.rpc( 'borrar_promotora', { p_id: pBorra.id, p_nombre: 'Promotora que se borra entera' } ), 'borrar promotora' );
 
 	const quedan = {
@@ -2512,6 +2530,297 @@ await caso( DEBE_FUNCIONAR, 'Vigencia: el robot marca un plano con la nota y el 
 		ningunaAbierta: abiertas.length === 0,
 	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
 	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) }` );
+	return true;
+
+} );
+
+// ─── Cerrar y eliminar: exportación, portfolio, eliminaciones y recuperación (045) ───
+
+const EXPORTACION = process.env.EXPORTACION_URL ?? `${ SUPABASE_URL }/functions/v1/exportacion`;
+async function exportacion( sb, orden ) {
+
+	const token = sb ? ( await sb.auth.getSession() ).data.session?.access_token : null;
+	const r = await fetch( EXPORTACION, {
+		method: 'POST',
+		headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${ token ?? SUPABASE_ANON_KEY }`, 'Content-Type': 'application/json' },
+		body: JSON.stringify( orden ),
+	} );
+	return { estado: r.status, datos: await r.json().catch( () => ( {} ) ) };
+
+}
+const sqlDirecto = ( sql ) => execFileSync( 'psql', [ DB_URL, '-q', '-v', 'ON_ERROR_STOP=1', '-c', sql ] );
+await exigir( admin.from( 'promociones' ).insert( { id: 'prueba-cierre', promotora_id: pA.id, nombre: 'Residencial que se cierra' } ), 'promoción que se cierra' );
+await exigir( admin.from( 'promociones' ).update( { activa: false } ).eq( 'id', 'prueba-cierre' ), 'desactivarla' );
+const planoCierre = await entregable( 'prueba-cierre', 'plano comercial que se cierra' );
+// el email de la exportación de una promoción va a quien administra esa promoción (no a quien administra la promotora)
+await altaEquipo( 'responsable.cierre@prueba.local', 'prueba-cierre', [], true );
+const NOMBRE_CIERRE = 'Residencial que se cierra';
+const ZIP = Buffer.from( 'PK\u0003\u0004 exportación inventada de prueba' );
+const nuevaExportacion = ( sb, extra = {} ) => sb.rpc( 'exportacion_nueva', { p_promotora: pA.id, p_promocion: 'prueba-cierre', p_dias: 30, ...extra } );
+
+await caso( DEBE_FALLAR, '57. Cerrar y eliminar: la promotora o alguien sin sesión preparan o leen exportaciones, eliminaciones o el portfolio; exportar una promoción activa o de otra promotora; subir fuera de su sitio; dar por lista una exportación sin archivo; eliminar sin exportación ni petición; con una recuperación sin comprobar, las promotoras y los compradores entran', async () => {
+
+	const exp = await exigir( nuevaExportacion( admin ), 'la administradora prepara una' );
+	const codigo = String( await exigir( generar( admin, 'Cierre Z' ), 'código' ) );
+	const r = {
+		promotoraPrepara: await nuevaExportacion( aprobA ),
+		anonimoPrepara: await nuevaExportacion( anonimo ),
+		robotPrepara: await nuevaExportacion( robot ),
+		activa: await nuevaExportacion( admin, { p_promocion: 'prueba-a' } ),
+		otraPromotora: await nuevaExportacion( admin, { p_promotora: pB.id } ),
+		dias0: await nuevaExportacion( admin, { p_dias: 0 } ),
+		dias91: await nuevaExportacion( admin, { p_dias: 91 } ),
+		promotoraLee: await aprobA.from( 'exportaciones' ).select( 'id' ),
+		anonimoLee: await anonimo.from( 'exportaciones' ).select( 'id' ),
+		promotoraSube: await aprobA.storage.from( 'exportaciones' ).upload( `${ exp }/parte-1.zip`, ZIP, { contentType: 'application/zip' } ),
+		adminFueraDeSitio: await admin.storage.from( 'exportaciones' ).upload( `${ exp }/otra.zip`, ZIP, { contentType: 'application/zip' } ),
+		adminOtraCarpeta: await admin.storage.from( 'exportaciones' ).upload( '00000000-0000-0000-0000-000000000000/parte-1.zip', ZIP, { contentType: 'application/zip' } ),
+		listaSinArchivo: await admin.rpc( 'exportacion_lista', { p_id: exp, p_partes: [ { ruta: `${ exp }/parte-1.zip`, huella: huella( ZIP ), tamano: ZIP.length } ], p_archivos: 1 } ),
+		promotoraLaDaPorLista: await aprobA.rpc( 'exportacion_lista', { p_id: exp, p_partes: [], p_archivos: 0 } ),
+		eliminarSinNada: await admin.rpc( 'borrar_promocion', { p_id: 'prueba-cierre', p_nombre: NOMBRE_CIERRE } ),
+		promotoraAnota: await aprobA.rpc( 'anotar_eliminacion_sin_exportacion', { p_promotora: pA.id, p_promocion: 'prueba-cierre', p_solicitado_por: 'Gerencia', p_motivo: 'Email' } ),
+		anotaSinQuien: await admin.rpc( 'anotar_eliminacion_sin_exportacion', { p_promotora: pA.id, p_promocion: 'prueba-cierre', p_solicitado_por: ' ', p_motivo: 'Email del 3/11' } ),
+		anotaSinComo: await admin.rpc( 'anotar_eliminacion_sin_exportacion', { p_promotora: pA.id, p_promocion: 'prueba-cierre', p_solicitado_por: 'Gerencia', p_motivo: '' } ),
+		promotoraLeeSinExportacion: await aprobA.from( 'eliminaciones_sin_exportacion' ).select( 'id' ),
+		promotoraAutoriza: await aprobA.rpc( 'autorizar_portfolio', { p_promocion: 'prueba-cierre', p_autorizada_por: 'Gerencia', p_fecha: '2026-11-01', p_alcance: 'Imágenes en la web de MUNE', p_documento: null } ),
+		autorizaFutura: await admin.rpc( 'autorizar_portfolio', { p_promocion: 'prueba-cierre', p_autorizada_por: 'Gerencia', p_fecha: '2099-01-01', p_alcance: 'Imágenes en la web de MUNE', p_documento: null } ),
+		promotoraLeePortfolio: await aprobA.from( 'portfolio_autorizaciones' ).select( 'id' ),
+		promotoraLeeEliminaciones: await aprobA.from( 'eliminaciones' ).select( 'id' ),
+		robotLeeEliminaciones: await robot.from( 'eliminaciones' ).select( 'id' ),
+		anonimoLeeEliminaciones: await anonimo.from( 'eliminaciones' ).select( 'id' ),
+		promotoraLeeRecuperacion: await aprobA.from( 'restauracion' ).select( 'id' ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+
+	// otra promoción en el portfolio de esta, o una pieza que no es un resultado de MUNE
+	const aut = await exigir( admin.rpc( 'autorizar_portfolio', { p_promocion: 'prueba-cierre', p_autorizada_por: 'Gerencia (prueba)', p_fecha: '2026-11-01', p_alcance: 'Planos comerciales en la web de MUNE', p_documento: null } ), 'autorización' );
+	await exigir( admin.storage.from( 'portfolio' ).upload( `${ aut }/ajeno.pdf`, pdf( 'otro' ), { contentType: 'application/pdf' } ), 'subir al portfolio' );
+	const piezaAjena = await admin.rpc( 'pieza_de_portfolio', { p_autorizacion: aut, p_entregable: planoB.id, p_ruta: `${ aut }/ajeno.pdf`, p_titulo: 'Plano de B' } );
+	const fueraDeSitio = await admin.storage.from( 'portfolio' ).upload( 'suelto/ajeno.pdf', pdf( 'otro' ), { contentType: 'application/pdf' } );
+	const promotoraSubePortfolio = await aprobA.storage.from( 'portfolio' ).upload( `${ aut }/promotora.pdf`, pdf( 'otro' ), { contentType: 'application/pdf' } );
+	if ( ! falla( piezaAjena ) ) noFallan.push( 'piezaAjena' );
+	if ( ! falla( fueraDeSitio ) ) noFallan.push( 'portfolioFueraDeSitio' );
+	if ( ! falla( promotoraSubePortfolio ) ) noFallan.push( 'promotoraSubePortfolio' );
+	await admin.storage.from( 'portfolio' ).remove( [ `${ aut }/ajeno.pdf` ] );
+	await admin.rpc( 'retirar_portfolio', { p_autorizacion: aut } );
+
+	// la función: la promotora no envía ni revoca; un enlace inventado no descarga
+	const fn = {
+		promotoraEnvia: await exportacion( aprobA, { accion: 'enviar', id: exp } ),
+		anonimoRevoca: await exportacion( null, { accion: 'revocar', id: exp } ),
+		enlaceInventado: await exportacion( null, { accion: 'descargar', token: 'A'.repeat( 43 ) } ),
+		enlaceRaro: await exportacion( null, { accion: 'descargar', token: "' or 1=1 --" } ),
+		sinPreparar: await exportacion( admin, { accion: 'enviar', id: exp } ),
+	};
+	const esperado = { promotoraEnvia: 403, anonimoRevoca: 403, enlaceInventado: 404, enlaceRaro: 404, sinPreparar: 409 };
+	for ( const [ k, v ] of Object.entries( fn ) ) if ( v.estado !== esperado[ k ] ) noFallan.push( `${ k } (${ v.estado })` );
+
+	// recuperación sin comprobar: nadie de las promotoras ni ningún comprador entra
+	if ( ! ( await entrarComprador( codigo ) ).data ) noFallan.push( 'el código no funcionaba antes' );
+	sqlDirecto( "insert into public.restauracion (id, pendiente) values (1, true) on conflict (id) do update set pendiente = true" );
+	const ve = await gestorA.from( 'promociones' ).select( 'id' ).eq( 'id', 'prueba-a' );
+	const comprador = await entrarComprador( codigo );
+	const adminVe = await admin.from( 'promociones' ).select( 'id' ).eq( 'id', 'prueba-a' );
+	sqlDirecto( 'update public.restauracion set pendiente = false, comprobada_en = now() where id = 1' );
+	if ( ! vacio( ve ) ) noFallan.push( 'la promotora entra durante la recuperación' );
+	if ( ! falla( comprador ) && comprador.data ) noFallan.push( 'el comprador entra durante la recuperación' );
+	if ( adminVe.data?.length !== 1 ) noFallan.push( 'la administradora no puede comprobar la recuperación' );
+	if ( ( await gestorA.from( 'promociones' ).select( 'id' ).eq( 'id', 'prueba-a' ) ).data?.length !== 1 ) noFallan.push( 'la promotora no vuelve a entrar' );
+	if ( ! ( await entrarComprador( codigo ) ).data ) noFallan.push( 'el comprador no vuelve a entrar' );
+
+	await admin.rpc( 'exportacion_fallida', { p_id: exp, p_error: 'Prueba' } );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Cerrar y eliminar: se prepara y comprueba la exportación; si el email no sale, sigue lista para reintentar; el enlace privado descarga exactamente lo preparado; se elimina con la exportación enviada, la eliminación queda apuntada sin el nombre, la exportación y el portfolio autorizado siguen; revocar corta el enlace; retirar un acceso y revocar un código quedan apuntados', async () => {
+
+	const exp = await exigir( nuevaExportacion( admin ), 'preparar' );
+	await exigir( admin.storage.from( 'exportaciones' ).upload( `${ exp }/parte-1.zip`, ZIP, { contentType: 'application/zip' } ), 'subir la parte' );
+	await exigir( admin.rpc( 'exportacion_lista', { p_id: exp, p_partes: [ { ruta: `${ exp }/parte-1.zip`, huella: huella( ZIP ), tamano: ZIP.length } ], p_archivos: 3 } ), 'darla por lista' );
+
+	// sin la llave A (como en la prueba), el email no sale: sigue «lista», con el motivo
+	const envio = await exportacion( admin, { accion: 'enviar', id: exp } );
+	const trasFallo = await filaDe( 'exportaciones', exp );
+
+	// lo que hace aviso-exportacion.yml cuando GitHub sí lo lanza: la cuenta «ejecutor» pide el enlace, envía y confirma
+	await exigir( servicio.from( 'exportaciones' ).update( { estado: 'enviando', enviando_desde: new Date().toISOString() } ).eq( 'id', exp ), 'enviando (lanzado)' );
+	const paraEnviar = await exigir( ejecutor.rpc( 'exportacion_para_enviar', { p_id: exp } ), 'el ejecutor pide el enlace' );
+	const token = paraEnviar.token;
+	const otraVez = await ejecutor.rpc( 'exportacion_para_enviar', { p_id: exp } ); // un solo enlace por envío
+	const descargaEnviando = await exportacion( null, { accion: 'descargar', token } );
+	const borrarSinConfirmar = await admin.rpc( 'borrar_promocion', { p_id: 'prueba-cierre', p_nombre: NOMBRE_CIERRE } );
+	await exigir( ejecutor.rpc( 'exportacion_confirmada', { p_id: exp } ), 'el ejecutor confirma el email' );
+
+	// portfolio: solo el plano comercial autorizado
+	const aut = await exigir( admin.rpc( 'autorizar_portfolio', { p_promocion: 'prueba-cierre', p_autorizada_por: 'Gerencia (prueba)', p_fecha: '2026-11-01', p_alcance: 'Planos comerciales en la web de MUNE', p_documento: 'Email del 1/11 (prueba)' } ), 'autorizar' );
+	const original = await exigir( admin.storage.from( 'entregables' ).download( planoCierre.ruta ), 'bajar el plano' );
+	await exigir( admin.storage.from( 'portfolio' ).upload( `${ aut }/plano.pdf`, original, { contentType: 'application/pdf' } ), 'copiar al portfolio' );
+	await exigir( admin.rpc( 'pieza_de_portfolio', { p_autorizacion: aut, p_entregable: planoCierre.id, p_ruta: `${ aut }/plano.pdf`, p_titulo: 'Plano comercial' } ), 'pieza' );
+
+	// la eliminación se apunta y, hasta que no está guardada fuera de Supabase, no se elimina
+	const respuestasAntes = Number( execFileSync( 'psql', [ DB_URL, '-At', '-c', 'select count(*) from net._http_response' ] ).toString().trim() || 0 );
+	const pedida = await exigir( admin.rpc( 'pedir_eliminacion', { p_tipo: 'promocion', p_id: 'prueba-cierre', p_nombre: NOMBRE_CIERRE } ), 'apuntar la eliminación' );
+	const borrarSinGuardar = await admin.rpc( 'borrar_promocion', { p_id: 'prueba-cierre', p_nombre: NOMBRE_CIERRE } );
+	const [ fila ] = await exigir( admin.from( 'eliminaciones' ).select( 'id' ).eq( 'tipo', 'promocion' ).eq( 'huella', huellaDe( 'promocion:prueba-cierre' ) ), 'la fila apuntada' );
+	const promotoraMarca = await aprobA.rpc( 'marcar_eliminaciones_guardadas', { p_hasta: fila.id } );
+	await exigir( ejecutor.rpc( 'marcar_eliminaciones_guardadas', { p_hasta: fila.id } ), 'eliminaciones.yml la marca como guardada' );
+	const guardada = await exigir( admin.rpc( 'pedir_eliminacion', { p_tipo: 'promocion', p_id: 'prueba-cierre', p_nombre: NOMBRE_CIERRE } ), 'comprobar' );
+	// la propia base de datos ha avisado a la función (pg_net), sin que nadie lo pida
+	let avisada = false;
+	for ( let i = 0; i < 20 && ! avisada; i ++ ) {
+
+		await new Promise( ( ok ) => setTimeout( ok, 500 ) );
+		avisada = Number( execFileSync( 'psql', [ DB_URL, '-At', '-c', 'select count(*) from net._http_response' ] ).toString().trim() || 0 ) > respuestasAntes;
+
+	}
+
+	await exigir( admin.storage.from( 'entregables' ).remove( [ planoCierre.ruta ] ), 'quitar sus archivos (como MUNE Studio)' );
+	await exigir( admin.rpc( 'borrar_promocion', { p_id: 'prueba-cierre', p_nombre: NOMBRE_CIERRE } ), 'eliminar con la exportación enviada' );
+	const descarga = await exportacion( null, { accion: 'descargar', token } );
+	// (en el Supabase de prueba, la dirección firmada sale con el nombre interno de Docker)
+	const bajado = descarga.estado === 200 ? Buffer.from( await ( await fetch( descarga.datos.partes[ 0 ].url.replace( /^https?:\/\/[^/]+/, SUPABASE_URL ) ) ).arrayBuffer() ) : Buffer.alloc( 0 );
+	const eliminaciones = await exigir( admin.from( 'eliminaciones' ).select( 'tipo, huella' ), 'eliminaciones' );
+	const piezas = await exigir( admin.from( 'portfolio_piezas' ).select( 'ruta, huella' ).eq( 'autorizacion_id', aut ), 'piezas' );
+	const enPortfolio = await existe( 'portfolio', `${ aut }/plano.pdf` );
+
+	const revocar = await exportacion( admin, { accion: 'revocar', id: exp } );
+	const trasRevocar = await exportacion( null, { accion: 'descargar', token } );
+	const caducar = await exportacion( null, { accion: 'caducar' } );
+	const quitadas = await exigir( admin.rpc( 'retirar_portfolio', { p_autorizacion: aut } ), 'retirar la autorización' );
+
+	// retirar un acceso y revocar un código
+	const persona = await altaEquipo( 'cierre.a@prueba.local', 'prueba-a', [] );
+	const [ filaPersona ] = await exigir( admin.from( 'miembros' ).select( 'id' ).eq( 'user_id', persona.id ), 'acceso' );
+	await exigir( admin.from( 'miembros' ).update( { activo: false } ).eq( 'id', filaPersona.id ), 'retirar' );
+	await exigir( generar( admin, 'Cierre Y' ), 'código' );
+	await exigir( generar( admin, 'Cierre Y' ), 'otro código (revoca el anterior)' );
+	const [ cod ] = await exigir( servicio.from( 'codigos_comprador' ).select( 'id' ).eq( 'promocion_id', 'prueba-a' ).eq( 'vivienda_ref', 'Cierre Y' ).eq( 'activo', false ), 'el código revocado' );
+	const despues = await exigir( admin.from( 'eliminaciones' ).select( 'tipo, huella' ), 'eliminaciones' );
+	const hay = ( lista, tipo, clave ) => lista.some( ( e ) => e.tipo === tipo && e.huella === huella( clave ) );
+
+	const mal = Object.entries( {
+		envioFalla: envio.estado === 502,
+		paraQuienAdministraLaPromocion: JSON.stringify( paraEnviar.para ) === JSON.stringify( [ 'responsable.cierre@prueba.local' ] ),
+		tokenNoGuardado: ! JSON.stringify( await filaDe( 'exportaciones', exp ) ).includes( token ),
+		unSoloEnlace: falla( otraVez ),
+		descargaMientrasSeEnvia: descargaEnviando.estado === 200,
+		noSeEliminaSinConfirmar: falla( borrarSinConfirmar ),
+		pendiente: pedida === 'pendiente' && falla( borrarSinGuardar ) && falla( promotoraMarca ) && guardada === 'guardada',
+		avisoAutomatico: avisada,
+		sigueLista: trasFallo.estado === 'lista' && /llave A|email/.test( trasFallo.error ?? '' ) && ! trasFallo.token_huella,
+		descarga: descarga.estado === 200 && descarga.datos.partes?.length === 1 && bajado.equals( ZIP ),
+		nombreDescarga: /^MUNE-Residencial-que-se-cierra-parte-1\.zip$/.test( descarga.datos.partes?.[ 0 ]?.nombre ?? '' ),
+		cuenta: ( await filaDe( 'exportaciones', exp ) ).descargas === 1 || revocar.estado === 200,
+		apuntada: hay( eliminaciones, 'promocion', 'promocion:prueba-cierre' ),
+		sinNombre: ! JSON.stringify( eliminaciones ).includes( 'prueba-cierre' ),
+		portfolio: piezas.length === 1 && piezas[ 0 ].huella === planoCierre.huella && enPortfolio,
+		revocada: revocar.estado === 200 && trasRevocar.estado === 404 && ! ( await existe( 'exportaciones', `${ exp }/parte-1.zip` ) ),
+		caducar: caducar.estado === 200,
+		retirada: quitadas.length === 1,
+		portfolioApuntado: hay( despues, 'portfolio_retirado', `portfolio:${ aut }` ),
+		acceso: hay( despues, 'acceso_retirado', `acceso:${ filaPersona.id }` ),
+		codigo: hay( despues, 'codigo_revocado', `codigo:${ cod.id }` ),
+	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
+	await admin.storage.from( 'portfolio' ).remove( quitadas.map( ( q ) => typeof q === 'string' ? q : Object.values( q )[ 0 ] ) );
+	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Cerrar y eliminar: con la petición de la promotora anotada, se elimina sin exportación (y solo esa promoción)', async () => {
+
+	await exigir( admin.from( 'promociones' ).insert( { id: 'prueba-cierre-2', promotora_id: pA.id, nombre: 'Residencial sin exportación' } ), 'alta' );
+	await exigir( admin.from( 'promociones' ).update( { activa: false } ).eq( 'id', 'prueba-cierre-2' ), 'desactivarla' );
+	const antes = await admin.rpc( 'borrar_promocion', { p_id: 'prueba-cierre-2', p_nombre: 'Residencial sin exportación' } );
+	await sinExportacion( pA.id, 'prueba-cierre-2', 'Residencial sin exportación' );
+	await exigir( admin.rpc( 'borrar_promocion', { p_id: 'prueba-cierre-2', p_nombre: 'Residencial sin exportación' } ), 'eliminar' );
+	const queda = await servicio.from( 'promociones' ).select( 'id' ).eq( 'id', 'prueba-cierre-2' );
+	const otras = await servicio.from( 'promociones' ).select( 'id' ).eq( 'id', 'prueba-a' );
+	return falla( antes ) && vacio( queda ) && otras.data?.length === 1;
+
+} );
+
+await exigir( admin.from( 'promociones' ).insert( { id: 'prueba-cierre-3', promotora_id: pA.id, nombre: 'Residencial (permisos de exportación)' } ), 'alta' );
+await exigir( admin.from( 'promociones' ).update( { activa: false } ).eq( 'id', 'prueba-cierre-3' ), 'desactivarla' );
+
+await caso( DEBE_FALLAR, '58. Exportación: otra promotora, la propia promotora, el robot, alguien sin sesión, la administradora sin el código del móvil o una sesión falsificada envían, revocan o ven una exportación; nadie más que la cuenta «ejecutor» crea el enlace, confirma el envío o marca eliminaciones guardadas; un enlace inventado, caducado o de un envío que no salió descarga algo; se prepara una segunda exportación con otra pendiente; se apunta una eliminación sin permiso; el email va a quien no administra la promoción', async () => {
+
+	const exp = await exigir( admin.rpc( 'exportacion_nueva', { p_promotora: pA.id, p_promocion: 'prueba-cierre-3', p_dias: 30 } ), 'preparar' );
+	await exigir( admin.storage.from( 'exportaciones' ).upload( `${ exp }/parte-1.zip`, ZIP, { contentType: 'application/zip' } ), 'subir' );
+	await exigir( admin.rpc( 'exportacion_lista', { p_id: exp, p_partes: [ { ruta: `${ exp }/parte-1.zip`, huella: huella( ZIP ), tamano: ZIP.length } ], p_archivos: 1 } ), 'lista' );
+	// sin nadie que administre la promoción no se envía (aunque haya quien administre la promotora)
+	const sinResponsable = await exportacion( admin, { accion: 'enviar', id: exp } );
+	await altaEquipo( 'responsable.cierre3@prueba.local', 'prueba-cierre-3', [], true );
+	const sesionAdmin = ( await admin.auth.getSession() ).data.session.access_token;
+	const falsa = sesionAdmin.slice( 0, -6 ) + ( sesionAdmin.slice( -6 ) === 'AAAAAA' ? 'BBBBBB' : 'AAAAAA' );
+	const conSesion = async ( token, orden ) => ( await fetch( EXPORTACION, { method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${ token }`, 'Content-Type': 'application/json' }, body: JSON.stringify( orden ) } ) ).status;
+	const fn = {
+		promotoraEnvia: ( await exportacion( aprobA, { accion: 'enviar', id: exp } ) ).estado,
+		otraPromotoraEnvia: ( await exportacion( aprobB, { accion: 'enviar', id: exp } ) ).estado,
+		otraPromotoraRevoca: ( await exportacion( aprobB, { accion: 'revocar', id: exp } ) ).estado,
+		robotEnvia: ( await exportacion( robot, { accion: 'enviar', id: exp } ) ).estado,
+		sinMovilEnvia: ( await exportacion( adminSinMovil, { accion: 'enviar', id: exp } ) ).estado,
+		anonimoEnvia: ( await exportacion( null, { accion: 'enviar', id: exp } ) ).estado,
+		sesionFalsa: await conSesion( falsa, { accion: 'revocar', id: exp } ),
+		sinCabecera: ( await fetch( EXPORTACION, { method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify( { accion: 'revocar', id: exp } ) } ) ).status,
+		enlaceInventado: ( await exportacion( null, { accion: 'descargar', token: 'x'.repeat( 43 ) } ) ).estado,
+	};
+	const esperado = { promotoraEnvia: 403, otraPromotoraEnvia: 403, otraPromotoraRevoca: 403, robotEnvia: 403, sinMovilEnvia: 403, anonimoEnvia: 403, sesionFalsa: 403, sinCabecera: 401, enlaceInventado: 404 };
+	const noFallan = Object.keys( fn ).filter( ( k ) => fn[ k ] !== esperado[ k ] ).map( ( k ) => `${ k } (${ fn[ k ] })` );
+	const r = {
+		promotoraVe: await aprobA.from( 'exportaciones' ).select( 'id' ),
+		otraPromotoraVe: await aprobB.from( 'exportaciones' ).select( 'id' ),
+		robotVe: await robot.from( 'exportaciones' ).select( 'id' ),
+		promotoraVeArchivos: await aprobA.storage.from( 'exportaciones' ).list( exp ),
+		promotoraBaja: await aprobA.storage.from( 'exportaciones' ).download( `${ exp }/parte-1.zip` ),
+		otraPromotoraBaja: await aprobB.storage.from( 'exportaciones' ).download( `${ exp }/parte-1.zip` ),
+		anonimoBaja: await anonimo.storage.from( 'exportaciones' ).download( `${ exp }/parte-1.zip` ),
+		segunda: await admin.rpc( 'exportacion_nueva', { p_promotora: pA.id, p_promocion: 'prueba-cierre-3', p_dias: 30 } ),
+		adminCreaEnlace: await admin.rpc( 'exportacion_para_enviar', { p_id: exp } ),
+		promotoraCreaEnlace: await aprobA.rpc( 'exportacion_para_enviar', { p_id: exp } ),
+		robotConfirma: await robot.rpc( 'exportacion_confirmada', { p_id: exp } ),
+		promotoraNoEnviada: await aprobA.rpc( 'exportacion_no_enviada', { p_id: exp, p_error: 'x' } ),
+		adminMarca: await admin.rpc( 'marcar_eliminaciones_guardadas', { p_hasta: 1000000 } ),
+		robotMarca: await robot.rpc( 'marcar_eliminaciones_guardadas', { p_hasta: 1000000 } ),
+		anonimoMarca: await anonimo.rpc( 'marcar_eliminaciones_guardadas', { p_hasta: 1000000 } ),
+		ejecutorSinEnviar: await ejecutor.rpc( 'exportacion_para_enviar', { p_id: exp } ), // no se está enviando
+		promotoraPide: await aprobA.rpc( 'pedir_eliminacion', { p_tipo: 'promocion', p_id: 'prueba-cierre-3', p_nombre: 'Residencial (permisos de exportación)' } ),
+		robotPide: await robot.rpc( 'pedir_eliminacion', { p_tipo: 'promocion', p_id: 'prueba-cierre-3', p_nombre: 'Residencial (permisos de exportación)' } ),
+		pideSinExportacion: await admin.rpc( 'pedir_eliminacion', { p_tipo: 'promocion', p_id: 'prueba-cierre-3', p_nombre: 'Residencial (permisos de exportación)' } ),
+		pideActiva: await admin.rpc( 'pedir_eliminacion', { p_tipo: 'promocion', p_id: 'prueba-a', p_nombre: 'Residencial A' } ),
+		pideOtroNombre: await admin.rpc( 'pedir_eliminacion', { p_tipo: 'promocion', p_id: 'prueba-cierre-3', p_nombre: 'Otra' } ),
+		promotoraLeeSincronizacion: await aprobA.from( 'sincronizacion' ).select( 'url' ),
+	};
+	for ( const [ k, v ] of Object.entries( r ) ) if ( ! ( falla( v ) || vacio( v ) || ( k.endsWith( 'Baja' ) && ! v.data ) ) ) noFallan.push( k );
+
+	// un envío que no sale deja el enlace sin valor; uno caducado, también
+	await exigir( servicio.from( 'exportaciones' ).update( { estado: 'enviando', enviando_desde: new Date().toISOString() } ).eq( 'id', exp ), 'enviando' );
+	const { token, para } = await exigir( ejecutor.rpc( 'exportacion_para_enviar', { p_id: exp } ), 'enlace' );
+	if ( sinResponsable.estado !== 409 ) noFallan.push( `se envía sin nadie que administre la promoción (${ sinResponsable.estado })` );
+	if ( JSON.stringify( para ) !== JSON.stringify( [ 'responsable.cierre3@prueba.local' ] ) ) noFallan.push( 'el email va a alguien que no administra la promoción' );
+	const valia = ( await exportacion( null, { accion: 'descargar', token } ) ).estado;
+	await exigir( ejecutor.rpc( 'exportacion_no_enviada', { p_id: exp, p_error: 'Prueba: el email no ha salido' } ), 'no enviada' );
+	const trasNoEnviada = ( await exportacion( null, { accion: 'descargar', token } ) ).estado;
+	const fila = await filaDe( 'exportaciones', exp );
+	if ( valia !== 200 ) noFallan.push( `el enlace no valía mientras se enviaba (${ valia })` );
+	if ( trasNoEnviada !== 404 || fila.estado !== 'lista' || fila.token_huella ) noFallan.push( `enlace de un envío que no salió (${ trasNoEnviada }, ${ fila.estado })` );
+	await exigir( servicio.from( 'exportaciones' ).update( { estado: 'enviando', enviando_desde: new Date().toISOString() } ).eq( 'id', exp ), 'enviando' );
+	const { token: t2 } = await exigir( ejecutor.rpc( 'exportacion_para_enviar', { p_id: exp } ), 'enlace 2' );
+	await exigir( ejecutor.rpc( 'exportacion_confirmada', { p_id: exp } ), 'confirmada' );
+	const enviada = ( await exportacion( null, { accion: 'descargar', token: t2 } ) ).estado;
+	await exigir( servicio.from( 'exportaciones' ).update( { caduca_en: new Date( Date.now() - 60000 ).toISOString() } ).eq( 'id', exp ), 'caducada' );
+	const caducada = ( await exportacion( null, { accion: 'descargar', token: t2 } ) ).estado;
+	const pideCaducada = await admin.rpc( 'pedir_eliminacion', { p_tipo: 'promocion', p_id: 'prueba-cierre-3', p_nombre: 'Residencial (permisos de exportación)' } );
+	if ( enviada !== 200 ) noFallan.push( `el enlace enviado no valía (${ enviada })` );
+	if ( caducada !== 404 ) noFallan.push( `enlace caducado (${ caducada })` );
+	if ( ! falla( pideCaducada ) ) noFallan.push( 'se apunta la eliminación con la exportación caducada' );
+	// lo que contesta «sincronizar» sin sesión no dice nada de lo eliminado
+	const sinc = await exportacion( null, { accion: 'sincronizar' } );
+	if ( Object.keys( sinc.datos ).some( ( k ) => ! [ 'ok', 'error' ].includes( k ) ) || /huella|promocion|prueba-/.test( JSON.stringify( sinc.datos ) ) ) noFallan.push( 'sincronizar devuelve datos' );
+	await exportacion( null, { accion: 'caducar' } );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
 	return true;
 
 } );

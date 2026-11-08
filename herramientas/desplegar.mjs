@@ -48,6 +48,10 @@ if ( ! soloMontar && ! process.env.CLOUDFLARE_API_TOKEN ) fallo( 'Falta CLOUDFLA
 const cabeceras = await cabecerasEjecutor().catch( ( e ) => fallo( e.message ) ) ?? await cabecerasRobotVersiones().catch( ( e ) => fallo( e.message ) );
 if ( ! cabeceras ) fallo( 'Faltan las credenciales: la cuenta «ejecutor» (EJECUTOR_CLAVE) o el robot de Claude (ROBOT_EMAIL y ROBOT_CLAVE).' );
 
+// Un proyecto recuperado de una copia no se publica hasta comprobar las eliminaciones (045, receta 18)
+// (sin 045 aún pegado, la función no existe: se sigue; cualquier otro error, no se publica)
+const pendiente = await llamar( cabeceras, 'restauracion_pendiente' ).catch( ( e ) => /Could not find the function|PGRST202/.test( e.message ) ? false : fallo( `No se ha podido comprobar si el proyecto está recién recuperado: ${ e.message }` ) );
+if ( pendiente !== false ) fallo( 'Este proyecto se ha recuperado de una copia y aún no se han comprobado las eliminaciones (receta 18): no se envía nada a Cloudflare.' );
 const lista = await llamar( cabeceras, 'versiones_para_desplegar' ).catch( ( e ) => fallo( `No se ha podido leer qué versiones van a la web: ${ e.message }` ) );
 const huellas = new Map( ( await ( await fetch( `${ SUPABASE_URL }/rest/v1/versiones_promocion?select=promocion_id,version,huella`, { headers: cabeceras } ) ).json() )
 	.map( ( v ) => [ `${ v.promocion_id }/${ v.version }`, v.huella ] ) );

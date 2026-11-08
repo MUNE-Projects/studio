@@ -17,7 +17,7 @@ import { datosFormalizacion, formFormalizacion, type Formalizacion } from './for
 import { pintarActividad } from './actividad';
 import { alEnviar, anotar, conectarPlegables, cuantos, esc, fallo, fecha, sb, traducir } from './comun';
 import { pintarDocumentacion } from './documentacion';
-import { exportarPromocion, exportarPromotora, type Resultado } from './exportar';
+import { exportarPromocion, exportarPromotora, prepararExportacion, type Resultado } from './exportar';
 import { pintarPeticiones } from './peticiones';
 import { ESCAPARATE, REVISION, estadoVersiones, etiquetaVersiones, pintarVersiones } from './versiones';
 import { pintarCompradores } from './compradores';
@@ -513,63 +513,69 @@ function conectarExportar(raiz: HTMLElement, boton: HTMLButtonElement, exportar:
 interface Borrado {
 	que: string; // «la promoción» / «la promotora»
 	nombre: string;
+	promotora: string;
+	promocion: string | null; // null: la promotora entera
 	detalle: string; // lo que se va a borrar, en HTML
-	exportar: (progreso: (t: string) => void) => Promise<Resultado>;
 	archivos: () => PromiseLike<{ data: unknown; error: { message: string } | null }>;
 	borrar: (nombre: string) => PromiseLike<{ error: { message: string } | null }>;
 	retirar: string | null; // promoción con la que pedir que se retire de la web (null: ninguna)
 	despues: string; // a dónde ir al terminar
 }
 
-/** Zona roja para borrar definitivamente: 1) descargar la exportación, 2) escribir el nombre. */
+interface Exportacion {
+	id: string; estado: string; partes: unknown[]; archivos: number | null; tamano: number | null; dias: number;
+	caduca_en: string | null; enviada_en: string | null; destinatarios: number | null; descargas: number; error: string | null; creada_en: string;
+}
+
+const MB = (b: number | null) => (b ?? 0) < 102400 ? `${Math.max(1, Math.round((b ?? 0) / 1024))} KB` : `${((b ?? 0) / 1048576).toFixed(1).replace('.', ',')} MB`;
+
+/**
+ * Zona roja para eliminar (045, decisión 70). Desactivar no borra nada; eliminar
+ * exige antes 1) enviar la exportación a quien administra la promoción (o la promotora), o
+ * anotar que la promotora la ha pedido sin exportación; 2) escribir el nombre.
+ */
 function pintarZonaBorrado(zona: HTMLElement, b: Borrado): void {
 	zona.innerHTML = `
-		<h2>Borrar definitivamente</h2>
+		<h2>Eliminar la información</h2>
 		${b.detalle}
-		<p><strong>No se puede deshacer.</strong> También se borran sus datos 3D y la web de cada versión, y se retira de internet (la web pública y la vista previa) en unos minutos. Las copias de seguridad lo conservan 31 días y después desaparece. Las cuentas de las personas no se borran (se quedan sin acceso). El registro de actividad se conserva.</p>
+		<p><strong>No se puede deshacer.</strong> Desactivar no borra nada: esto sí. Se borra en MUNE y se retira de internet (la web pública y la vista previa) en unos minutos.
+			Las copias de seguridad la conservan 31 días como máximo, y al recuperar una copia no vuelve. No se borran el registro de actividad, las cuentas de las personas (se quedan sin acceso)
+			ni los avisos ya enviados por email; la exportación se borra cuando caduca su enlace.</p>
 		<ol class="pasos">
-			<li>Descarga la copia de todo (es obligatorio antes de borrar):
-				<div class="acciones"><button class="boton secundario pequeno" type="button" data-exportar-antes>Descargar la exportación (ZIP)</button></div>
-				<p class="ayuda" data-progreso role="status"></p>
+			<li><strong>Antes de eliminar</strong>
+				<div data-paso-exportacion><p class="ayuda">Cargando…</p></div>
 			</li>
+			${b.promocion ? '<li><strong>Portfolio</strong> (opcional) <div data-paso-portfolio><p class="ayuda">Cargando…</p></div></li>' : ''}
 			<li>Escribe el nombre de ${esc(b.que)}: <strong>${esc(b.nombre)}</strong>
 				<form class="peticion-form" data-form-borrar novalidate>
 					<input name="nombre" autocomplete="off" disabled aria-label="Nombre para confirmar">
 					<p class="error" data-error-borrar role="alert"></p>
-					<div class="acciones"><button class="boton peligro" type="submit" disabled>Borrar para siempre</button></div>
+					<div class="acciones"><button class="boton peligro" type="submit" disabled>Eliminar para siempre</button></div>
 				</form>
 			</li>
 		</ol>`;
-	const exportar = zona.querySelector<HTMLButtonElement>('[data-exportar-antes]')!;
-	const progreso = zona.querySelector<HTMLElement>('[data-progreso]')!;
 	const form = zona.querySelector<HTMLFormElement>('[data-form-borrar]')!;
 	const boton = form.querySelector<HTMLButtonElement>('button')!;
 	const campo = form.querySelector<HTMLInputElement>('input')!;
 	const error = zona.querySelector<HTMLElement>('[data-error-borrar]')!;
 	const coincide = () => campo.value.trim() === b.nombre.trim();
+	const permitir = (si: boolean) => {
+		campo.disabled = !si;
+		boton.disabled = !si || !coincide();
+	};
 
-	exportar.addEventListener('click', async () => {
-		exportar.disabled = true;
-		try {
-			const r = await b.exportar((t) => { progreso.textContent = t; });
-			progreso.textContent = r.avisos.length
-				? `✓ Descargada (${r.archivos} archivos), con ${cuantos(r.avisos.length, 'aviso', 'avisos')}: revisa el LEEME.txt antes de borrar.`
-				: `✓ Descargada: ${r.archivos} archivos. Guárdala bien antes de seguir.`;
-			campo.disabled = false;
-			campo.focus();
-		} catch (e) {
-			progreso.textContent = `${fallo('No se ha podido descargar la copia', e)} Sin la copia no se puede borrar.`;
-			exportar.disabled = false;
-		}
-	});
-	campo.addEventListener('input', () => { boton.disabled = !coincide(); });
+	void pintarPasoExportacion(zona.querySelector<HTMLElement>('[data-paso-exportacion]')!, b, permitir);
+	if (b.promocion) void pintarPasoPortfolio(zona.querySelector<HTMLElement>('[data-paso-portfolio]')!, b.promocion);
+	campo.addEventListener('input', () => { boton.disabled = campo.disabled || !coincide(); });
 	form.addEventListener('submit', async (ev) => {
 		ev.preventDefault();
-		if (!coincide() || !confirm(`¿Borrar ${b.nombre} para siempre?\n\nNo se puede deshacer.`)) return;
+		if (!coincide() || !confirm(`¿Eliminar ${b.nombre} para siempre?\n\nNo se puede deshacer.`)) return;
 		boton.disabled = true;
 		error.textContent = '';
-		boton.textContent = 'Borrando archivos…';
 		try {
+			// 0. Antes de nada, que la eliminación quede guardada fuera de Supabase (045): si no, no se elimina.
+			await esperarEliminacionGuardada(b.promocion ? 'promocion' : 'promotora', b.promocion ?? b.promotora, campo.value, (t) => { boton.textContent = t; });
+			boton.textContent = 'Borrando archivos…';
 			// 1. Los archivos, con la API de almacenamiento (de 100 en 100).
 			const { data: lista, error: e1 } = await b.archivos();
 			if (e1) throw e1;
@@ -581,7 +587,7 @@ function pintarZonaBorrado(zona: HTMLElement, b: Borrado): void {
 					if (e2) throw e2;
 				}
 			}
-			// 2. Las fichas (comprueba antes que no queda ningún archivo).
+			// 2. Las fichas (la base de datos comprueba la exportación y que no queda ningún archivo).
 			boton.textContent = 'Borrando…';
 			const { error: e3 } = await b.borrar(campo.value);
 			if (e3) throw e3;
@@ -590,15 +596,217 @@ function pintarZonaBorrado(zona: HTMLElement, b: Borrado): void {
 				boton.textContent = 'Retirando de la web…';
 				const { error: e4 } = await sb.functions.invoke('ejecutar', { body: { accion: 'retirar', promocion: b.retirar } });
 				if (e4) {
-					alert('Se ha borrado, pero no se ha podido pedir que se retire de la web. En GitHub → Actions → «Enviar la web a Cloudflare» → Run workflow, o díselo a Claude.');
+					alert('Se ha eliminado, pero no se ha podido pedir que se retire de la web. En GitHub → Actions → «Enviar la web a Cloudflare» → Run workflow, o díselo a Claude.');
 				}
 			}
 			location.hash = b.despues;
 		} catch (e) {
 			error.textContent = traducir(e);
-			boton.textContent = 'Borrar para siempre';
+			boton.textContent = 'Eliminar para siempre';
 			boton.disabled = false;
 		}
+	});
+}
+
+/**
+ * Apunta la eliminación y espera a que eliminaciones.yml la guarde fuera de Supabase (lo lanza la propia
+ * base de datos; aquí solo se vuelve a pedir por si acaso). Sin eso, borrar_* no deja eliminar.
+ */
+async function esperarEliminacionGuardada(tipo: 'promocion' | 'promotora', id: string, nombre: string, aviso: (t: string) => void): Promise<void> {
+	const inicio = Date.now();
+	let pedida = 0;
+	for (;;) {
+		const { data, error } = await sb.rpc('pedir_eliminacion', { p_tipo: tipo, p_id: id, p_nombre: nombre });
+		if (error) throw error;
+		if (data === 'guardada') return;
+		if (Date.now() - pedida > 60000) {
+			pedida = Date.now();
+			void sb.functions.invoke('exportacion', { body: { accion: 'sincronizar' } });
+		}
+		if (Date.now() - inicio > 5 * 60000) {
+			throw new Error('Todavía no se ha podido guardar la eliminación fuera de MUNE. No se ha eliminado nada: vuelve a pulsar «Eliminar para siempre» en unos minutos (si sigue igual, díselo a Claude).');
+		}
+		aviso(`Guardando la eliminación fuera de Supabase… (${Math.round((Date.now() - inicio) / 1000)} s)`);
+		await new Promise((ok) => setTimeout(ok, 5000));
+	}
+}
+
+/** Paso 1: la exportación para la promotora (o la petición de eliminar sin ella). */
+async function pintarPasoExportacion(caja: HTMLElement, b: Borrado, permitir: (si: boolean) => void): Promise<void> {
+	const filtrar = <T extends { eq: (c: string, v: string) => T; is: (c: string, v: null) => T }>(q: T) => b.promocion ? q.eq('promocion_id', b.promocion) : q.is('promocion_id', null);
+	const hace30 = new Date(Date.now() - 30 * 86400000).toISOString();
+	const [{ data: exps }, { data: peticiones }] = await Promise.all([
+		filtrar(sb.from('exportaciones').select('*').eq('promotora_id', b.promotora)).order('creada_en', { ascending: false }).limit(1),
+		filtrar(sb.from('eliminaciones_sin_exportacion').select('*').eq('promotora_id', b.promotora)).gte('anotado_en', hace30).order('anotado_en', { ascending: false }).limit(1),
+	]);
+	const e = (exps?.[0] ?? null) as Exportacion | null;
+	const sinExp = (peticiones?.[0] ?? null) as { solicitado_por: string; motivo: string; anotado_en: string } | null;
+	const vigente = e?.estado === 'enviada' && !!e.caduca_en && new Date(e.caduca_en) > new Date();
+	permitir(vigente || !!sinExp);
+	const recargar = () => void pintarPasoExportacion(caja, b, permitir);
+	const quien = b.promocion ? 'la promoción' : 'la promotora';
+	const enviar = async (id: string, aviso: HTMLElement) => {
+		aviso.textContent = 'Enviando el email…';
+		const { data, error } = await sb.functions.invoke('exportacion', { body: { accion: 'enviar', id } });
+		if (error) {
+			const cuerpo = await (error as { context?: Response }).context?.json?.().catch(() => null);
+			aviso.textContent = cuerpo?.error ?? 'No se ha podido enviar el email. La exportación sigue preparada: vuelve a pulsar «Enviar».';
+			aviso.classList.add('error');
+			return;
+		}
+		aviso.textContent = `Enviando el email a ${cuantos(Number(data?.destinatarios ?? 0), 'persona', 'personas')}…`;
+		recargar();
+	};
+
+	if (e?.estado === 'enviando') {
+		caja.innerHTML = `<p>Enviando el email a quien administra ${quien}… Se confirma en un par de minutos.</p>
+			<p class="ayuda" role="status">Si en unos minutos no se confirma, la exportación vuelve a quedar preparada para enviarla otra vez.</p>`;
+		setTimeout(() => { if (caja.isConnected) recargar(); }, 10000);
+		return;
+	}
+
+	if (sinExp) {
+		caja.innerHTML = `<p class="ok">✓ Anotado el ${esc(fecha(sinExp.anotado_en))}: la promotora ha pedido eliminarla <strong>sin exportación</strong> (lo pidió ${esc(sinExp.solicitado_por)}; ${esc(sinExp.motivo)}).</p>`;
+		return;
+	}
+	if (vigente && e) {
+		caja.innerHTML = `<p class="ok">✓ Exportación enviada el ${esc(fecha(e.enviada_en!))} a quien administra ${quien} (${cuantos(e.destinatarios ?? 0, 'persona', 'personas')})
+				(${cuantos(e.partes.length, 'parte', 'partes')}, ${cuantos(e.archivos ?? 0, 'archivo', 'archivos')}, ${MB(e.tamano)}). El enlace funciona hasta el ${esc(fecha(e.caduca_en!))}${e.descargas ? `; se ha abierto ${cuantos(e.descargas, 'vez', 'veces')}` : '; todavía no se ha abierto'}.</p>
+			<div class="acciones">
+				<button class="boton secundario pequeno" type="button" data-reenviar>Enviar un enlace nuevo</button>
+				<button class="boton secundario pequeno" type="button" data-revocar>Revocar el enlace</button>
+			</div>
+			<p class="ayuda" data-aviso role="status">Un enlace nuevo anula el anterior. Revocarlo borra la exportación.</p>`;
+		const aviso = caja.querySelector<HTMLElement>('[data-aviso]')!;
+		caja.querySelector('[data-reenviar]')!.addEventListener('click', () => void enviar(e.id, aviso));
+		caja.querySelector('[data-revocar]')!.addEventListener('click', async () => {
+			if (!confirm('¿Revocar el enlace? Dejará de funcionar y se borrará la exportación.')) return;
+			const { error } = await sb.functions.invoke('exportacion', { body: { accion: 'revocar', id: e.id } });
+			if (error) { aviso.textContent = 'No se ha podido revocar. Vuelve a probar.'; return; }
+			recargar();
+		});
+		return;
+	}
+	if (e?.estado === 'lista') {
+		caja.innerHTML = `<p>Exportación preparada y comprobada: ${cuantos(e.partes.length, 'parte', 'partes')}, ${cuantos(e.archivos ?? 0, 'archivo', 'archivos')}, ${MB(e.tamano)}. Falta enviarla.</p>
+			${e.error ? `<p class="error">El último envío no salió: ${esc(e.error)}</p>` : ''}
+			<div class="acciones"><button class="boton pequeno" type="button" data-enviar>Enviar a quien administra ${quien}</button>
+				<button class="boton secundario pequeno" type="button" data-descartar>Descartarla y preparar otra</button></div>
+			<p class="ayuda" data-aviso role="status"></p>`;
+		const aviso = caja.querySelector<HTMLElement>('[data-aviso]')!;
+		caja.querySelector('[data-enviar]')!.addEventListener('click', () => void enviar(e.id, aviso));
+		caja.querySelector('[data-descartar]')!.addEventListener('click', async () => {
+			if (!confirm('¿Descartar esta exportación? Se borran sus archivos y podrás preparar otra.')) return;
+			const { error } = await sb.functions.invoke('exportacion', { body: { accion: 'revocar', id: e.id } });
+			if (error) { aviso.textContent = 'No se ha podido descartar. Vuelve a probar.'; return; }
+			recargar();
+		});
+		return;
+	}
+	caja.innerHTML = `
+		${e?.estado === 'fallida' ? `<p class="error">La última preparación no se completó: ${esc(e.error ?? 'sin detalle')}. Puedes volver a prepararla.</p>` : ''}
+		${e?.estado === 'caducada' || e?.estado === 'revocada' ? `<p class="ayuda">La última exportación ${e.estado === 'caducada' ? 'caducó' : 'se revocó'}: prepara otra.</p>` : ''}
+		<form class="peticion-form" data-exportar-form novalidate>
+			<label class="opcion"><input type="radio" name="modo" value="exportar" checked> Enviar su exportación a quien administra ${quien} en MUNE Portal</label>
+			<p class="ayuda">MUNE la prepara (solo su documentación, los planos y materiales entregados y los datos de la promoción; nada interno de MUNE), la comprueba y envía un email con un enlace privado. No se descarga en tu ordenador.</p>
+			<label class="en-linea">El enlace caduca a los <input class="corto" name="dias" type="number" min="1" max="90" value="30"> días</label>
+			<label class="opcion"><input type="radio" name="modo" value="sin"> La promotora ha pedido eliminarla sin exportación</label>
+			<div data-sin hidden>
+				<label>Quién lo ha pedido <input name="quien" maxlength="200" placeholder="Nombre y cargo"></label>
+				<label>Cómo y cuándo <input name="como" maxlength="500" placeholder="Por ejemplo: email del 3/11/2026"></label>
+			</div>
+			<p class="error" data-error role="alert"></p>
+			<div class="acciones"><button class="boton pequeno" type="submit">Preparar y enviar</button></div>
+			<p class="ayuda" data-aviso role="status"></p>
+		</form>`;
+	const f = caja.querySelector<HTMLFormElement>('[data-exportar-form]')!;
+	const sin = f.querySelector<HTMLElement>('[data-sin]')!;
+	const err = f.querySelector<HTMLElement>('[data-error]')!;
+	const aviso = f.querySelector<HTMLElement>('[data-aviso]')!;
+	const enviarBoton = f.querySelector<HTMLButtonElement>('button[type=submit]')!;
+	f.addEventListener('change', () => {
+		const modo = new FormData(f).get('modo');
+		sin.hidden = modo !== 'sin';
+		enviarBoton.textContent = modo === 'sin' ? 'Anotar la petición' : 'Preparar y enviar';
+	});
+	f.addEventListener('submit', async (ev) => {
+		ev.preventDefault();
+		err.textContent = '';
+		const d = new FormData(f);
+		enviarBoton.disabled = true;
+		try {
+			if (d.get('modo') === 'sin') {
+				const { error } = await sb.rpc('anotar_eliminacion_sin_exportacion', { p_promotora: b.promotora, p_promocion: b.promocion, p_solicitado_por: String(d.get('quien') ?? ''), p_motivo: String(d.get('como') ?? '') });
+				if (error) throw error;
+				recargar();
+				return;
+			}
+			const r = await prepararExportacion(b.promotora, b.promocion, Number(d.get('dias') || 30), (t) => { aviso.textContent = t; });
+			aviso.textContent = `✓ Preparada y comprobada: ${cuantos(r.partes, 'parte', 'partes')}, ${cuantos(r.archivos, 'archivo', 'archivos')}, ${MB(r.bytes)}.`;
+			await enviar(r.id, aviso);
+			recargar();
+		} catch (e) {
+			err.textContent = `${fallo('No se ha podido preparar la exportación', e)} No se ha eliminado nada: puedes volver a intentarlo.`;
+			enviarBoton.disabled = false;
+		}
+	});
+}
+
+/** Portfolio (solo con autorización de la promotora y solo planos y materiales de MUNE). */
+async function pintarPasoPortfolio(caja: HTMLElement, promocion: string): Promise<void> {
+	const [{ data: auts }, { data: entregables }] = await Promise.all([
+		sb.from('portfolio_autorizaciones').select('*, portfolio_piezas(id, titulo, origen)').eq('promocion_id', promocion).is('retirada_en', null).order('id', { ascending: false }),
+		sb.from('entregables').select('id, version, nombre, titulo, ruta, huella').eq('promocion_id', promocion).order('id'),
+	]);
+	const aut = (auts?.[0] ?? null) as { id: number; autorizada_por: string; fecha: string; alcance: string; portfolio_piezas: { id: number; titulo: string; origen: string }[] } | null;
+	const recargar = () => void pintarPasoPortfolio(caja, promocion);
+	if (!aut) {
+		caja.innerHTML = `<p class="ayuda">Al eliminar no se guarda nada para el portfolio. Si la promotora autoriza usar algunos resultados (planos comerciales, imágenes), anótalo y elige cuáles: se guardan aparte, sin originales ni datos privados.</p>
+			<form class="peticion-form" data-autorizar novalidate>
+				<label>Quién lo autoriza <input name="por" maxlength="200" placeholder="Nombre y cargo"></label>
+				<label>Fecha <input name="fecha" type="date"></label>
+				<label>Qué autoriza <input name="alcance" maxlength="500" placeholder="Por ejemplo: planos comerciales en la web de MUNE"></label>
+				<label>Documento o email de la autorización (opcional) <input name="doc" maxlength="300"></label>
+				<p class="error" data-error role="alert"></p>
+				<div class="acciones"><button class="boton secundario pequeno" type="submit">Anotar la autorización</button></div>
+			</form>`;
+		alEnviar(caja.querySelector<HTMLFormElement>('[data-autorizar]')!, async (d) => {
+			const { error } = await sb.rpc('autorizar_portfolio', { p_promocion: promocion, p_autorizada_por: String(d.get('por') ?? ''), p_fecha: String(d.get('fecha') || '') || null, p_alcance: String(d.get('alcance') ?? ''), p_documento: String(d.get('doc') ?? '') });
+			if (error) throw error;
+			recargar();
+		});
+		return;
+	}
+	const guardadas = new Set(aut.portfolio_piezas.map((x) => x.origen));
+	const lista = ((entregables ?? []) as { id: number; version: string; nombre: string; titulo: string | null; ruta: string; huella: string }[]);
+	caja.innerHTML = `<p class="ok">Autorizado por ${esc(aut.autorizada_por)} el ${esc(fecha(aut.fecha))}: ${esc(aut.alcance)}. ${cuantos(aut.portfolio_piezas.length, 'pieza guardada', 'piezas guardadas')}.</p>
+		${lista.length ? `<form class="peticion-form" data-piezas novalidate>
+			${lista.map((e) => `<label class="opcion"><input type="checkbox" name="e" value="${e.id}" ${guardadas.has(`entregable ${e.version} · ${e.titulo ?? e.nombre}`) ? 'checked disabled' : ''}> ${esc(e.version)} · ${esc(e.titulo ?? e.nombre)}</label>`).join('')}
+			<p class="error" data-error role="alert"></p>
+			<div class="acciones"><button class="boton secundario pequeno" type="submit">Guardar en el portfolio</button>
+				<button class="boton secundario pequeno" type="button" data-retirar>La promotora retira la autorización</button></div>
+		</form>` : '<p class="ayuda">Esta promoción no tiene planos ni materiales entregados.</p>'}`;
+	caja.querySelector('[data-retirar]')?.addEventListener('click', async () => {
+		if (!confirm('¿Retirar la autorización? Se borran del portfolio las piezas de esta promoción.')) return;
+		const { data: rutas, error } = await sb.rpc('retirar_portfolio', { p_autorizacion: aut.id });
+		if (error) { alert(traducir(error)); return; }
+		const nombres = ((rutas ?? []) as unknown as string[]).map((r) => (typeof r === 'string' ? r : String((r as { ruta?: string }).ruta ?? r)));
+		if (nombres.length) await sb.storage.from('portfolio').remove(nombres);
+		recargar();
+	});
+	const fp = caja.querySelector<HTMLFormElement>('[data-piezas]');
+	if (fp) alEnviar(fp, async (d) => {
+		for (const id of d.getAll('e').map(Number)) {
+			const e = lista.find((x) => x.id === id)!;
+			const { data: archivo, error: e1 } = await sb.storage.from('entregables').download(e.ruta);
+			if (e1 || !archivo) throw e1 ?? new Error('No se ha podido leer el entregable');
+			const ruta = `${aut.id}/${e.version}-${e.ruta.split('/').pop()}`;
+			const { error: e2 } = await sb.storage.from('portfolio').upload(ruta, archivo, { upsert: true });
+			if (e2) throw e2;
+			const { error: e3 } = await sb.rpc('pieza_de_portfolio', { p_autorizacion: aut.id, p_entregable: id, p_ruta: ruta, p_titulo: e.titulo ?? e.nombre });
+			if (e3) throw e3;
+		}
+		recargar();
 	});
 }
 
@@ -629,7 +837,7 @@ async function pintarBorradoPromocion(zona: HTMLElement, p: Promocion): Promise<
 		que: 'la promoción', nombre: p.nombre,
 		detalle: `<p>Se borrará todo lo de <strong>${esc(p.nombre)}</strong>: ${cuantos(docs, 'documento subido', 'documentos subidos')}, ${cuantos(planos, 'plano entregado', 'planos entregados')},
 			${cuantos((archivos.data as unknown[] | null)?.length ?? 0, 'archivo guardado', 'archivos guardados')}, ${cuantos(equipo, 'acceso de su equipo', 'accesos de su equipo')} y ${cuantos(peticiones, 'petición de cambios', 'peticiones de cambios')}.</p>${web}`,
-		exportar: (progreso) => exportarPromocion(p.id, progreso),
+		promotora: p.promotora_id, promocion: p.id,
 		archivos: () => sb.rpc('archivos_de_promocion', { p_id: p.id }),
 		borrar: (nombre) => sb.rpc('borrar_promocion', { p_id: p.id, p_nombre: nombre }),
 		retirar: p.id,
@@ -647,7 +855,7 @@ async function pintarBorradoPromotora(zona: HTMLElement, po: Promotora, promocio
 		detalle: `<p>Se borrará <strong>${esc(po.nombre)}</strong> con todo lo suyo: ${cuantos(promociones.length, 'promoción', 'promociones')} (también las activas),
 			${cuantos(docs, 'documento subido', 'documentos subidos')}, ${cuantos((archivos.data as unknown[] | null)?.length ?? 0, 'archivo guardado', 'archivos guardados')}, ${cuantos(personas, 'acceso', 'accesos')}, ${cuantos(peticiones, 'petición de cambios', 'peticiones de cambios')}, sus datos fiscales y su marca.</p>
 			<p class="ayuda">Si la promotora puede volver más adelante, no la borres: desactívala. Se conserva todo (marca, equipo y datos) y basta con volver a activarla.</p>${web}`,
-		exportar: (progreso) => exportarPromotora(po.id, progreso),
+		promotora: po.id, promocion: null,
 		archivos: () => sb.rpc('archivos_de_promotora', { p_id: po.id }),
 		borrar: (nombre) => sb.rpc('borrar_promotora', { p_id: po.id, p_nombre: nombre }),
 		retirar: promociones[0]?.id ?? null,

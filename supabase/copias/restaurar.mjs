@@ -108,6 +108,18 @@ commit;
 writeFileSync( join( datos, 'restaurar.sql' ), sql );
 pg( 'psql', [ '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-f', '/w/restaurar.sql' ], con, datos );
 console.log( 'Base de datos recuperada.' );
+// Cerrado hasta comprobar las eliminaciones (045): ni promotoras ni compradores
+// entran y no se publica hasta «eliminaciones.mjs aplicar --abrir».
+if ( consulta( `select to_regclass('public.restauracion') is not null`, con, datos ) === 't' ) {
+
+	const detalle = JSON.stringify( { copia: resumen.fecha, copia_creada: resumen.creada } );
+	consulta( `insert into public.restauracion (id, pendiente, detalle) values (1, true, '${ detalle }')
+		on conflict (id) do update set pendiente = true, desde = now(), comprobada_en = null, detalle = excluded.detalle`, con, datos );
+	// La base de datos recuperada no avisa a la función del proyecto anterior: se apunta la suya al cambiar MUNE a ella (receta 18)
+	consulta( `update public.sincronizacion set url = null, ultima_peticion = null where id = 1`, con, datos );
+	console.log( 'Proyecto recuperado CERRADO hasta comprobar las eliminaciones (receta 18).' );
+
+}
 
 // ─── 3. Archivos ────────────────────────────────────────────────────────────
 
@@ -152,6 +164,8 @@ if ( op.comprobar ) {
 
 	for ( const [ tabla, n ] of Object.entries( resumen.filas ) ) {
 
+		if ( tabla === 'restauracion' ) continue; // la cambia la propia recuperación (045)
+
 		const real = tabla.startsWith( 'auth:' )
 			? consulta( `select count(*) from ${ TABLAS_AUTH.find( ( [ a ] ) => `auth:${ a }` === tabla )[ 1 ] }`, con, datos )
 			: consulta( `select count(*) from public.${ ident( tabla ) }`, con, datos );
@@ -178,3 +192,4 @@ if ( problemas.length ) {
 
 }
 console.log( op.comprobar ? 'Comprobado: todo lo de la copia está recuperado.' : 'Hecho.' );
+console.log( 'Paso obligatorio antes de abrirlo: node supabase/copias/eliminaciones.mjs aplicar --bd <la misma dirección> --abrir' );

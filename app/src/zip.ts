@@ -64,6 +64,11 @@ export class Zip {
 		this.posicion += 30 + bytesNombre.length + datos.length;
 	}
 
+	/** Tamaño aproximado del ZIP cerrado, en bytes. */
+	get bytes(): number {
+		return this.posicion + this.central.reduce((s, p) => s + p.length, 0) + 22;
+	}
+
 	get cuantos(): number {
 		return this.nombres.size;
 	}

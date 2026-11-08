@@ -166,7 +166,10 @@ export function conectarPersonas(raiz: HTMLElement, accesos: Acceso[], promotora
 		const a = accesos.find((x) => x.id === Number(fila.dataset.acceso))!;
 		fila.querySelector('[data-quitar]')?.addEventListener('click', async () => {
 			if (!confirm(`¿Quitar el acceso a ${a.nombre}?\n\nDejará de poder entrar desde este momento. Puedes devolvérselo más tarde.`)) return;
-			try { await cambiarAcceso(a.id, { activo: false }); await recargar(); } catch (e) { avisar(traducir(e), true); }
+			try {
+				await cambiarAcceso(a.id, { activo: false });
+				await recargar();
+			} catch (e) { avisar(traducir(e), true); }
 		});
 		fila.querySelector('[data-devolver]')?.addEventListener('click', async () => {
 			try { await cambiarAcceso(a.id, { activo: true }); await recargar(); } catch (e) { avisar(traducir(e), true); }
