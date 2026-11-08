@@ -28,7 +28,8 @@
 //    versión.
 //
 // Las funciones de Supabase no pueden enviar email por SMTP (Gmail), por eso
-// el email lo manda GitHub. No usa la clave de servicio.
+// el email lo manda GitHub. La clave de servicio solo se usa para dejar el
+// email en el buzón (correos_pendientes).
 //
 // Se pega en Supabase → Edge Functions con el nombre «aviso-subida».
 
