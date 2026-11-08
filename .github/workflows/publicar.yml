@@ -54,7 +54,12 @@ on:
         type: string
         default: ''
       avisar_para:
-        description: publicación al aprobar la promotora · correos de su equipo para el aviso «publicada»
+        description: (antiguo, ya no se usa; se acepta para no fallar mientras se actualiza la función aviso-subida)
+        required: false
+        type: string
+        default: ''
+      avisar_correo:
+        description: publicación al aprobar la promotora · número del email «publicada» para su equipo (buzón de Supabase, 046)
         required: false
         type: string
         default: ''
@@ -95,9 +100,9 @@ jobs:
             [[ -n "$MOTIVO" ]] || { echo "::error::Volver atrás exige un motivo"; exit 1; }
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
 
@@ -133,16 +138,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PARA: ${{ inputs.avisar_para }}
+          CORREO: ${{ inputs.avisar_correo }}
           NOMBRE: ${{ inputs.nombre }}
         run: |
           nombre="${NOMBRE:-$PROMOCION}"
-          if [[ -n "$PARA" ]]; then
-            gh workflow run aviso-promotora.yml --repo "$REPO" --ref main \
-              -f para="$PARA" \
-              -f asunto="$nombre · $VERSION publicada" \
-              -f texto="Tu equipo ha validado todo lo que el equipo de MUNE preparó para la $VERSION de $nombre, y ya está publicada. En unos minutos la verás en la web." \
-              -f enlace="https://experience.mune-projects.workers.dev/$PROMOCION/"
+          # el email para el equipo de la promotora ya está preparado en el buzón de Supabase: solo se pasa su número
+          if [[ -n "$CORREO" ]]; then
+            gh workflow run aviso-promotora.yml --repo "$REPO" --ref main -f correo="$CORREO"
           fi
           gh workflow run aviso-mune.yml --repo "$REPO" --ref main \
             -f asunto="$nombre · $VERSION publicada al aprobar la promotora" \

@@ -21,9 +21,11 @@
 //    ya está en esa versión, el documento está rechazado) y que no se avisó ya.
 // 3. Busca los correos con la clave de servicio, que Supabase da a la función
 //    y no sale de aquí: quien llama nunca ve los correos.
-// 4. Pide a GitHub que arranque .github/workflows/aviso-promotora.yml, que
-//    envía el email desde el Gmail de MUNE (contraseña de aplicación guardada
-//    como secreto AVISOS_GMAIL_CLAVE en GitHub). Sin coste.
+// 4. Deja el email en el buzón de Supabase (046_correos.sql) y pide a GitHub
+//    que arranque .github/workflows/aviso-promotora.yml solo con su número: el
+//    proceso lo lee con la cuenta «ejecutor», lo envía desde el Gmail de MUNE
+//    (secreto AVISOS_GMAIL_CLAVE en GitHub) y lo borra. Los correos no pasan
+//    por los datos de GitHub. Sin coste.
 //
 // Se pega en Supabase → Edge Functions con el nombre «avisar-promotora».
 
@@ -216,14 +218,19 @@ Deno.serve(async (req) => {
 	const { error: eRepetido } = await servicio.from('avisos_enviados').insert({ tipo: tipoAviso, clave: claveAviso, promocion_id: promocion, destinatarios: para.length });
 	if (eRepetido) return responder(200, { ok: true, enviado: false, motivo: 'Este aviso ya se había enviado' });
 
+	// El email se deja en el buzón de Supabase (046) y al proceso de GitHub solo le llega su número:
+	// los correos, el asunto y el texto no quedan en el historial de GitHub.
+	const { data: correo } = await servicio.from('correos_pendientes')
+		.insert({ para, asunto: asunto.slice(0, 200), texto: texto.slice(0, 3000), enlace }).select('id').single();
 	const llave = Deno.env.get('GITHUB_EJECUTOR');
-	const r = llave ? await fetch(PROCESO, {
+	const r = llave && correo ? await fetch(PROCESO, {
 		method: 'POST',
 		headers: { Authorization: `Bearer ${llave}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'mune-avisos' },
-		body: JSON.stringify({ ref: 'main', inputs: { para: para.join(','), asunto: asunto.slice(0, 200), texto: texto.slice(0, 3000), enlace } }),
+		body: JSON.stringify({ ref: 'main', inputs: { correo: correo.id } }),
 	}).catch(() => null) : null;
 	if (!r?.ok) {
 		// no se ha enviado: se puede volver a intentar
+		if (correo) await servicio.from('correos_pendientes').delete().eq('id', correo.id);
 		await servicio.from('avisos_enviados').delete().eq('tipo', tipoAviso).eq('clave', claveAviso);
 		return responder(502, { error: llave ? `GitHub no ha aceptado el aviso (${r?.status ?? 'sin respuesta'})` : 'Falta la llave A (GITHUB_EJECUTOR) en los secretos de Supabase' });
 	}

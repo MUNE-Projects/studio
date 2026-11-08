@@ -54,10 +54,10 @@ jobs:
           done
           echo "si=si" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: steps.listo.outputs.si == 'si'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.listo.outputs.si == 'si'
         with:
           node-version: 22

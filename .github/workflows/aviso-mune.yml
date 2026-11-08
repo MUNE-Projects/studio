@@ -6,6 +6,11 @@
 # Sale del Gmail de MUNE (secreto AVISOS_GMAIL_CLAVE), un email por aviso, como
 # los avisos a la promotora. Va a la dirección del secreto AVISOS_MUNE_PARA (o,
 # si no existe, al propio Gmail de MUNE). Gratis.
+#
+# La función solo le pasa el número del email («correo»): el asunto y el texto
+# (con nombres de personas y documentos) están en el buzón de Supabase
+# (046_correos.sql); el proceso los lee con la cuenta «ejecutor» y los borra al
+# enviar. publicar.yml, sin datos de personas, pasa asunto, texto y enlace.
 
 name: Aviso por email a MUNE
 run-name: aviso a MUNE
@@ -13,15 +18,23 @@ run-name: aviso a MUNE
 on:
   workflow_dispatch:
     inputs:
+      correo:
+        description: número del email en el buzón de Supabase
+        required: false
+        type: string
+        default: ''
       asunto:
-        required: true
+        required: false
         type: string
+        default: ''
       texto:
-        required: true
+        required: false
         type: string
+        default: ''
       enlace:
-        required: true
+        required: false
         type: string
+        default: ''
 
 permissions: {}
 
@@ -30,6 +43,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
+      CORREO: ${{ inputs.correo }}
+      EJECUTOR_CLAVE: ${{ secrets.EJECUTOR_CLAVE }}
       ASUNTO: ${{ inputs.asunto }}
       TEXTO: ${{ inputs.texto }}
       ENLACE: ${{ inputs.enlace }}
@@ -39,7 +54,7 @@ jobs:
       - name: Enviar
         shell: python3 {0}
         run: |
-          import html, os, re, smtplib, ssl, sys
+          import html, json, os, re, smtplib, ssl, sys, urllib.request
           from email.message import EmailMessage
           from email.utils import formataddr
 
@@ -50,9 +65,27 @@ jobs:
           para = [c.strip() for c in (os.environ.get('PARA') or REMITENTE).split(',') if c.strip()]
           if not para or len(para) > 10 or not all(re.fullmatch(r'[^\s@,<>]+@[^\s@,<>]+\.[^\s@,<>]+', c) for c in para):
               sys.exit('::error::El secreto AVISOS_MUNE_PARA no tiene correos válidos')
-          asunto = os.environ['ASUNTO'].replace('\n', ' ')[:200]
-          texto = os.environ['TEXTO'][:3000]
-          enlace = os.environ['ENLACE']
+          asunto, texto, enlace = os.environ['ASUNTO'], os.environ['TEXTO'], os.environ['ENLACE']
+          correo = os.environ.get('CORREO', '')
+          sesion = None
+          if correo:
+              if not re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', correo):
+                  sys.exit('::error::Número de email no válido')
+              SUPABASE = 'https://iowtdenlkxjqzlpwizgb.supabase.co'
+              PUBLICA = 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR'
+              def pedir(ruta, cuerpo, token=None):
+                  cab = {'apikey': PUBLICA, 'Content-Type': 'application/json'}
+                  if token: cab['Authorization'] = f'Bearer {token}'
+                  r = urllib.request.Request(SUPABASE + ruta, data=json.dumps(cuerpo).encode(), headers=cab, method='POST')
+                  with urllib.request.urlopen(r, timeout=30) as res:
+                      return json.loads(res.read().decode() or 'null')
+              sesion = pedir('/auth/v1/token?grant_type=password', {'email': 'hello.muneprojects+ejecutor@gmail.com', 'password': os.environ['EJECUTOR_CLAVE']})['access_token']
+              d = pedir('/rest/v1/rpc/correo_para_enviar', {'p_id': correo}, sesion)
+              asunto, texto, enlace = d['asunto'], d['texto'], d['enlace']
+          if not asunto or not texto or not enlace:
+              sys.exit('::error::Falta el email (número del buzón, o asunto, texto y enlace)')
+          asunto = asunto.replace('\n', ' ')[:200]
+          texto = texto[:3000]
           if not re.fullmatch(r'https://(revision-)?(studio|panel|portal|experience|escaparate)\.mune-projects\.workers\.dev/[^\s"<>]*', enlace):
               sys.exit('::error::Enlace no válido')
 
@@ -80,4 +113,6 @@ jobs:
                   m.set_content(cuerpo_texto)
                   m.add_alternative(cuerpo_html, subtype='html')
                   smtp.send_message(m)
+          if sesion:
+              pedir('/rest/v1/rpc/correo_enviado', {'p_id': correo}, sesion)  # se borra del buzón
           print('Aviso enviado.')

@@ -49,9 +49,9 @@ jobs:
           [[ "$PROMOCION" =~ ^[a-z0-9-]{1,60}$ ]] || { echo "::error::Promoción no válida"; exit 1; }
           [[ -z "$REFERENCIA" || "$REFERENCIA" =~ ^[0-9A-Za-z\ ]{14,24}$ ]] || { echo "::error::Referencia catastral no válida"; exit 1; }
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
 
@@ -72,9 +72,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
 
