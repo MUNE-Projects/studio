@@ -238,6 +238,7 @@ def material(nombre):
     # cuánto hay que proteger este acabado de la pasada de IA (herramientas/foto_ia.py):
     # 1 = no se toca (cuadros), 0 = la IA puede darle textura y luz libremente
     proteger = PROTEGER.get(acabado, 0.0)
+    if nombre.endswith(':alfombra'): proteger = 0.7  # la IA la funde con el suelo
     aov = N.new('ShaderNodeOutputAOV'); aov.aov_name = 'proteger'
     aov.inputs['Value'].default_value = proteger
     # un color distinto por material: de ahí salen los bordes exactos de cada cosa
@@ -255,10 +256,10 @@ for ob in esc.objects:
         mt = ranura.material
         if not mt: continue
         if mt.name.startswith('mune:'):
-            if mt.name not in cambiados: cambiados[mt.name] = material(mt.name)
-            ranura.material = cambiados[mt.name]
-        elif mt.blend_method in ('BLEND', 'HASHED') and mt.name.startswith('mune'):
-            pass
+            # las alfombras, con su propio material: la pasada de IA las trata aparte
+            nombre = mt.name + (':alfombra' if 'alfombra' in ob.name.lower() else '')
+            if nombre not in cambiados: cambiados[nombre] = material(nombre)
+            ranura.material = cambiados[nombre]
 print('materiales:', len(cambiados))
 
 # ------------------------------------------------------------------ cámara

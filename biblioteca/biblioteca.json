@@ -536,7 +536,7 @@
    "params": {
     "base": "tela:#c9bfb0",
     "ropa": "tela:#f4f2ed:0.8",
-    "cojines": "tela:#b8704f|tela:#e8e0d2|tela:#8c8f78",
+    "cojines": "tela:#e8e0d2|boucle:#b8704f",
     "plaid": "tela:#a9876a:3"
    },
    "inspiracion": [
@@ -568,7 +568,7 @@
     "cabecero_tipo": "capitone",
     "cabecero_alto": 1.3,
     "ropa": "tela:#f6f4ef:0.8",
-    "cojines": "tela:#8c957c|tela:#ece6db|tela:#8c957c",
+    "cojines": "tela:#ece6db|boucle:#8c957c",
     "plaid": "tela:#e2d4bd:3"
    },
    "inspiracion": [
@@ -600,7 +600,7 @@
     "cabecero": "madera:#b89574",
     "cabecero_tipo": "listones",
     "ropa": "tela:#eeeae3:0.8",
-    "cojines": "tela:#c9875f|tela:#dfd6c7",
+    "cojines": "tela:#dfd6c7|boucle:#c9875f",
     "plaid": "tela:#56616b:3"
    },
    "inspiracion": [

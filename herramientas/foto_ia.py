@@ -149,23 +149,42 @@ if '--quitar-inventos' in sys.argv:  # en pruebas
 # 2) zonas protegidas (máscara del render): vuelven al render en esa proporción
 ruta_p = profundidad.replace('.png', '-proteger.png')
 if os.path.exists(ruta_p) and '--sin-proteger' not in sys.argv:
-    # un poco más ancha que el objeto (la IA puede moverlo unos píxeles) y con el borde suave.
-    # Vuelven al render: los cuadros (son contenido, no textura) y lo que se ve por las
-    # ventanas (el entorno real: la IA se inventa mar o ciudad)
-    pr = np.asarray(Image.open(ruta_p).convert('L').resize(original.size, Image.NEAREST))
-    sel = (pr > 240) | (abs(pr.astype(int) - round(255 * 0.62)) <= 1)
-    # y las piezas pequeñas (tiradores, interruptores…): la IA las convierte en otra cosa
+    pr = np.asarray(Image.open(ruta_p).convert('L').resize(original.size, Image.NEAREST)).astype(int)
+    def borde_suave(sel, ancho, difuminado):
+        x = cv2.dilate(sel.astype(np.uint8), np.ones((ancho, ancho), np.uint8)) if ancho > 1 else sel.astype(np.uint8)
+        return np.clip(cv2.GaussianBlur(x.astype(np.float32), (0, 0), difuminado), 0, 1)[..., None]
+    Ya = mezcla @ np.array([0.299, 0.587, 0.114])
+    # a) los cuadros, con su marco y un margen de pared: la IA dibuja su propio marco (oscuro,
+    #    a veces doble) y sus líneas quedaban alrededor como una sombra. Vuelve el render
+    #    entero en esa zona, con la luz media de la IA (si no, se nota el parche)
+    cuadro = pr > 240
+    if cuadro.any():
+        zona = borde_suave(cuadro, 45, 6)
+        banda = (borde_suave(cuadro, 75, 0.1)[..., 0] > 0.5) & (zona[..., 0] < 0.5)
+        gan = np.median(mezcla[banda], 0) / np.maximum(np.median(o[banda], 0), 1) if banda.any() else 1
+        mezcla = mezcla * (1 - zona) + (o * gan) * zona
+    # b) lo que se ve por las ventanas (el entorno real: la IA se inventa mar o ciudad)
+    vidrio = abs(pr - round(255 * 0.62)) <= 1
+    # c) las piezas pequeñas (tiradores, interruptores…): la IA las convierte en otra cosa
+    piezas = np.zeros(pr.shape, bool)
     if os.path.exists(ruta_m) and '--sin-piezas' not in sys.argv:
-        piezas = np.zeros(clave.shape, bool)
         # cada trozo suelto de cada material: los pequeños son piezas (un tirador comparte
-        # material con otros, pero es un trozo aparte)
+        # material con otros, pero es un trozo aparte); no los textiles (cojines)
         for kk in np.unique(clave):
             n, etiquetas, stats, _ = cv2.connectedComponentsWithStats((clave == kk).astype(np.uint8), connectivity=8)
             peq = np.where(stats[1:, cv2.CC_STAT_AREA] < clave.size * arg('--pieza', 0.004))[0] + 1
             if len(peq): piezas |= np.isin(etiquetas, peq)
-        # más margen: lo que la IA pone en su lugar (un interruptor) suele ser más ancho
-        sel |= cv2.dilate(piezas.astype(np.uint8), np.ones((35, 35), np.uint8)) > 0
-    m = np.asarray(Image.fromarray((sel * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(4))).astype(np.float32)[..., None] / 255
+        piezas &= ~np.isin(pr, [round(255 * 0.55)])
+    # más margen en las piezas: lo que la IA pone en su lugar (un interruptor) suele ser más ancho
+    m = np.maximum(borde_suave(vidrio, 9, 3), borde_suave(piezas, 35, 4))
     mezcla = mezcla * (1 - m) + o * m
+    # d) las alfombras: la IA las funde con el suelo. Su color y su tejido son los del
+    #    render; la luz (sombras, sol), la de la IA
+    alfombra = abs(pr - round(255 * 0.7)) <= 1
+    if alfombra.any():
+        yo_ = o @ np.array([0.299, 0.587, 0.114])
+        g = cv2.GaussianBlur(Ya.astype(np.float32), (0, 0), 10) / np.maximum(cv2.GaussianBlur(yo_.astype(np.float32), (0, 0), 10), 1)
+        za = cv2.GaussianBlur(cv2.erode(alfombra.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(np.float32), (0, 0), 1.5)[..., None]
+        mezcla = mezcla * (1 - za) + (o * np.clip(g, 0.6, 1.6)[..., None]) * za
 Image.fromarray(np.clip(mezcla, 0, 255).astype(np.uint8)).save(salida)
 print('listo', salida)

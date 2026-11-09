@@ -407,12 +407,19 @@ const cama: Gen = ( k, c ) => {
 
 	}
 
-	lista( s( c, 'cojines', '' ) ).forEach( ( m, i, t ) => {
+	// cojines como se ponen de verdad: uno apoyado en cada almohada (en la cama de
+	// matrimonio, por pares). `cojines` es una lista de filas: la primera, los grandes;
+	// la segunda, si la hay, otros más pequeños delante. Nunca un número impar.
+	lista( s( c, 'cojines', '' ) ).slice( 0, 2 ).forEach( ( m, fila ) => {
 
-		const paso = doble ? 0.46 : 0.36;
-		const x = ( i - ( t.length - 1 ) / 2 ) * paso;
-		const w = i === Math.floor( t.length / 2 ) && t.length % 2 ? 0.4 : 0.46;
-		cojin( k, m, x, 0.72, z0 + cab + 0.44, doble ? w : w * 0.8, doble ? w * 0.9 : w * 0.72, 0.28 );
+		const lado = fila === 0 ? ( doble ? 0.5 : 0.46 ) : ( doble ? 0.38 : 0.36 );
+		const alto = fila === 0 ? lado * 0.94 : lado * 0.8;
+		for ( let i = 0; i < nA; i ++ ) {
+
+			const x = doble ? ( i === 0 ? - W / 4 : W / 4 ) : 0;
+			cojin( k, m, x * ( fila === 0 ? 1 : 0.92 ), fila === 0 ? 0.76 : 0.71, z0 + cab + ( fila === 0 ? 0.42 : 0.56 ), lado, alto, fila === 0 ? 0.3 : 0.24, ( i === 0 ? 1 : - 1 ) * ( doble ? 0.06 : 0 ) );
+
+		}
 
 	} );
 	const pie = s( c, 'plaid', '' );
