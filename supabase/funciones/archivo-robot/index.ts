@@ -9,10 +9,12 @@
 //    fechas), XMP, IPTC ni comentarios; se conserva la orientación. Los píxeles
 //    no se tocan (no se vuelven a comprimir).
 //  · PDF: sin la ficha del documento (autor, título, asunto, palabras clave,
-//    programa), XMP, datos privados de programas (PieceInfo), autor de las
-//    notas, archivos adjuntos dentro del PDF ni metadatos de las fotos que lleve
-//    dentro. Las páginas, el texto, los vectores, las cotas y la escala, igual:
-//    no se convierte en imagen.
+//    programa), XMP, datos privados de programas (PieceInfo), notas pegadas
+//    encima (comentarios, textos añadidos, sellos, enlaces: enteras, con su autor
+//    y su texto; decisión 72), archivos adjuntos dentro del PDF ni metadatos de
+//    las fotos que lleve dentro. Los campos de formulario se quedan. Las
+//    páginas, el texto, los vectores, las cotas y la escala, igual: no se
+//    convierte en imagen.
 //  · Word, Excel, PowerPoint y LibreOffice: sin la ficha (autor, último en
 //    guardar, empresa…), sin el nombre de quien comenta o hace cambios y sin los
 //    metadatos de sus fotos; el contenido, igual.
@@ -30,7 +32,10 @@
 // Órdenes (POST, con la sesión del robot):
 //  · { accion: 'archivo', almacen: 'documentos' | 'referencias', ruta }  → el archivo limpio
 //    (cabeceras X-Huella-Original —la del archivo tal como se subió— y X-Limpieza);
-//  · { accion: 'fotos', peticion }  → la lista de fotos de referencia de una petición.
+//  · { accion: 'fotos', peticion }  → la lista de fotos de referencia de una petición;
+//  · { accion: 'tipografia', ruta }  → un archivo de tipografía de una carpeta de marca, tal
+//    cual (solo si de verdad es WOFF2, WOFF, TTF u OTF; si no, no se entrega). El robot ya no
+//    lee esa carpeta directamente (047_marca_cerrada.sql).
 //
 // Se pega en Supabase → Edge Functions con el nombre «archivo-robot».
 
@@ -213,15 +218,27 @@ export async function limpiarPDF(b: Uint8Array): Promise<Limpio> {
 		quitado.add('archivos adjuntos');
 	}
 	const N = (n: string) => PDFName.of(n);
+	let notas = 0;
 	for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
 		const dict = obj instanceof PDFDict ? obj : (obj as { dict?: PDFDict }).dict;
 		if (!(dict instanceof PDFDict)) continue;
 		if (dict.has(N('Metadata'))) { dict.delete(N('Metadata')); quitado.add('XMP'); }
 		if (dict.has(N('PieceInfo'))) { dict.delete(N('PieceInfo')); quitado.add('datos privados de programas (PieceInfo)'); }
-		// notas: su autor (/T); en los campos de formulario, /T es el nombre del campo y se queda
+		// notas pegadas encima (comentarios, textos añadidos, sellos, enlaces…): fuera
+		// enteras, con su autor y su texto (decisión 72). Se quedan los campos de formulario
+		// (Widget). El dibujo y su texto no son notas: se quedan igual.
+		const anotaciones = dict.get(N('Type')) === N('Page') ? dict.lookupMaybe(N('Annots'), PDFArray) : undefined;
+		if (anotaciones) {
+			const campos = anotaciones.asArray().filter((a) => ctx.lookupMaybe(a, PDFDict)?.get(N('Subtype')) === N('Widget'));
+			if (campos.length < anotaciones.size()) {
+				notas += anotaciones.size() - campos.length;
+				if (campos.length) dict.set(N('Annots'), ctx.obj(campos));
+				else dict.delete(N('Annots'));
+			}
+		}
+		// por si una nota sigue enlazada desde otro sitio (la estructura de un PDF accesible): vacía
 		if ((dict.get(N('Type')) === N('Annot') || (dict.has(N('Subtype')) && dict.has(N('Rect')))) && dict.get(N('Subtype')) !== N('Widget')) {
-			if (dict.has(N('T'))) { dict.delete(N('T')); quitado.add('autor de las notas'); }
-			if (dict.get(N('Subtype')) === N('FileAttachment') && dict.has(N('FS'))) { dict.delete(N('FS')); quitado.add('archivos adjuntos'); }
+			for (const k of ['T', 'Contents', 'RC', 'AP', 'FS', 'Popup', 'A', 'Subj']) dict.delete(N(k));
 		}
 		// fotos JPEG dentro del PDF: sin sus metadatos (la imagen, igual)
 		if (obj instanceof PDFRawStream && dict.get(N('Subtype')) === N('Image')) {
@@ -239,6 +256,7 @@ export async function limpiarPDF(b: Uint8Array): Promise<Limpio> {
 			}
 		}
 	}
+	if (notas) quitado.add(`notas pegadas encima del documento (${notas}): se ven en el original`);
 	// solo lo que usa el documento
 	const vistos = new Set<string>();
 	const pila: unknown[] = [ctx.trailerInfo.Root];
@@ -437,6 +455,18 @@ export async function limpiar(b: Uint8Array): Promise<Limpio> {
 
 // ─── Servicio ────────────────────────────────────────────────────────────────
 
+// Tipografías de la carpeta de marca: por su extensión, y comprobando que lo son por dentro
+const TIPOGRAFIAS: Record<string, string> = { woff2: 'font/woff2', woff: 'font/woff', ttf: 'font/ttf', otf: 'font/otf' };
+const MAXIMO_TIPOGRAFIA = 5242880; // 5 MB (MUNE Portal admite 2 MB)
+export function esTipografia(b: Uint8Array, ext: string): boolean {
+	if (b.length < 12) return false;
+	const firma = latin(b, 0, 4);
+	const sfnt = firma === '\x00\x01\x00\x00' || firma === 'true' || firma === 'OTTO';
+	if (ext === 'woff2') return firma === 'wOF2';
+	if (ext === 'woff') return firma === 'wOFF';
+	return sfnt;
+}
+
 const huella = async (b: Uint8Array) =>
 	[...new Uint8Array(await crypto.subtle.digest('SHA-256', b))].map((x) => x.toString(16).padStart(2, '0')).join('');
 
@@ -467,6 +497,23 @@ if (typeof Deno !== 'undefined' && typeof Deno.serve === 'function') Deno.serve(
 		const { data, error } = await servicio.storage.from('referencias').list(peticion, { limit: 100 });
 		if (error) return responder(500, { error: 'No se ha podido leer la lista de fotos' });
 		return responder(200, { fotos: (data ?? []).filter((a) => a.id).map((a) => ({ nombre: a.name, ruta: `${peticion}/${a.name}` })) });
+	}
+
+	if (cuerpo.accion === 'tipografia') {
+		// la tipografía propia de una marca, para meterla en la versión (decisión 72): solo de una
+		// carpeta de marca y solo si de verdad es una tipografía (lo demás no se entrega)
+		const ruta = String(cuerpo.ruta ?? '');
+		if (!ruta || ruta.length > 500 || ruta.split('/').some((p) => !p || p === '.' || p === '..')) return responder(400, { error: 'Ruta no válida' });
+		const { data: carpeta } = await sb.rpc('carpeta_de_marca', { p_ruta: ruta });
+		if (!carpeta) return responder(403, { error: 'Ese archivo no está en una carpeta de marca' });
+		const ext = ruta.split('.').pop()?.toLowerCase() ?? '';
+		if (!TIPOGRAFIAS[ext]) return responder(415, { error: 'No se entrega: no es un archivo de tipografía.' });
+		const { data: archivo, error: eBajar } = await servicio.storage.from('documentos').download(ruta);
+		if (eBajar || !archivo) return responder(404, { error: 'No existe ese archivo' });
+		if (archivo.size > MAXIMO_TIPOGRAFIA) return responder(413, { error: 'Archivo demasiado grande' });
+		const datos = new Uint8Array(await archivo.arrayBuffer());
+		if (!esTipografia(datos, ext)) return responder(415, { error: 'No se entrega: el archivo no es una tipografía.' });
+		return new Response(datos, { status: 200, headers: { 'Content-Type': TIPOGRAFIAS[ext], 'X-Huella-Original': await huella(datos) } });
 	}
 
 	if (cuerpo.accion !== 'archivo') return responder(400, { error: 'Orden no válida' });

@@ -112,9 +112,15 @@ async function archivoLimpio( token, almacen, ruta ) {
 }
 
 const anotar = ( token, accion, detalle ) => pedir( '/rest/v1/registro', { metodo: 'POST', token, cuerpo: { accion, detalle }, prefer: 'return=minimal' } );
+// El nombre del archivo que puso la promotora no sale de aquí (puede llevar nombres o
+// correos, decisión 72): se guarda con su número y el tipo de documento de la lista.
+const extension = ( ruta ) => ( /\.([a-z0-9]{1,5})$/i.exec( ruta ?? '' )?.[ 0 ] ?? '' ).toLowerCase();
+const formato = ( ruta ) => extension( ruta ) ? `archivo ${ extension( ruta ).slice( 1 ).toUpperCase() }` : 'archivo';
+const neutro = ( texto ) => String( texto ?? 'documento' ).normalize( 'NFD' ).replace( /[\u0300-\u036f]/g, '' ).toLowerCase()
+	.replace( /[^a-z0-9]+/g, '-' ).replace( /^-|-$/g, '' ).slice( 0, 60 ) || 'documento';
 const fecha = ( iso ) => iso.slice( 0, 16 ).replace( 'T', ' ' );
 const tamano = ( b ) => b >= 1048576 ? `${ ( b / 1048576 ).toFixed( 1 ) } MB` : `${ Math.max( 1, Math.round( b / 1024 ) ) } KB`;
-const CAMPOS = 'id,promocion_id,version,nombre,tamano,estado,nota,subido_en,revisado_en,huella,ruta,requisitos!documentos_requisito_id_fkey(bloque,elemento),documento_cubre(requisitos(elemento))';
+const CAMPOS = 'id,promocion_id,version,tamano,estado,nota,subido_en,revisado_en,huella,ruta,requisitos!documentos_requisito_id_fkey(bloque,elemento),documento_cubre(requisitos(elemento))';
 // (documento_cubre, 022: los otros documentos de la lista que incluye el mismo archivo)
 const incluye = ( d ) => ( d.documento_cubre ?? [] ).map( ( c ) => c.requisitos?.elemento ).filter( Boolean );
 
@@ -128,7 +134,7 @@ async function pendientes( token, promocion ) {
 	for ( const d of docs ) {
 
 		if ( d.promocion_id !== actual ) console.log( `\n■ ${ ( actual = d.promocion_id ) }` );
-		console.log( `  #${ d.id } · ${ d.requisitos?.bloque } › ${ d.requisitos?.elemento } · v${ d.version } · ${ d.nombre } (${ tamano( d.tamano ) }) · ${ fecha( d.subido_en ) }` );
+		console.log( `  #${ d.id } · ${ d.requisitos?.bloque } › ${ d.requisitos?.elemento } · v${ d.version } · ${ formato( d.ruta ) } (${ tamano( d.tamano ) }) · ${ fecha( d.subido_en ) }` );
 		if ( incluye( d ).length ) console.log( `      también incluye: ${ incluye( d ).join( ', ' ) }` );
 
 	}
@@ -146,14 +152,14 @@ async function bajar( token, id ) {
 	const { contenido, huellaOriginal: huella, quitado } = archivo;
 	const carpeta = join( SALIDA, d.promocion_id );
 	mkdirSync( carpeta, { recursive: true } );
-	const destino = join( carpeta, `${ d.id }-v${ d.version }-${ d.nombre.replace( /[^\w.\- ]+/g, '_' ) }` );
+	const destino = join( carpeta, `${ d.id }-v${ d.version }-${ neutro( d.requisitos?.elemento ) }${ extension( d.ruta ) }` );
 	writeFileSync( destino, contenido );
 	console.log( `✓ ${ destino.slice( destino.indexOf( 'salida' ) ) }` );
 	console.log( `  ${ d.requisitos?.bloque } › ${ d.requisitos?.elemento } · v${ d.version } · ${ tamano( contenido.length ) }` );
 	if ( incluye( d ).length ) console.log( `  También incluye: ${ incluye( d ).join( ', ' ) }` );
 	console.log( huella === d.huella ? '  ✓ La huella coincide: es el archivo que subió la promotora (sin metadatos).'
 		: `  ✗ ¡La huella NO coincide! (registrada ${ d.huella.slice( 0, 12 ) }…, en el almacén ${ String( huella ).slice( 0, 12 ) }…). Avisa a la administradora.` );
-	console.log( quitado.length ? `  Metadatos quitados: ${ quitado.join( '; ' ) }.` : '  No llevaba metadatos.' );
+	console.log( quitado.length ? `  Quitado: ${ quitado.join( '; ' ) }.` : '  No llevaba metadatos ni notas.' );
 	await anotar( token, 'robot descarga un documento', { promocion: d.promocion_id, documento: d.id } );
 
 }
@@ -308,18 +314,18 @@ async function opciones( token ) {
 
 		console.log( `\n#${ op.id } · ${ op.promocion_id } · ${ op.categoria_nombre } › ${ op.nombre }${ op.precio != null ? ` · ${ op.precio } €` : '' }` );
 		if ( op.descripcion ) console.log( `  «${ op.descripcion }»` );
-		for ( const a of op.archivos ?? [] ) {
+		for ( const [ n, a ] of ( op.archivos ?? [] ).entries() ) {
 
 			const archivo = await archivoLimpio( token, 'documentos', a.ruta );
 			if ( archivo.error ) {
 
-				console.log( `  ✗ ${ a.nombre }: ${ archivo.error }` );
+				console.log( `  ✗ adjunto ${ n + 1 } (${ formato( a.ruta ) }): ${ archivo.error }` );
 				continue;
 
 			}
 			const carpeta = join( SALIDA, '..', 'opciones', String( op.id ) );
 			mkdirSync( carpeta, { recursive: true } );
-			const destino = join( carpeta, ( a.nombre || a.ruta.split( '/' ).pop() ).replace( /[^\w.\- ]+/g, '_' ) );
+			const destino = join( carpeta, `adjunto-${ n + 1 }${ extension( a.ruta ) }` );
 			writeFileSync( destino, archivo.contenido );
 			console.log( `  ✓ ${ destino.slice( destino.indexOf( 'salida' ) ) }${ archivo.quitado.length ? ` (sin: ${ archivo.quitado.join( '; ' ) })` : '' }` );
 

@@ -60,7 +60,8 @@
 //
 // Tipografía: va dentro de cada versión (fuentes/marca.css), para que la web no pida
 // nada a Google Fonts al visitarla. «preparar» la descarga de Google Fonts (por su
-// nombre) o, si la promotora ha subido la suya, de Supabase con el robot de Claude,
+// nombre) o, si la promotora ha subido la suya, de Supabase con el robot de Claude
+// (por la función «archivo-robot», que comprueba que es una tipografía: decisión 72),
 // y deja en fuentes/LICENCIA.txt de dónde sale.
 
 import { execFileSync } from 'node:child_process';
@@ -332,7 +333,13 @@ async function guardarFuente( destino, tipografia ) {
 
 			const ext = a.ruta.split( '.' ).pop().toLowerCase();
 			if ( ! FORMATO[ ext ] ) fallo( `Archivo de tipografía no válido: ${ a.nombre }` );
-			const r = await fetch( `${ SUPABASE_URL }/storage/v1/object/documentos/${ a.ruta.split( '/' ).map( encodeURIComponent ).join( '/' ) }`, { headers: { apikey: cabeceras.apikey, Authorization: cabeceras.Authorization } } );
+			// por la función «archivo-robot», que solo la entrega si de verdad es una tipografía (decisión 72)
+			const r = await fetch( process.env.ARCHIVO_ROBOT_URL ?? `${ SUPABASE_URL }/functions/v1/archivo-robot`, {
+				method: 'POST',
+				headers: { apikey: cabeceras.apikey, Authorization: cabeceras.Authorization, 'Content-Type': 'application/json' },
+				body: JSON.stringify( { accion: 'tipografia', ruta: a.ruta } ),
+			} );
+			if ( r.status === 415 ) fallo( `«${ a.nombre }» no es un archivo de tipografía de verdad: pide a la promotora que lo vuelva a subir en MUNE Portal (WOFF2, WOFF, TTF u OTF)` );
 			if ( ! r.ok ) fallo( `No se ha podido descargar la tipografía «${ a.nombre }» (Supabase respondió ${ r.status })` );
 			const nombre = `marca-${ i + 1 }.${ ext }`;
 			writeFileSync( join( carpeta, nombre ), Buffer.from( await r.arrayBuffer() ) );
