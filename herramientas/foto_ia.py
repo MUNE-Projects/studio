@@ -43,9 +43,12 @@ print('escena:', ESCENA)
 
 t0 = time.time()
 torch.set_num_threads(os.cpu_count() or 4)
-red = [ControlNetModel.from_pretrained('lllyasviel/control_v11f1p_sd15_depth', variant='fp16', torch_dtype=torch.float32, use_safetensors=True),
-       # contornos del render: cada línea que hay sigue ahí, y donde no hay líneas no se inventan dibujos
-       ControlNetModel.from_pretrained('lllyasviel/control_v11p_sd15_canny', variant='fp16', torch_dtype=torch.float32, use_safetensors=True)]
+# por defecto, solo la profundidad (como la primera prueba): la guía de contornos fija mejor los
+# detalles, pero la IA dibuja sus líneas como dientes o pespuntes en los bordes rectos
+c_cont = arg('--control-contornos', 0.0)
+red = [ControlNetModel.from_pretrained('lllyasviel/control_v11f1p_sd15_depth', variant='fp16', torch_dtype=torch.float32, use_safetensors=True)]
+if c_cont > 0:
+    red.append(ControlNetModel.from_pretrained('lllyasviel/control_v11p_sd15_canny', variant='fp16', torch_dtype=torch.float32, use_safetensors=True))
 vae = AutoencoderKL.from_pretrained('stabilityai/sd-vae-ft-mse', torch_dtype=torch.float32, use_safetensors=True)
 # Realistic Vision se publica como un único archivo .safetensors (sin código ejecutable dentro)
 from huggingface_hub import hf_hub_download
@@ -81,11 +84,11 @@ t1 = time.time()
 if '--reusar' in sys.argv and os.path.exists(crudo):
     resultado = Image.open(crudo).convert('RGB'); pasos_detalle = 0
 else:
-  resultado = tubo(prompt=PROMPT, negative_prompt=NEGATIVO, image=img, control_image=[prof, contornos],
+  resultado = tubo(prompt=PROMPT, negative_prompt=NEGATIVO, image=img, control_image=[prof, contornos][:len(red)],
                  strength=fuerza, num_inference_steps=pasos, guidance_scale=arg('--guia', 5.0),
-                 controlnet_conditioning_scale=[arg('--control', 1.0), arg('--control-contornos', 0.8)],
+                 controlnet_conditioning_scale=[arg('--control', 1.0), c_cont][:len(red)],
                  # los contornos solo al principio: fijan la forma, y el detalle final lo pone la IA libre
-                 control_guidance_start=[0.0, 0.0], control_guidance_end=[1.0, arg('--fin-contornos', 1.0)],
+                 control_guidance_start=[0.0, 0.0][:len(red)], control_guidance_end=[1.0, arg('--fin-contornos', 1.0)][:len(red)],
                  generator=torch.Generator().manual_seed(semilla)).images[0]
   pasos_detalle = arg('--detalle', 0.0)
 print('imagen en %.0f s' % (time.time() - t1))
@@ -95,9 +98,9 @@ if pasos_detalle > 0:
     H2 = round(original.height * W2 / original.width) // 8 * 8
     ctrl2 = [prof.resize((W2, H2), Image.LANCZOS), contornos.resize((W2, H2), Image.NEAREST)]
     t2 = time.time()
-    resultado = tubo(prompt=PROMPT, negative_prompt=NEGATIVO, image=resultado.resize((W2, H2), Image.LANCZOS), control_image=ctrl2,
+    resultado = tubo(prompt=PROMPT, negative_prompt=NEGATIVO, image=resultado.resize((W2, H2), Image.LANCZOS), control_image=ctrl2[:len(red)],
                      strength=pasos_detalle, num_inference_steps=pasos, guidance_scale=arg('--guia', 5.5),
-                     controlnet_conditioning_scale=[0.8, 0.8], generator=torch.Generator().manual_seed(semilla + 1)).images[0]
+                     controlnet_conditioning_scale=[0.8, 0.8][:len(red)], generator=torch.Generator().manual_seed(semilla + 1)).images[0]
     print('detalle en %.0f s' % (time.time() - t2))
 if not ('--reusar' in sys.argv and os.path.exists(crudo)): resultado.save(crudo)
 
@@ -153,8 +156,15 @@ if os.path.exists(ruta_p) and '--sin-proteger' not in sys.argv:
     sel = (pr > 240) | (abs(pr.astype(int) - round(255 * 0.62)) <= 1)
     # y las piezas pequeñas (tiradores, interruptores…): la IA las convierte en otra cosa
     if os.path.exists(ruta_m) and '--sin-piezas' not in sys.argv:
-        _, inv, cuenta = np.unique(clave, return_inverse=True, return_counts=True)
-        sel |= (cuenta[inv.reshape(clave.shape)] < clave.size * arg('--pieza', 0.002))
+        piezas = np.zeros(clave.shape, bool)
+        # cada trozo suelto de cada material: los pequeños son piezas (un tirador comparte
+        # material con otros, pero es un trozo aparte)
+        for kk in np.unique(clave):
+            n, etiquetas, stats, _ = cv2.connectedComponentsWithStats((clave == kk).astype(np.uint8), connectivity=8)
+            peq = np.where(stats[1:, cv2.CC_STAT_AREA] < clave.size * arg('--pieza', 0.004))[0] + 1
+            if len(peq): piezas |= np.isin(etiquetas, peq)
+        # más margen: lo que la IA pone en su lugar (un interruptor) suele ser más ancho
+        sel |= cv2.dilate(piezas.astype(np.uint8), np.ones((35, 35), np.uint8)) > 0
     m = np.asarray(Image.fromarray((sel * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(4))).astype(np.float32)[..., None] / 255
     mezcla = mezcla * (1 - m) + o * m
 Image.fromarray(np.clip(mezcla, 0, 255).astype(np.uint8)).save(salida)
