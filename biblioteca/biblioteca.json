@@ -192,6 +192,67 @@
    ]
   },
   {
+   "id": "sofa-lino-dos-plazas",
+   "categoria": "sofas",
+   "nombre": "Sofá de lino de dos plazas",
+   "estilo": "mediterráneo contemporáneo",
+   "materiales": "lino lavado, patas de roble",
+   "color": "#d8cfc1",
+   "gama": "media",
+   "dims": [
+    1.7,
+    0.9,
+    0.8
+   ],
+   "generador": "sofa",
+   "params": {
+    "tela": "tela:#d8cfc1",
+    "patas": "madera:#8a6d52",
+    "cojines": "boucle:#c9875f|boucle:#c9875f"
+   },
+   "inspiracion": [
+    "Kave Home",
+    "Maison du Monde"
+   ],
+   "referencia": "SOFA-LINO-DOS-PLAZAS",
+   "miniatura": null,
+   "sustituye": [
+    "sofa"
+   ]
+  },
+  {
+   "id": "sofa-lino-chaise",
+   "categoria": "sofas",
+   "nombre": "Sofá de lino con chaise longue",
+   "estilo": "mediterráneo contemporáneo",
+   "materiales": "lino lavado, patas de roble",
+   "color": "#d8cfc1",
+   "gama": "media",
+   "dims": [
+    2.4,
+    0.95,
+    0.8
+   ],
+   "generador": "sofa",
+   "params": {
+    "tela": "tela:#d8cfc1",
+    "patas": "madera:#8a6d52",
+    "cojines": "tela:#b8704f|tela:#8c8f78",
+    "chaise": 1,
+    "chaise_largo": 0.6,
+    "chaise_ancho": 0.75
+   },
+   "inspiracion": [
+    "Kave Home",
+    "Maison du Monde"
+   ],
+   "referencia": "SOFA-LINO-CHAISE",
+   "miniatura": null,
+   "sustituye": [
+    "sofa"
+   ]
+  },
+  {
    "id": "sillon-boucle",
    "categoria": "sillones",
    "nombre": "Butaca envolvente de bouclé",
@@ -748,6 +809,29 @@
    "sustituye": [
     "mueble-tv"
    ]
+  },
+  {
+   "id": "vitrina-roble",
+   "categoria": "almacenaje",
+   "nombre": "Vitrina de roble con puertas de vidrio",
+   "estilo": "nórdico cálido",
+   "materiales": "roble y vidrio",
+   "color": "#b89574",
+   "gama": "media",
+   "dims": [
+    0.9,
+    0.42,
+    1.9
+   ],
+   "generador": "vitrina",
+   "params": {
+    "material": "madera:#b89574"
+   },
+   "inspiracion": [
+    "Kave Home"
+   ],
+   "referencia": "VITRINA-ROBLE",
+   "miniatura": null
   },
   {
    "id": "mueble-tv-lacado",

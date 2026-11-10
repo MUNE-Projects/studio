@@ -130,12 +130,27 @@ const sofa: Gen = ( k, c ) => {
 	k.acolchada( tela, - W / 2, y0, z0, - W / 2 + brazo, y0 + ( curvo ? 0.5 : 0.52 ), z1, r, 0.006, 0.004, 3 );
 	k.acolchada( tela, W / 2 - brazo, y0, z0, W / 2, y0 + ( curvo ? 0.5 : 0.52 ), z1, r, 0.006, 0.004, 4 );
 	k.blanda( tela, - W / 2 + brazo - 0.02, y0 + 0.12, z0, W / 2 - brazo + 0.02, y0 + 0.66, z0 + 0.2, r );
-	const util = W - 2 * brazo;
+	// chaise longue: en un extremo (`chaise` = 1 o -1, lado de la x), el asiento sigue hacia
+	// delante `chaise_largo` metros más, con su brazo hasta el final
+	const lc = Math.sign( n( c, 'chaise', 0 ) ), largo = n( c, 'chaise_largo', 0.6 ), wc = n( c, 'chaise_ancho', 0.75 );
+	if ( lc ) {
+
+		const xa = lc > 0 ? W / 2 - brazo - wc : - W / 2 + brazo, xb = xa + wc;
+		k.blanda( tela, lc > 0 ? xa : - W / 2, y0, z1 - 0.2, lc > 0 ? W / 2 : xb, y0 + 0.2, z1 + largo, r );
+		k.acolchada( tela, lc > 0 ? W / 2 - brazo : - W / 2, y0, z1 - 0.2, lc > 0 ? W / 2 : - W / 2 + brazo, y0 + 0.52, z1 + largo, r, 0.006, 0.004, 5 );
+		k.acolchada( tela, xa + 0.004, y0 + 0.2, z0 + 0.2, xb - 0.004, y0 + 0.37, z1 + largo - 0.01, 0.06, 0.014, 0.012, 9, 0.004, tela );
+		const resp = k.acolchada( tela, xa + 0.01, - 0.2, - 0.09, xb - 0.01, 0.2, 0.09, 0.07, 0.02, 0.004, 19, 0.001 );
+		resp.rotateX( - 0.2 );
+		resp.translate( 0, y0 + 0.56, z0 + 0.28 );
+		if ( hPata > 0 ) for ( const sx of [ - 1, 1 ] ) k.cilindro( patas, lc > 0 ? W / 2 - 0.1 - ( sx > 0 ? 0 : wc ) : - W / 2 + 0.1 + ( sx > 0 ? 0 : wc ), 0, z1 + largo - 0.1, 0.016, hPata, 10, 0.022 );
+
+	}
+	const util = W - 2 * brazo - ( lc ? wc : 0 );
 	const nA = Math.max( 1, Math.round( util / 0.75 ) );
 	const w = util / nA;
 	for ( let i = 0; i < nA; i ++ ) {
 
-		const x0 = - W / 2 + brazo + i * w;
+		const x0 = - W / 2 + brazo + ( lc < 0 ? wc : 0 ) + i * w;
 		// asiento relleno, con el hundido del uso
 		k.acolchada( tela, x0 + 0.004, y0 + 0.2, z0 + 0.2, x0 + w - 0.004, y0 + 0.37, z1 - 0.01, 0.06, 0.014, 0.012, i + 1, 0.004, tela );
 		const resp = k.acolchada( tela, x0 + 0.01, - 0.2, - 0.09, x0 + w - 0.01, 0.2, 0.09, 0.07, 0.02, 0.004, i + 11, 0.001 );
@@ -803,6 +818,86 @@ const cesta: Gen = ( k, c ) => {
 
 };
 
+/** Vitrina de comedor: abajo, puertas cerradas; arriba, puertas de vidrio con baldas, platos, vasos y copas. */
+const vitrina: Gen = ( k, c ) => {
+
+	const { W, D, H } = c;
+	const mat = s( c, 'material', 'madera:#b89574' ), fondo = s( c, 'fondo', 'madera:#c9ab88' );
+	const z0 = - D / 2, z1 = D / 2, e = 0.022, bajo = n( c, 'bajo', 0.82 ), zoc = 0.08;
+	k.caja( 'zocalo', - W / 2 + 0.03, 0, z0 + 0.02, W / 2 - 0.03, zoc, z1 - 0.04 );
+	// cuerpo: laterales, techo, fondo y la tapa entre las dos partes
+	k.caja( mat, - W / 2, zoc, z0, - W / 2 + e, H, z1 );
+	k.caja( mat, W / 2 - e, zoc, z0, W / 2, H, z1 );
+	k.caja( mat, - W / 2, H - e, z0, W / 2, H, z1 );
+	k.caja( fondo, - W / 2 + e, bajo, z0, W / 2 - e, H - e, z0 + 0.012 );
+	k.caja( mat, - W / 2 + e, bajo - e, z0, W / 2 - e, bajo, z1 );
+	// abajo, dos puertas lisas con su junta y tiradores finos
+	for ( const lado of [ - 1, 1 ] ) {
+
+		const xa = lado < 0 ? - W / 2 + e : 0.002, xb = lado < 0 ? - 0.002 : W / 2 - e;
+		k.caja( mat, xa, zoc + 0.003, z1 - 0.02, xb, bajo - e - 0.003, z1 );
+		k.caja( 'metal:#b8a07a', lado * 0.04 - 0.006, bajo - 0.2, z1, lado * 0.04 + 0.006, bajo - 0.06, z1 + 0.015 );
+
+	}
+	// arriba, baldas con el menaje
+	const nB = 3, hueco = ( H - e - bajo ) / nB;
+	for ( let b = 0; b < nB; b ++ ) {
+
+		const y = bajo + b * hueco;
+		if ( b > 0 ) k.caja( mat, - W / 2 + e, y - 0.018, z0 + 0.012, W / 2 - e, y, z1 - 0.03 );
+		const ancho = W - 2 * e - 0.08;
+		if ( b === 0 ) {
+
+			// platos de pie, apoyados contra el fondo, y una pila de cuencos
+			for ( let i = 0; i < 2; i ++ ) {
+
+				const g = k.cilindro( 'ceramica:#f2eee6', 0, - 0.006, 0, 0.12, 0.006, 40 );
+				g.rotateX( Math.PI / 2 - 0.12 );
+				g.translate( - ancho / 2 + 0.14 + i * 0.26, y + 0.125, z0 + 0.05 );
+
+			}
+			for ( let i = 0; i < 4; i ++ ) k.cilindro( 'ceramica:#ece6db', ancho / 2 - 0.14, y + i * 0.045, ( z0 + z1 ) / 2, 0.075, y + i * 0.045 + 0.045, 32, 0.1 );
+
+		} else if ( b === 1 ) {
+
+			// vasos en dos filas
+			for ( let f = 0; f < 2; f ++ ) for ( let i = 0; i < 6; i ++ ) {
+
+				const x = - ancho / 2 + 0.06 + i * ( ancho - 0.12 ) / 5;
+				k.cilindro( 'vidrio:#f4f6f5', x, y, z0 + 0.11 + f * 0.13, 0.036, y + 0.11, 20, 0.032 );
+
+			}
+
+		} else {
+
+			// copas: pie, tallo y cáliz
+			for ( let f = 0; f < 2; f ++ ) for ( let i = 0; i < 5; i ++ ) {
+
+				const x = - ancho / 2 + 0.07 + i * ( ancho - 0.14 ) / 4 + f * 0.04;
+				const z = z0 + 0.11 + f * 0.13;
+				k.cilindro( 'vidrio:#f4f6f5', x, y, z, 0.034, y + 0.006, 20 );
+				k.cilindro( 'vidrio:#f4f6f5', x, y + 0.006, z, 0.005, y + 0.1, 8 );
+				torno( k, 'vidrio:#f4f6f5', [ [ 0.006, y + 0.1 ], [ 0.03, y + 0.12 ], [ 0.042, y + 0.16 ], [ 0.04, y + 0.2 ] ], x, 0, z, 20 );
+
+			}
+
+		}
+
+	}
+	// puertas de vidrio con marco fino
+	for ( const lado of [ - 1, 1 ] ) {
+
+		const xa = lado < 0 ? - W / 2 + e : 0.002, xb = lado < 0 ? - 0.002 : W / 2 - e;
+		k.caja( 'vidrio:#eef2f0', xa + 0.02, bajo + 0.02, z1 - 0.012, xb - 0.02, H - e - 0.02, z1 - 0.006 );
+		k.caja( mat, xa, bajo, z1 - 0.02, xa + 0.02, H - e, z1 );
+		k.caja( mat, xb - 0.02, bajo, z1 - 0.02, xb, H - e, z1 );
+		k.caja( mat, xa, bajo, z1 - 0.02, xb, bajo + 0.02, z1 );
+		k.caja( mat, xa, H - e - 0.02, z1 - 0.02, xb, H - e, z1 );
+
+	}
+
+};
+
 const televisor: Gen = ( k, c ) => {
 
 	const { W, H } = c;
@@ -815,7 +910,7 @@ const televisor: Gen = ( k, c ) => {
 export const GENERADORES: Record<string, Gen> = {
 	sofa, sillon, 'sillon-exterior': sillonExterior, silla,
 	'mesa-comedor': mesaComedor, 'mesa-centro': mesaCentro, 'mesa-auxiliar': mesaAuxiliar, 'mesa-exterior': mesaExterior,
-	'mueble-bajo': muebleBajo, mesilla, cama, 'cabecero-panel': cabeceroPanel,
+	'mueble-bajo': muebleBajo, vitrina, mesilla, cama, 'cabecero-panel': cabeceroPanel,
 	'lampara-pie-arco': lamparaPieArco, 'lampara-colgante': lamparaColgante, 'lampara-mesa': lamparaMesa,
 	alfombra, toallas, toallero, planta, 'jarron-ramas': jarronRamas, jardinera,
 	cuadro, libros, jarron, frutero, 'tabla-cortar': tablaCortar, botes, dispensador, velas, cesta, televisor,
