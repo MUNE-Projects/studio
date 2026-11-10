@@ -2902,6 +2902,78 @@ await caso( DEBE_FALLAR, '59. Buzón de correos: la promotora, el robot, la admi
 
 } );
 
+// ─── Plazos de conservación (048, decisión 73) ───────────────────────────────
+
+const valor = ( sql ) => execFileSync( 'psql', [ DB_URL, '-X', '-At', '-v', 'ON_ERROR_STOP=1', '-c', sql ] ).toString().trim();
+const retirada = await altaEquipo( 'retirada.a@prueba.local', 'prueba-a', [ 'documentacion' ] );
+const docRetirada = await subirDocumento( retirada.sb, pA.id, 'prueba-a', 'documento de quien se retira' );
+if ( docRetirada.error ) throw new Error( `la persona que se retira no sube su documento: ${ docRetirada.error.message }` );
+
+const comentarioConDato = Number( valor( `insert into public.comentarios (promocion_id, version, tipo, texto, user_id, autor) values ('prueba-a', 'v1', 'version', 'Llamad a persona@inventada.test por la cocina', '${ aprobAId }', 'Aprobadora') returning id` ).split( '\n' )[ 0 ] );
+
+await caso( DEBE_FALLAR, '60. Plazos de conservación: la promotora, el robot o alguien sin sesión los aplican (aunque sea simulando) o ven quién se retiró; corrigen un comentario (solo MUNE Studio), o MUNE lo deja vacío', async () => {
+
+	const r = {
+		promotora: await aprobA.rpc( 'aplicar_conservacion', { p_simular: true } ),
+		robot: await robot.rpc( 'aplicar_conservacion', { p_simular: false } ),
+		anonimo: await anonimo.rpc( 'aplicar_conservacion', { p_simular: true } ),
+		promotoraVeRetiradas: await aprobA.from( 'personas_retiradas' ).select( 'id' ),
+		robotVeRetiradas: await robot.from( 'personas_retiradas' ).select( 'id' ),
+		promotoraVeEsperando: await aprobA.from( 'cuentas_sin_acceso' ).select( 'user_id' ),
+		promotoraCorrige: await aprobA.rpc( 'corregir_comentario', { p_comentario: comentarioConDato, p_texto: 'x' } ),
+		robotCorrige: await robot.rpc( 'corregir_comentario', { p_comentario: comentarioConDato, p_texto: 'x' } ),
+		adminLoVacia: await admin.rpc( 'corregir_comentario', { p_comentario: comentarioConDato, p_texto: '   ' } ),
+	};
+	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	return true;
+
+} );
+
+await caso( DEBE_FUNCIONAR, 'Plazos de conservación: un acceso retirado no entra al momento; su cuenta se elimina a los 30 días (no antes, ni al simular) y queda aparte quién era; sus documentos siguen; el registro técnico de 90 días y los avisos de 12 meses se borran, las pruebas y lo no clasificado no; las cuentas internas y con acceso siguen; MUNE Studio corrige solo el comentario con un dato personal', async () => {
+
+	await exigir( admin.from( 'miembros' ).update( { activo: false } ).eq( 'user_id', retirada.id ), 'retirar el acceso' );
+	const yaNoVe = ( await retirada.sb.from( 'documentos' ).select( 'id' ).eq( 'promocion_id', 'prueba-a' ) ).data ?? [];
+	const primera = await exigir( ejecutor.rpc( 'aplicar_conservacion', { p_simular: false } ), 'primera noche' );
+	const sigueTrasPrimera = valor( `select count(*) from auth.users where id = '${ retirada.id }'` ) === '1';
+	sqlDirecto( `update public.cuentas_sin_acceso set desde = now() - interval '31 days' where user_id = '${ retirada.id }'` );
+	sqlDirecto( `insert into public.registro (user_id, accion, momento) values
+		('${ retirada.id }', 'entra en el panel', now() - interval '100 days'),
+		('${ retirada.id }', 'publica una versión', now() - interval '100 days'),
+		('${ retirada.id }', 'una acción que no está en ninguna lista', now() - interval '400 days'),
+		('${ retirada.id }', 'avisa a la promotora por email', now() - interval '13 months'),
+		('${ retirada.id }', 'avisa a la promotora por email', now() - interval '100 days')` );
+	const filasAntes = valor( `select count(*) from public.registro where user_id = '${ retirada.id }'` );
+	const simulada = await exigir( ejecutor.rpc( 'aplicar_conservacion', { p_simular: true } ), 'simulación' );
+	const sigueTrasSimular = valor( `select count(*) from auth.users where id = '${ retirada.id }'` ) === '1'
+		&& valor( `select count(*) from public.registro where user_id = '${ retirada.id }'` ) === filasAntes;
+	const real = await exigir( ejecutor.rpc( 'aplicar_conservacion', { p_simular: false } ), 'noche 31' );
+	const acciones = valor( `select string_agg(accion || '@' || (momento < now() - interval '12 months'), '|' order by accion, momento) from public.registro where user_id = '${ retirada.id }'` );
+	const mal = Object.entries( {
+		cerrado: ! primera.cerrado && ! real.cerrado,
+		revocadoAlMomento: yaNoVe.length === 0,
+		noAntesDe30Dias: sigueTrasPrimera && primera.cuentas_eliminadas === 0,
+		simulacionNoBorra: sigueTrasSimular && simulada.cuentas_eliminadas === 1 && simulada.registro_tecnico >= 1,
+		eliminada: valor( `select count(*) from auth.users where id = '${ retirada.id }'` ) === '0' && real.cuentas_eliminadas === 1,
+		apartada: valor( `select count(*) from public.personas_retiradas where user_id = '${ retirada.id }' and email = 'retirada.a@prueba.local' and promocion_id = 'prueba-a'` ) === '1',
+		documentoSigue: valor( `select subido_por from public.documentos where id = ${ docRetirada.data.id }` ) === retirada.id,
+		// queda: la publicación, la subida del documento, lo no clasificado y el aviso de 100 días; se borran la entrada (90 días) y el aviso de 13 meses
+		registro: acciones === 'avisa a la promotora por email@false|documento_subido@false|publica una versión@false|una acción que no está en ninguna lista@true'
+			&& simulada.registro_tecnico === 1 && simulada.registro_avisos === 1,
+		internas: valor( "select count(*) from auth.users where email in ('admin@prueba.local', 'robot@prueba.local', 'hello.muneprojects+ejecutor@gmail.com')" ) === '3'
+			&& valor( 'select count(*) from public.cuentas_sin_acceso s join public.administradores a using (user_id)' ) === '0',
+		conAcceso: valor( `select count(*) from public.cuentas_sin_acceso where user_id = '${ aprobAId }'` ) === '0'
+			&& valor( `select count(*) from auth.users where id = '${ aprobAId }'` ) === '1',
+		anotado: valor( 'select count(*) from public.conservacion_hecha' ) === '3',
+		comentarioCorregido: ! ( await admin.rpc( 'corregir_comentario', { p_comentario: comentarioConDato, p_texto: 'Llamad a la promotora por la cocina' } ) ).error
+			&& valor( `select texto from public.comentarios where id = ${ comentarioConDato }` ) === 'Llamad a la promotora por la cocina'
+			&& valor( "select count(*) from public.registro where accion = 'corrige un dato personal de un comentario' and detalle::text not like '%inventada%'" ) === '1',
+	} ).filter( ( [ , ok ] ) => ! ok ).map( ( [ k ] ) => k );
+	if ( mal.length ) throw new Error( `no cumple: ${ mal.join( ', ' ) } (${ JSON.stringify( { primera, simulada, real, acciones } ) })` );
+	return true;
+
+} );
+
 // ─── Resumen ────────────────────────────────────────────────────────────────
 
 const fallidos = resultados.filter( ( r ) => ! r.ok );

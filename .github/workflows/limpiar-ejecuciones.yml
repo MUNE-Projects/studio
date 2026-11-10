@@ -1,0 +1,80 @@
+# Borrar las ejecuciones antiguas de GitHub que llevan correos (decisión 73).
+#
+# Hasta el 8/11/2026 (decisión 71), los procesos de avisos y de publicar recibían
+# los correos de las personas como datos de entrada, que se quedan en la ficha
+# y en el registro de cada ejecución. Este proceso busca las ejecuciones de
+# «aviso a la promotora», «aviso a MUNE» y «publicar» anteriores al 9/11/2026,
+# mira dentro de su registro si aparece algún correo (solo cuenta cuántos: no los
+# enseña) y:
+#  · por defecto, SIMULA: lista cuáles se borrarían y cuáles se quedan;
+#  · con «borrar» marcado y BORRAR escrito en «confirmación», borra solo las que
+#    llevan correos.
+# La constancia de lo que se avisó o se publicó sigue en Supabase (avisos_enviados,
+# registro, versiones_promocion) y en el historial de git; las ejecuciones son
+# técnicas. Se lanza a mano: Actions → «Borrar ejecuciones antiguas con correos»
+# → Run workflow. Gratis.
+name: Borrar ejecuciones antiguas con correos
+run-name: ejecuciones antiguas con correos${{ inputs.borrar && inputs.confirmacion == 'BORRAR' && ' (borrar)' || ' (simulación)' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      borrar:
+        description: borrar de verdad (si no, solo simula)
+        type: boolean
+        default: false
+      confirmacion:
+        description: para borrar, escribe BORRAR
+        type: string
+        default: ''
+
+permissions:
+  actions: write
+
+jobs:
+  limpiar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      BORRAR: ${{ inputs.borrar && inputs.confirmacion == 'BORRAR' && 'si' || 'no' }}
+      HASTA: '2026-11-09T00:00:00Z'
+    steps:
+      - name: Buscar y, si se pide, borrar
+        run: |
+          set -euo pipefail
+          trabajo=$(mktemp -d)
+          [[ "$BORRAR" == si ]] && echo "MODO: BORRAR (solo las que llevan correos)" || echo "MODO: SIMULACIÓN (no se borra nada)"
+          printf '\n%-12s %-22s %-6s %-48s %s\n' FECHA PROCESO Nº TÍTULO DECISIÓN
+          total=0; conCorreos=0; borradas=0
+          for proceso in aviso-promotora.yml aviso-mune.yml publicar.yml; do
+            gh api --paginate "repos/$REPO/actions/workflows/$proceso/runs?per_page=100" \
+              --jq ".workflow_runs[] | select(.created_at < \"$HASTA\") | [.id, .created_at[0:10], .run_number, .display_title] | @tsv" > "$trabajo/lista" 2>/dev/null || : > "$trabajo/lista"
+            while IFS=$'\t' read -r id fecha numero titulo; do
+              [[ -n "$id" ]] || continue
+              total=$((total + 1))
+              n=0
+              if gh api "repos/$REPO/actions/runs/$id/logs" > "$trabajo/log.zip" 2>/dev/null && unzip -qq -o "$trabajo/log.zip" -d "$trabajo/log" 2>/dev/null; then
+                n=$(cat "$trabajo"/log/* "$trabajo"/log/*/* 2>/dev/null | grep -Eo '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' | grep -vc 'noreply\|users.noreply.github.com\|hello.muneprojects' || true)
+                rm -rf "$trabajo/log"
+                que="$n correo(s)"
+              else
+                que="registro ya caducado"
+              fi
+              if [[ "$n" -gt 0 ]]; then
+                conCorreos=$((conCorreos + 1))
+                if [[ "$BORRAR" == si ]]; then
+                  gh api -X DELETE "repos/$REPO/actions/runs/$id" && borradas=$((borradas + 1))
+                  decision="BORRADA ($que)"
+                else
+                  decision="se borraría ($que)"
+                fi
+              else
+                decision="se queda ($que)"
+              fi
+              printf '%-12s %-22s %-6s %-48.48s %s\n' "$fecha" "${proceso%.yml}" "$numero" "$titulo" "$decision"
+            done < "$trabajo/lista"
+          done
+          echo
+          echo "Ejecuciones revisadas: $total. Con correos: $conCorreos. Borradas: $borradas."

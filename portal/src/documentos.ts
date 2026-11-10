@@ -12,6 +12,7 @@
 
 import { MAX_TAM, esc, fecha, sb, traducir } from './comun';
 import { FASES, conectarFase, htmlFase, leerHistorialFases } from './fase';
+import { AVISO_ARCHIVOS } from './privacidad';
 
 export interface Requisito {
 	id: number; bloque: string; elemento: string; descripcion: string; obligatorio: boolean; orden: number;
@@ -233,6 +234,7 @@ export async function pintarDocumentacion(caja: HTMLElement, p: Promo, requisito
 		<h2>Documentación</h2>
 		${htmlFase(fase, historial, 'promotora')}
 		<p class="ayuda">Lo que necesitamos para preparar la promoción. Sube tus archivos tal como los tengas, de hasta 50 MB cada uno: no hace falta adaptarlos a MUNE, salvo los planos en DWG. Si un mismo archivo contiene varias cosas de la lista (por ejemplo, plantas, alzados y superficies), súbelo una vez y marca en él todo lo que incluye. Para sustituir un archivo, sube una versión nueva: las anteriores se conservan. <strong>Los planos en DWG no podemos leerlos: súbelos en DXF</strong> (en AutoCAD: Guardar como → DXF), no en DWG.</p>
+		<p class="ayuda">${AVISO_ARCHIVOS}</p>
 		${htmlDocs || '<p class="vacio">El equipo de MUNE aún no ha preparado la lista de documentos de esta promoción.</p>'}`;
 	conectarFase(caja, sb, p.id, fase, () => recargar('Fase del proyecto guardada.'), (e) => traducir(e, 'cambiar la fase'));
 

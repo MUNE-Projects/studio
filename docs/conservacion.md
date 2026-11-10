@@ -1,71 +1,105 @@
-# Inventario de conservación · qué guarda cada sistema
+# Conservación · qué guarda cada sistema y cuánto
 
-Preparado el 3/11/2026 (decisión 70). **No fija plazos:** los plazos de 30 días para cuentas, 90 días para emails y 12 meses para el registro **no están aprobados** y no se han aplicado. No hay borrados masivos. Este inventario sirve para decidir, caso por caso, qué se conserva y cuánto.
+Política aprobada por la administradora el 10/11/2026 (decisión 73), sobre el inventario del 3/11/2026 (decisión 70). Los plazos automáticos los aplica cada noche el proceso *Aplicar los plazos de conservación* (`conservacion.yml`, `048_conservacion.sql`), con la cuenta «ejecutor». Con una copia recuperada sin comprobar no borra nada.
 
-Lo que se guarda es de dos tipos, y no se tratan igual:
+## Plazos
 
-- **Avisos automáticos y registros técnicos.** Emails «lista para revisar», «documentación nueva», alertas de vigilancia, historial y registros de GitHub Actions, registros de Supabase y Cloudflare. Sirven para que funcione y para investigar un fallo. No prueban nada frente a terceros.
-- **Lo que tiene valor de prueba.** Contratos, facturas, aprobaciones relevantes (validaciones de planos y de la Experiencia 3D, publicaciones, autorizaciones de portfolio, peticiones de eliminar sin exportación) y comunicaciones de incidencias o reclamaciones. Hoy los contratos y las facturas **no están en MUNE**: están en el correo y la contabilidad de MUNE Projects. Las aprobaciones relevantes sí están en Supabase (tablas de abajo).
+| Qué | Plazo | Cómo |
+|---|---|---|
+| Acceso de una persona de la promotora | **Se revoca al momento** | *Retirar el acceso* en MUNE Studio o MUNE Portal: deja de entrar en ese instante |
+| Su cuenta (email, contraseña, código del móvil) | **Se elimina a los 30 días** de quedarse sin ningún acceso activo (ni a una promoción activa ni a una promotora activa) | Automático. Antes se guarda aparte quién era (nombre, cargo, email y a qué tenía acceso, en `personas_retiradas`) para que sus aprobaciones, entregas y selecciones sigan teniendo nombre. Las cuentas internas (administradora, robot de Claude, «ejecutor», copias) nunca se eliminan solas |
+| Registro técnico de actividad (entradas, descargas, peticiones del Panel, marcas de trabajo de Claude…: lista `acciones_tecnicas()`) | **90 días** | Automático. Lo que no está en esa lista se conserva |
+| Pruebas rutinarias (copias y simulacros en `copias_hechas`) | **90 días** (siempre queda la última de cada tipo) | Automático |
+| Registros de GitHub Actions (cada paso de cada proceso) | **90 días** | Ajuste de GitHub (*Settings → Actions → General*); 90 es el valor por defecto |
+| Registros de avisos automáticos de MUNE (`avisos_enviados` y «avisa a la promotora por email» del registro) | **12 meses** | Automático |
+| Avisos de GitHub («lista para revisar», «⚠️ …») | **12 meses** cerrados | A mano por ahora: borrar una incidencia exige una llave con permiso de administración. Se añade al renovar las llaves (7/10/2027), cuando los primeros cumplan 12 meses |
+| Buzón de emails pendientes (`correos_pendientes`) | 2 días como mucho | Automático (decisión 71) |
+| Copias de seguridad | 31 días | Receta 18 (sin cambios) |
+| Gmail de MUNE (`hello.muneprojects@gmail.com`) | **Se mantienen** los correos que hay | No se borra nada |
+| **Pruebas** (ver abajo) | **Sin plazo automático: se conservan aparte** | Nada las borra solo |
 
-## 1. Supabase (proyecto `mune`, plan gratuito)
+### Qué es prueba y se conserva aparte
 
-| Qué | Para qué | Datos personales | Cuánto se guarda hoy | Decisión pendiente |
-|---|---|---|---|---|
-| Cuentas (`auth.users`, factores del móvil) | Entrar en MUNE Studio y MUNE Portal | email, contraseña cifrada, código del móvil | Hasta que se borra la cuenta | Cuándo se borra la cuenta de una persona que ya no tiene acceso (hoy, a mano) |
-| Accesos (`miembros`) | Quién de la promotora entra y a qué | nombre, email, cargo | Hasta que se elimina la promotora o el acceso; retirar un acceso lo desactiva y no lo borra | Si un acceso retirado se borra y cuándo |
-| Registro de actividad (`registro`) | Saber quién hizo qué (publicar, volver atrás, validar, eliminar…) | identificador de la persona y detalle | Sin plazo | Plazo del registro (propuesta de 12 meses **no aprobada**). Mezcla actividad técnica con aprobaciones relevantes: si se fija un plazo, las aprobaciones deberían quedar fuera |
-| Validaciones, aprobaciones y versiones (`validaciones`, `aprobaciones`, `versiones_promocion`) | **Prueba** de qué aprobó la promotora y qué se publicó | nombre de quien aprueba | Hasta que se elimina la promoción (entonces van en la exportación para la promotora) | Si MUNE debe guardar su propia copia de las aprobaciones tras eliminar una promoción (hoy no la guarda) |
-| Autorizaciones de portfolio (`portfolio_autorizaciones`) | **Prueba** de lo que la promotora autoriza enseñar | nombre de quien autoriza, documento | Mientras exista; si se retira, queda la fecha de retirada | Ninguna por ahora |
-| Peticiones de eliminar sin exportación (`eliminaciones_sin_exportacion`) | **Prueba** de que la promotora lo pidió | quién lo pidió y cómo | Sin plazo | Plazo (relacionado con el contrato) |
-| Eliminaciones (`eliminaciones`) | Que una copia antigua no reabra nada | ninguno (solo huellas) | Sin plazo, a propósito | Ninguna |
-| Avisos enviados (`avisos_enviados`) | No repetir avisos por email | a quién y de qué | Sin plazo | Plazo (es técnico) |
-| Exportaciones (`exportaciones` y almacén `exportaciones`) | El enlace de descarga de la promotora | número de destinatarios (no sus emails) | Archivos: hasta que caducan (30 días por defecto) o se revocan. La fila queda como constancia | Ninguna |
-| Documentación, entregables, fotos de referencia, versiones, entorno, portfolio | El servicio | lo que contengan los documentos | Hasta que se elimina la promoción (el portfolio, mientras dure la autorización) | Ninguna |
-| Registros internos de Supabase (API, entrada) | Fallos | dirección IP, email al entrar | **Depende del proveedor y del plan** (en el gratuito, muy pocos días) | No se puede configurar en el plan gratuito |
+- **Autorizaciones de portfolio** (`portfolio_autorizaciones`), también la fecha de retirada.
+- **Contrato**: hoy en el correo y la contabilidad de MUNE Projects (fuera de MUNE).
+- **Entrega**: documentación que subió la promotora y quién la subió (`documentos`), planos y materiales entregados (`entregables`), exportaciones enviadas (`exportaciones`).
+- **Aprobación**: validaciones de planos y de la Experiencia 3D (`validaciones`, `aprobaciones`), versiones publicadas y vueltas atrás (`versiones_promocion` y el registro), selecciones de los compradores, peticiones de eliminar sin exportación (`eliminaciones_sin_exportacion`), eliminaciones (`eliminaciones`, solo huellas) y quién era cada persona retirada (`personas_retiradas`).
+- Del registro de actividad, todo lo que no es técnico (publicar, volver atrás, enviar a validar, altas, accesos dados, exportaciones, eliminaciones, correcciones de comentarios…).
 
-## 2. GitHub (`MUNE-Projects/studio` y `MUNE-Projects/copias`, privados)
+Siguen la regla de siempre al **eliminar una promoción o una promotora** (decisión 70): sus validaciones, aprobaciones y documentos se van en la exportación para la promotora y se borran de Supabase. **Pendiente de decidir:** si MUNE debe guardar su propia copia de esas pruebas tras eliminarla (hoy no la guarda).
 
-| Qué | Para qué | Datos personales | Cuánto se guarda hoy | Decisión pendiente |
-|---|---|---|---|---|
-| Copias de seguridad (releases en borrador de `copias`) | Recuperar tras una pérdida | todo, cifrado | **31 días** (receta 18) | Ninguna |
-| Lista de eliminaciones (release «eliminaciones») | Que una copia no reabra lo eliminado | ninguno (solo huellas) | Sin plazo, a propósito | Ninguna |
-| Historial de procesos (Actions): título y datos de entrada | Ver qué se lanzó | Hasta el 8/11/2026, en `aviso-promotora` y `publicar` los emails de destino iban como datos de entrada (siguen en la ficha de esas ejecuciones antiguas, solo para quien tiene acceso al almacén); desde la decisión 71, ninguno | **Depende de GitHub**: los registros de cada paso se borran a los 90 días por defecto (en un almacén privado se puede configurar de 1 a 400 días en *Settings → Actions → General*); la ficha de la ejecución puede quedarse más | Plazo de los registros de Actions. Desde la decisión 71 (`046_correos.sql`), los avisos ya no pasan correos ni textos a GitHub: solo el número del email del buzón de Supabase, que se borra al enviarlo |
-| Avisos de GitHub (issues «lista para revisar», «⚠️ …») | Avisar por email | ninguno o el nombre de la promoción | Sin plazo (se cierran, no se borran) | Si se borran los cerrados |
+## Datos personales en los archivos y los comentarios
 
-**Reducido en esta propuesta:** el título de «Publicar desde el Panel» ya no lleva el nombre de quien aprueba (queda en Supabase), el de «aviso a MUNE» no lleva el asunto, y el email de la exportación (`aviso-exportacion.yml`) solo recibe el identificador de la exportación: ni los correos ni el enlace pasan por GitHub.
+Los planos y las memorias son documentación técnica: no necesitan datos de personas. Por eso (decisión 73):
 
-## 3. Cloudflare (Workers `experience`, `revision-experience`, `studio`, `portal`)
+1. **Aviso en MUNE Portal**, de una línea, junto a cada subida de archivos (documentación y adjuntos de las opciones) y cada comentario (comentarios, «Pedir cambios» de planos y de la Experiencia 3D): que no incluyan datos personales.
+2. **Si se detecta alguno, se corrige solo ese archivo o ese comentario antes de pasarlo a Claude:**
+   - **Comentario:** `documentos.mjs` no le enseña a Claude un comentario, una petición de cambios ni la descripción de una opción si parece llevar un correo, un teléfono, un DNI/NIE o una cuenta bancaria: sale como «retenido». La administradora lo corrige en MUNE Studio con *Quitar un dato personal* (solo ese comentario; en el registro queda que se corrigió, sin copiar el original). Los nombres no se pueden detectar solos: si la administradora ve uno, lo corrige igual.
+   - **Archivo:** si la administradora o Claude ven datos personales en un documento, Claude no los copia a ningún sitio (modelo, notas, resúmenes), borra su copia local de ese archivo y propone rechazarlo con la nota «Sube una versión sin datos personales (nombres, correos, teléfonos o firmas)». Con el OK de la administradora, la promotora sustituye solo ese archivo; los demás siguen.
+3. Lo que ya hace `archivo-robot` (decisiones 67 y 72): sin metadatos, sin notas pegadas encima de los PDF y sin el nombre de archivo de la promotora.
+4. **Aparcado:** el prototipo que borra líneas del PDF (cajetines con nombres). No se usa: podría estropear la lectura de cotas y medidas.
 
-| Qué | Para qué | Datos personales | Cuánto se guarda hoy | Decisión pendiente |
-|---|---|---|---|---|
-| La web publicada y la vista previa | El servicio | lo que se publica (sin datos privados) | Hasta que se retira la promoción | Ninguna |
-| Versiones antiguas de cada Worker | Historial de Cloudflare | lo que se publicó en su día | **Depende de Cloudflare** (guarda un historial de versiones). Tenían dirección pública propia; con esta propuesta dejan de tenerla (`preview_urls: false`) | Si hace falta pedir a Cloudflare que las borre (solo se borran todas, borrando el Worker) |
-| Registros de visitas | Fallos | dirección IP | **Depende de Cloudflare**; en el plan gratuito no se guardan si no se activan | Ninguna |
+## GitHub: ejecuciones antiguas con correos
 
-## 4. Gmail de MUNE (`hello.muneprojects@gmail.com`)
+Hasta el 8/11/2026 (decisión 71), *aviso a la promotora*, *aviso a MUNE* y *publicar* recibían los correos como datos de entrada, que siguen en la ficha y el registro de esas ejecuciones. El proceso *Borrar ejecuciones antiguas con correos* (`limpiar-ejecuciones.yml`, a mano) **simula** por defecto: lista cada ejecución anterior al 9/11/2026, mira si su registro lleva algún correo (solo los cuenta) y dice cuáles se borrarían. Con *borrar* marcado y `BORRAR` escrito, borra solo las que llevan correos.
 
-| Qué | Para qué | Datos personales | Cuánto se guarda hoy | Decisión pendiente |
-|---|---|---|---|---|
-| Avisos enviados (carpeta *Enviados*) | Constancia de lo que se avisó | emails y nombres de las promotoras | **Sin plazo** (Gmail no borra solo) | Plazo para avisos automáticos (propuesta de 90 días **no aprobada**). Separar antes los que sean incidencias o reclamaciones |
-| Avisos recibidos de GitHub y de MUNE | Avisar a la administradora | nombres de promociones | Sin plazo | Igual que arriba |
-| Respuestas de las promotoras | Incidencias, reclamaciones, peticiones | lo que escriban | Sin plazo | Deben conservarse mientras puedan hacer falta (relacionado con el contrato) |
+Revisión del 10/11/2026 (antes de borrar nada):
 
-**Duplicado:** cada aviso queda a la vez en *Enviados* de Gmail, en `avisos_enviados` de Supabase y en el historial de GitHub Actions. El que tiene valor es el de Supabase (sin el texto); los otros dos son técnicos.
+- *aviso a la promotora*: 13 ejecuciones (10/10 a 3/11). **No son prueba**: lo avisado consta en `avisos_enviados` de Supabase y en *Enviados* de Gmail.
+- *publicar*: 4 ejecuciones (aprobar v8 y volver a v7 el 6/10, aprobar v10 el 12/10 y v12 el 25/10, todas de la demo). Son de la demo (ningún cliente real) y lo publicado consta también en el historial de git («Registro: residencial-demo vN publicada») y en el registro de Supabase. **No hace falta conservarlas como prueba.** Las del 6/10 son anteriores a que *publicar* recibiera correos: la simulación debe decir que se quedan.
+- *aviso a MUNE*: GitHub no lista ninguna ejecución.
 
-## 5. Claude (Anthropic)
+## Qué guarda cada sistema
 
-Lo que Claude recibe se describe en el informe «Qué información llega a Claude». Cuánto lo guarda Anthropic **depende de sus condiciones y de la configuración de la cuenta**, y **no está resuelto**: es una de las preguntas abiertas sobre el contrato.
+### Supabase (proyecto `mune`, plan gratuito)
 
-## 6. El ordenador de la administradora
+| Qué | Para qué | Datos personales | Cuánto |
+|---|---|---|---|
+| Cuentas (`auth.users`, factores del móvil) | Entrar en MUNE Studio y MUNE Portal | email, contraseña cifrada, código del móvil | Hasta 30 días después de quedarse sin acceso |
+| Accesos (`miembros`) | Quién de la promotora entra y a qué | nombre, email, cargo | Retirar lo desactiva al momento; se borran con la cuenta (quién era queda en `personas_retiradas`) |
+| Personas retiradas (`personas_retiradas`) | Dar nombre a las pruebas de una cuenta eliminada | nombre, cargo, email | Prueba: sin plazo automático |
+| Registro de actividad (`registro`) | Quién hizo qué | identificador y detalle | Técnico: 90 días; avisos: 12 meses; el resto (prueba), sin plazo |
+| Validaciones, aprobaciones y versiones | Prueba de qué se aprobó y publicó | quién aprueba | Hasta que se elimina la promoción (van en la exportación) |
+| Autorizaciones de portfolio | Prueba de lo autorizado | quién autoriza, documento | Sin plazo, también retiradas |
+| Peticiones de eliminar sin exportación, eliminaciones | Prueba | quién lo pidió / solo huellas | Sin plazo |
+| Avisos enviados (`avisos_enviados`) | No repetir avisos | a quién (número) y de qué | 12 meses |
+| Copias y simulacros (`copias_hechas`), noches de conservación (`conservacion_hecha`) | Técnico | ninguno | 90 días |
+| Exportaciones | Enlace de la promotora | número de destinatarios | Archivos hasta que caducan (30 días) o se revocan; la fila queda como prueba |
+| Documentación, entregables, fotos de referencia, versiones, entorno, portfolio | El servicio | lo que contengan | Hasta que se elimina la promoción (el portfolio, mientras dure la autorización) |
+| Registros internos de Supabase | Fallos | IP, email al entrar | Los fija el proveedor (en el plan gratuito, pocos días) |
 
-Lo que descargue (exportaciones internas «Exportar todo (ZIP)», planos, PDF). Con esta propuesta, la exportación para la promotora **ya no pasa por su ordenador**. Decisión pendiente: si las descargas internas se borran después de usarlas.
+### GitHub (`MUNE-Projects/studio` y `MUNE-Projects/copias`, privados)
+
+| Qué | Cuánto |
+|---|---|
+| Copias de seguridad (releases en borrador de `copias`) | 31 días |
+| Lista de eliminaciones (release «eliminaciones») | Sin plazo, a propósito (solo huellas) |
+| Registros de cada ejecución | 90 días (ajuste de GitHub); la ficha de la ejecución puede quedarse más. Desde la decisión 71, sin correos ni textos |
+| Ejecuciones anteriores al 9/11/2026 con correos | Se borran con `limpiar-ejecuciones.yml` (arriba) |
+| Avisos de GitHub (issues) | 12 meses cerrados (a mano por ahora) |
+
+### Cloudflare (Workers `experience`, `revision-experience`, `studio`, `portal`)
+
+La web publicada y la vista previa, hasta que se retira la promoción. Versiones antiguas de cada Worker: historial de Cloudflare, sin dirección propia (`preview_urls: false`); solo se borran todas, borrando el Worker. Registros de visitas: en el plan gratuito no se guardan si no se activan.
+
+### Gmail de MUNE
+
+Se mantienen los correos existentes: avisos enviados, avisos recibidos y respuestas de las promotoras (estas, mientras puedan hacer falta por el contrato). Cada aviso queda también en `avisos_enviados` de Supabase, que es el que cuenta como constancia.
+
+### Claude (Anthropic)
+
+Lo que recibe Claude se describe en el informe «Qué información llega a Claude» y en las decisiones 67 y 72. Cuánto guarda Anthropic depende de sus condiciones y de la configuración de la cuenta: la administradora comprueba en su cuenta de Claude que la opción de usar sus conversaciones para mejorar los modelos está desactivada. Las condiciones del proveedor siguen siendo una pregunta abierta del contrato.
+
+### El ordenador de la administradora
+
+Lo que descargue (ZIP interno, planos, PDF). La exportación para la promotora ya no pasa por él. Pendiente: si las descargas internas se borran después de usarlas.
 
 ## Qué alcance tiene cada eliminación
 
 | Se elimina | Desaparece al momento | Copias que quedan y cuándo caducan |
 |---|---|---|
-| Una **promoción** (o una **promotora**, con todas sus promociones) | En Supabase, sus datos y archivos; se retira de la web pública y de la vista previa | En las copias de seguridad, hasta **31 días**. La exportación de la promotora, hasta que caduca (30 días por defecto) o se revoca. El portfolio, solo lo autorizado y hasta que se retire la autorización. Lo ya enviado por email o descargado, y el historial de GitHub y de Cloudflare: según cada proveedor (arriba) |
-| Un **acceso** (retirarlo) | La persona deja de entrar; su fila sigue, desactivada | Su cuenta sigue (sin acceso) hasta que se borre a mano |
+| Una **promoción** (o una **promotora**, con todas sus promociones) | En Supabase, sus datos y archivos; se retira de la web pública y de la vista previa | En las copias, hasta **31 días**. La exportación de la promotora, hasta que caduca o se revoca. El portfolio, solo lo autorizado. Lo ya enviado por email o descargado, y el historial de GitHub y de Cloudflare: según cada proveedor |
+| Un **acceso** (retirarlo) | La persona deja de entrar; su fila sigue, desactivada | Su cuenta se elimina a los 30 días si no le queda ningún acceso activo; en las copias, 31 días más |
 | Un **código de comprador** (revocarlo) | Deja de funcionar | En las copias, hasta 31 días (y nunca vuelve a funcionar al recuperar una copia) |
 
-No hay un «borrado universal en 31 días»: los 31 días son solo los de las copias de seguridad.
+Si se recupera una copia, una cuenta ya eliminada puede volver sin ningún acceso (sus accesos retirados se vuelven a retirar, receta 18) y el proceso de cada noche la elimina de nuevo.
