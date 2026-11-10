@@ -16,6 +16,7 @@ import {
 	type Contexto, type Elemento, baseVisita, avance, chipEstado, depsComentarios, faltanTrasAprobar, guardarDecision, htmlPersonas,
 	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, textoPublicando, versionPublicada, versionesCon,
 } from './validacion';
+import { AVISO_COMENTARIOS } from './privacidad';
 
 export const versionesConPlanos = (id: string) => versionesCon(id, 'planos');
 export const leerPlanos = (id: string, version: string) => leerValidacion(id, version, 'planos');
@@ -148,6 +149,7 @@ export async function pintarDetalle(caja: HTMLElement, id: string, planoId: numb
 				<p class="ayuda" data-recoge hidden></p>
 				<label><span data-etiqueta-pedir>Qué hay que corregir</span>
 					<textarea name="comentario" rows="3" maxlength="4000" placeholder="Por ejemplo: el dormitorio 2 mide 3,10 m de ancho, no 2,90."></textarea></label>
+				<p class="ayuda">${AVISO_COMENTARIOS}</p>
 				<p class="error" role="alert"></p>
 				<div class="acciones"><button class="boton secundario" type="submit">Pedir cambios</button></div>
 			</form>

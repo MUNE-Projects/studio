@@ -12,6 +12,7 @@
 // ponen fechas, se cambia o se retira; los compradores la ven cuando está lista.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { AVISO_ARCHIVOS } from './privacidad';
 
 interface Dependencias {
 	sb: SupabaseClient;
@@ -184,6 +185,7 @@ export async function pintarCatalogo(caja: HTMLElement, d: Dependencias, p: Prom
 			<label>Precio (€)<input name="precio" type="number" min="0" max="10000000" step="0.01" required></label>
 			<label>Descripción<input name="descripcion" maxlength="1000" placeholder="Marca, modelo, dónde va…"></label>
 			<label class="archivos">Documento con la descripción detallada o fotos (opcional; hasta 5 archivos PDF, Word o imágenes, de 15 MB como mucho)<input name="archivos" type="file" accept="image/*,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple></label>
+			<p class="ayuda">${AVISO_ARCHIVOS}</p>
 			<div class="acciones"><button class="boton secundario" type="submit">Añadir la opción</button></div>
 			<p class="error" role="alert"></p>
 		</form>`;
