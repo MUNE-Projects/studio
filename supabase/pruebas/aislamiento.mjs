@@ -125,6 +125,19 @@ const pdf = ( texto, ficha = '' ) => {
 		+ `5 0 obj << /Producer (Pruebas de MUNE)${ ficha } >> endobj\ntrailer << /Root 1 0 R /Info 5 0 R >>\n%%EOF\n` );
 
 };
+// PDF con dos notas pegadas encima (autor y texto inventados) y un campo de formulario
+const pdfConNotas = () => {
+
+	const flujo = 'BT /F1 12 Tf 20 100 Td (Dormitorio 1 11,52 m2) Tj ET';
+	return Buffer.from( `%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [8 0 R] >> >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n`
+		+ `3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Annots [6 0 R 7 0 R 8 0 R] >> endobj\n`
+		+ `4 0 obj << /Length ${ flujo.length } >> stream\n${ flujo }\nendstream endobj\n`
+		+ `6 0 obj << /Type /Annot /Subtype /Text /Rect [10 10 30 30] /T (Autora INVENTADA) /Contents (Llamar a autora@inventada.test) >> endobj\n`
+		+ `7 0 obj << /Type /Annot /Subtype /FreeText /Rect [40 10 200 30] /T (Autora INVENTADA) /Contents (Revisado por Persona INVENTADA) /DA (/F1 10 Tf) >> endobj\n`
+		+ `8 0 obj << /Type /Annot /Subtype /Widget /FT /Tx /T (campo_superficie) /V (67,16) /Rect [10 150 100 170] /P 3 0 R >> endobj\n`
+		+ `trailer << /Root 1 0 R >>\n%%EOF\n` );
+
+};
 // JPEG con EXIF inventado: autora, GPS y orientación 6 (girada)
 function jpegConExif() {
 
@@ -1819,10 +1832,12 @@ const guardarMarca = ( sb, promotora, promocion, marca ) => sb.rpc( 'guardar_mar
 // una tipografía propia (y un PDF) subidos por quien administra la promotora a su carpeta de marca
 const FUENTE_A = `${ pA.id }/marca/mi-fuente.woff2`;
 const PDF_EN_MARCA = `${ pA.id }/marca/no-es-fuente.pdf`;
-await exigir( aprobA.storage.from( 'documentos' ).upload( FUENTE_A, pdf( 'fuente' ), { upsert: true } ), 'subir tipografía' );
-await exigir( aprobA.storage.from( 'documentos' ).upload( PDF_EN_MARCA, pdf( 'pdf' ), { upsert: true } ), 'subir pdf a marca' );
+const DISFRAZADA = `${ pA.id }/marca/disfrazada.woff2`;   // un PDF con nombre de tipografía (047)
+const BYTES_FUENTE = Buffer.concat( [ Buffer.from( 'wOF2', 'latin1' ), Buffer.alloc( 60, 7 ) ] );
+await exigir( aprobA.storage.from( 'documentos' ).upload( FUENTE_A, BYTES_FUENTE, { upsert: true } ), 'subir tipografía' );
+await exigir( aprobA.storage.from( 'documentos' ).upload( DISFRAZADA, pdf( 'Juan Inventado · juan@inventado.test' ), { upsert: true } ), 'subir pdf disfrazado' );
 
-await caso( DEBE_FALLAR, '44. Marca: otra promotora, alguien sin «marca», sin administrar la promotora, sin sesión o el robot la leen o la cambian; un logo con código; una tipografía o un color que no valen', async () => {
+await caso( DEBE_FALLAR, '44. Marca: otra promotora, alguien sin «marca», sin administrar la promotora, sin sesión o el robot la leen o la cambian; un logo con código; una tipografía o un color que no valen; un archivo que no es una tipografía en la carpeta de marca, o el robot la lee directamente o recibe algo que no es una tipografía (047)', async () => {
 
 	const r = {
 		otraLeeGeneral: await aprobB.rpc( 'marca_de_promotora', { p_promotora: pA.id } ),
@@ -1849,10 +1864,23 @@ await caso( DEBE_FALLAR, '44. Marca: otra promotora, alguien sin «marca», sin 
 		sinCapacidadSubeFuente: await soloCompradores.sb.storage.from( 'documentos' ).upload( `${ pA.id }/prueba-a/marca/x.woff2`, pdf( 'x' ) ),
 		sinAdministrarSubeFuenteGeneral: await gestorA.storage.from( 'documentos' ).upload( `${ pA.id }/marca/x.woff2`, pdf( 'x' ) ),
 		otraVeFuente: await aprobB.storage.from( 'documentos' ).download( FUENTE_A ),
+		// 047: en la carpeta de marca solo tipografías, y el robot no la lee directamente
+		subePdfAMarca: await aprobA.storage.from( 'documentos' ).upload( PDF_EN_MARCA, pdf( 'pdf' ), { upsert: true } ),
+		robotBajaFuenteDirecta: await robot.storage.from( 'documentos' ).download( FUENTE_A ),
+		robotBajaDisfrazadaDirecta: await robot.storage.from( 'documentos' ).download( DISFRAZADA ),
+		robotListaMarca: await robot.storage.from( 'documentos' ).list( `${ pA.id }/marca` ),
 		colorRaro: await guardarMarca( aprobA, pA.id, null, { ...marcaBuena( 'A' ), color_principal: 'red' } ),
 	};
-	const noFallan = Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) );
+	const funcion = {
+		disfrazada: await archivoRobot( robot, { accion: 'tipografia', ruta: DISFRAZADA } ),
+		documento: await archivoRobot( robot, { accion: 'tipografia', ruta: `${ pA.id }/prueba-a/${ req[ 'prueba-a' ] }/x.woff2` } ),
+		promotoraPide: await archivoRobot( aprobA, { accion: 'tipografia', ruta: FUENTE_A } ),
+		subeCarpetas: await archivoRobot( robot, { accion: 'tipografia', ruta: `${ pA.id }/marca/../x.woff2` } ),
+	};
+	const noFallan = [ ...Object.keys( r ).filter( ( k ) => ! ( falla( r[ k ] ) || vacio( r[ k ] ) ) ),
+		...Object.keys( funcion ).filter( ( k ) => funcion[ k ].ok ) ];
 	if ( noFallan.length ) throw new Error( `no fallan: ${ noFallan.join( ', ' ) }` );
+	if ( funcion.disfrazada.status !== 415 ) throw new Error( `el PDF disfrazado responde ${ funcion.disfrazada.status }, no 415` );
 	return true;
 
 } );
@@ -1863,7 +1891,9 @@ await caso( DEBE_FUNCIONAR, 'Marca: la administradora de la promotora pone la ge
 	// la propia de la promoción usa la tipografía de la promotora (sus archivos), con la licencia confirmada
 	await exigir( guardarMarca( soloMarca.sb, pA.id, 'prueba-a', { ...marcaBuena( 'Residencial A' ), tipografia: 'Mi Fuente', color_principal: '#123456', licencia: true,
 		tipografia_archivos: [ { ruta: FUENTE_A, nombre: 'mi.woff2', peso: 700, estilo: 'italic' } ] } ), 'propia' );
-	const robotBajaFuente = await robot.storage.from( 'documentos' ).download( FUENTE_A );
+	const robotBajaFuente = await archivoRobot( robot, { accion: 'tipografia', ruta: FUENTE_A } );
+	const fuenteRecibida = robotBajaFuente.ok ? Buffer.from( await robotBajaFuente.arrayBuffer() ) : Buffer.alloc( 0 );
+	const equipoBajaFuente = await soloMarca.sb.storage.from( 'documentos' ).download( FUENTE_A );
 	const conPropia = await exigir( robot.rpc( 'marca_de_promocion', { p_promocion: 'prueba-a' } ), 'robot lee prueba-a' );
 	const otra = await exigir( robot.rpc( 'marca_de_promocion', { p_promocion: 'prueba-a2' } ), 'robot lee prueba-a2' );
 	const equipoVe = await exigir( soloCompradores.sb.rpc( 'marca_de_promocion', { p_promocion: 'prueba-a' } ), 'el equipo la ve' );
@@ -1872,7 +1902,7 @@ await caso( DEBE_FUNCIONAR, 'Marca: la administradora de la promotora pone la ge
 	const sinPropia = await exigir( robot.rpc( 'marca_de_promocion', { p_promocion: 'prueba-a' } ), 'robot lee sin propia' );
 	const mal = Object.entries( {
 		propia: conPropia.efectiva?.promotora === 'Residencial A' && conPropia.efectiva?.tipografia?.familia === 'Mi Fuente' && conPropia.efectiva?.colorPrincipal === '#123456'
-			&& conPropia.efectiva?.tipografia?.archivos?.[ 0 ]?.peso === 700 && !! conPropia.efectiva?.tipografia?.licencia && ! robotBajaFuente.error,
+			&& conPropia.efectiva?.tipografia?.archivos?.[ 0 ]?.peso === 700 && !! conPropia.efectiva?.tipografia?.licencia && fuenteRecibida.equals( BYTES_FUENTE ) && ! equipoBajaFuente.error,
 		general: otra.efectiva?.promotora === 'Promotora A' && otra.efectiva?.logoSvg === LOGO_PNG && otra.efectiva?.contacto?.telefono === '900 000 000'
 			&& otra.efectiva?.tipografia?.familia === 'Lora' && ! otra.efectiva?.tipografia?.archivos,
 		equipo: equipoVe.puede_cambiar === false && equipoVe.efectiva?.promotora === 'Residencial A',
@@ -2418,6 +2448,9 @@ await exigir( gestorA.from( 'documentos' ).insert( { promocion_id: 'prueba-a', r
 const FOTO = jpegConExif();
 const [ { id: peticionFoto } ] = await exigir( admin.from( 'peticiones' ).insert( { promocion_id: 'prueba-a', texto: 'Cocina como la de la foto' } ).select( 'id' ), 'petición con foto' );
 await exigir( admin.storage.from( 'referencias' ).upload( `${ peticionFoto }/cocina.jpg`, FOTO, { contentType: 'image/jpeg' } ), 'foto de referencia' );
+const DOC_NOTAS = pdfConNotas();
+const rutaDocNotas = `${ pA.id }/prueba-a/${ req[ 'prueba-a' ] }/notas.pdf`;
+await exigir( gestorA.storage.from( 'documentos' ).upload( rutaDocNotas, DOC_NOTAS, { contentType: 'application/pdf', upsert: true } ), 'documento con notas' );
 const RUTA_OPCION = `${ pA.id }/prueba-a/opciones/ficha-metadatos.pdf`;
 await exigir( gestorA.storage.from( 'documentos' ).upload( RUTA_OPCION, DOC_METADATOS, { contentType: 'application/pdf', upsert: true } ), 'adjunto de una opción' );
 
@@ -2450,6 +2483,8 @@ await caso( DEBE_FUNCIONAR, 'Archivos para Claude: el robot recibe la documentac
 
 	const doc = await archivoRobot( robot, { accion: 'archivo', almacen: 'documentos', ruta: rutaDocMetadatos } );
 	const docLimpio = Buffer.from( await doc.arrayBuffer() );
+	const conNotas = await archivoRobot( robot, { accion: 'archivo', almacen: 'documentos', ruta: rutaDocNotas } );
+	const notasLimpio = Buffer.from( await conNotas.arrayBuffer() );
 	const opcion = await archivoRobot( robot, { accion: 'archivo', almacen: 'documentos', ruta: RUTA_OPCION } );
 	const opcionLimpia = Buffer.from( await opcion.arrayBuffer() );
 	const lista = await archivoRobot( robot, { accion: 'fotos', peticion: String( peticionFoto ) } );
@@ -2463,6 +2498,10 @@ await caso( DEBE_FUNCIONAR, 'Archivos para Claude: el robot recibe la documentac
 		documento: doc.ok && doc.headers.get( 'content-type' ) === 'application/pdf' && doc.headers.get( 'x-huella-original' ) === huella( DOC_METADATOS ),
 		documentoSinFicha: ! /INVENTADA|inventada\.test/.test( texto( docLimpio ) ) && texto( docLimpio ).includes( 'Planta con cotas 27,40 m2' ),
 		quitado: JSON.parse( decodeURIComponent( doc.headers.get( 'x-limpieza' ) ?? '%5B%5D' ) ).length > 0,
+		// decisión 72: las notas pegadas encima, fuera enteras (autor y texto); el dibujo y el campo, igual
+		sinNotas: conNotas.ok && ! /INVENTADA|inventada\.test|\/Text\b|FreeText/.test( texto( notasLimpio ) )
+			&& texto( notasLimpio ).includes( 'Dormitorio 1 11,52 m2' ) && texto( notasLimpio ).includes( 'campo_superficie' ) && texto( notasLimpio ).includes( '67,16' )
+			&& /notas pegadas encima del documento \(2\)/.test( decodeURIComponent( conNotas.headers.get( 'x-limpieza' ) ?? '' ) ),
 		opcion: opcion.ok && ! /INVENTADA/.test( texto( opcionLimpia ) ),
 		listaFotos: fotos.length === 1 && fotos[ 0 ].nombre === 'cocina.jpg',
 		foto: foto.ok && foto.headers.get( 'content-type' ) === 'image/jpeg' && ! /INVENTADA/.test( texto( fotoLimpia ) )
