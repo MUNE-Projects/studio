@@ -18,6 +18,7 @@ import {
 	type Contexto, type Elemento, abrirConPase, avance, baseVisita, depsComentarios, chipEstado, faltanTrasAprobar, guardarDecision, htmlPersonas,
 	htmlSinAprobadores, leerValidacion, mensajeAprobado, miVoto, textoPublicando, numVersion, tituloUnidad, versionPublicada, versionesCon,
 } from './validacion';
+import { AVISO_COMENTARIOS } from './privacidad';
 
 export const versionesConExperiencia = (id: string) => versionesCon(id, 'experiencia');
 
@@ -175,6 +176,7 @@ function htmlUnidad(id: string, u: Elemento, version: string, actual: boolean, b
 						</select></label>
 					<label><span data-etiqueta-pedir>Qué hay que cambiar</span>
 						<textarea name="comentario" rows="3" maxlength="4000" placeholder="Por ejemplo: la ventana del dormitorio principal debe llegar hasta el suelo."></textarea></label>
+					<p class="ayuda">${AVISO_COMENTARIOS}</p>
 					<p class="error" role="alert"></p>
 					<div class="acciones"><button class="boton secundario" type="submit">Pedir cambios</button></div>
 				</form>

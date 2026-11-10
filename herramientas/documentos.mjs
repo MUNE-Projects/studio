@@ -118,6 +118,21 @@ const extension = ( ruta ) => ( /\.([a-z0-9]{1,5})$/i.exec( ruta ?? '' )?.[ 0 ] 
 const formato = ( ruta ) => extension( ruta ) ? `archivo ${ extension( ruta ).slice( 1 ).toUpperCase() }` : 'archivo';
 const neutro = ( texto ) => String( texto ?? 'documento' ).normalize( 'NFD' ).replace( /[\u0300-\u036f]/g, '' ).toLowerCase()
 	.replace( /[^a-z0-9]+/g, '-' ).replace( /^-|-$/g, '' ).slice( 0, 60 ) || 'documento';
+// Un texto de la promotora que parece llevar un dato personal (correo, teléfono, DNI/NIE
+// o cuenta bancaria) no se enseña: se retiene para que la administradora lo corrija en
+// MUNE Studio («Quitar un dato personal»), decisión 73. Los nombres no se pueden detectar:
+// para eso está el aviso de MUNE Portal.
+const DATO_PERSONAL = [
+	/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/,
+	/(?<![\d,.])(?:\+34[\s.]?)?[6789]\d{2}[\s.]?\d{3}[\s.]?\d{3}(?![\d,])/,
+	/(?<![\d,.])(?:\+34[\s.]?)?[6789]\d{2}[\s.]\d{2}[\s.]\d{2}[\s.]\d{2}(?![\d,])/,
+	/\b\d{8}[\s-]?[A-HJ-NP-TV-Z]\b/i,
+	/\b[XYZ][\s-]?\d{7}[\s-]?[A-Z]\b/i,
+	/\bES\d{2}(?:[\s-]?\d{4}){5}\b/i,
+];
+const pareceDatoPersonal = ( t ) => DATO_PERSONAL.some( ( r ) => r.test( String( t ?? '' ) ) );
+const RETENIDO = 'retenido: parece llevar un dato personal (correo, teléfono, DNI o cuenta). Pide a la administradora que lo corrija en MUNE Studio';
+const mostrar = ( t ) => pareceDatoPersonal( t ) ? `[${ RETENIDO }]` : `«${ t }»`;
 const fecha = ( iso ) => iso.slice( 0, 16 ).replace( 'T', ' ' );
 const tamano = ( b ) => b >= 1048576 ? `${ ( b / 1048576 ).toFixed( 1 ) } MB` : `${ Math.max( 1, Math.round( b / 1024 ) ) } KB`;
 const CAMPOS = 'id,promocion_id,version,tamano,estado,nota,subido_en,revisado_en,huella,ruta,requisitos!documentos_requisito_id_fkey(bloque,elemento),documento_cubre(requisitos(elemento))';
@@ -208,7 +223,7 @@ async function novedades( token ) {
 	console.log( `\nDocumentos revisados: ${ revisados.length }` );
 	for ( const d of revisados ) console.log( `  · ${ d.promocion_id } · ${ d.requisitos?.elemento } v${ d.version } → ${ d.estado }${ d.nota ? ` («${ d.nota }»)` : '' }` );
 	console.log( `\nPlanos validados por las promotoras: ${ validaciones.length }` );
-	for ( const v of validaciones ) console.log( `  · ${ v.promocion_id } ${ v.version } · ${ v.entregables?.nombre } → ${ v.decision }${ v.comentario ? ` («${ v.comentario }»)` : '' }` );
+	for ( const v of validaciones ) console.log( `  · ${ v.promocion_id } ${ v.version } · ${ v.entregables?.nombre } → ${ v.decision }${ v.comentario ? ` (${ mostrar( v.comentario ) })` : '' }` );
 	console.log( `\nPeticiones de cambios abiertas: ${ peticiones.length }` );
 	for ( const p of peticiones ) console.log( `  · #${ p.id } ${ p.promocion_id } (${ p.estado }): ${ p.texto.slice( 0, 80 ) }` );
 	const pend = await pedir( '/rest/v1/documentos?select=id&estado=eq.pendiente', { token } );
@@ -251,8 +266,8 @@ async function comentarios( token, promocion, accion ) {
 		console.log( `\n■ ${ titulo }` );
 		for ( const h of grupo ) {
 
-			console.log( `\n#${ h.id } · ${ lugar( h ) } · ${ punto( h ) } · ${ h.version } · ${ h.autor } · ${ fecha( h.creado_en ) }\n  «${ h.texto }»` );
-			for ( const r of h.respuestas ) console.log( `    ↳ ${ r.de_mune ? 'Equipo de MUNE' : r.autor }: «${ r.texto }»` );
+			console.log( `\n#${ h.id } · ${ lugar( h ) } · ${ punto( h ) } · ${ h.version } · ${ h.autor } · ${ fecha( h.creado_en ) }\n  ${ h.de_mune ? `«${ h.texto }»` : mostrar( h.texto ) }` );
+			for ( const r of h.respuestas ) console.log( `    ↳ ${ r.de_mune ? 'Equipo de MUNE' : r.autor }: ${ r.de_mune ? `«${ r.texto }»` : `${ mostrar( r.texto ) } (#${ r.id })` }` );
 
 		}
 
@@ -313,7 +328,7 @@ async function opciones( token ) {
 	for ( const op of lista ) {
 
 		console.log( `\n#${ op.id } · ${ op.promocion_id } · ${ op.categoria_nombre } › ${ op.nombre }${ op.precio != null ? ` · ${ op.precio } €` : '' }` );
-		if ( op.descripcion ) console.log( `  «${ op.descripcion }»` );
+		if ( op.descripcion ) console.log( `  ${ mostrar( op.descripcion ) }` );
 		for ( const [ n, a ] of ( op.archivos ?? [] ).entries() ) {
 
 			const archivo = await archivoLimpio( token, 'documentos', a.ruta );

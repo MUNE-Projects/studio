@@ -13,6 +13,7 @@
 //   notas internas para Claude (la promotora no las ve).
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { AVISO_COMENTARIOS } from './privacidad';
 
 export type TipoComentario = 'version' | 'plano' | 'experiencia' | 'personalizacion';
 export interface PuntoPlano { x: number; y: number }
@@ -64,9 +65,10 @@ export function textoPedirCambios(hs: Hilo[], texto: string): string {
 	return todo.length > 4000 ? `${todo.slice(0, 3990)}…` : todo;
 }
 
-function htmlMensaje(esc: Dependencias['esc'], m: Mensaje): string {
+function htmlMensaje(esc: Dependencias['esc'], m: Mensaje, admin = false): string {
 	return `<p class="comentario-autor"><strong>${esc(m.de_mune ? 'Equipo de MUNE' : m.autor)}</strong> · ${esc(cuando(m.creado_en))}</p>
-		<p class="comentario-texto">${esc(m.texto)}</p>`;
+		<p class="comentario-texto">${esc(m.texto)}</p>
+		${admin && !m.de_mune ? `<button class="enlace" type="button" data-corregir="${m.id}">Quitar un dato personal</button>` : ''}`;
 }
 
 /** En qué punto está un comentario. */
@@ -88,8 +90,8 @@ function htmlHilo(d: Dependencias, h: Hilo, n: number | null, lugar: string): st
 			<span class="promo-lugar">${lugar ? `${esc(lugar)} · ` : ''}${h.punto ? 'en un punto' : 'general'} · ${esc(h.version)}</span>
 			${chipEstado(d, h)}
 		</div>
-		${htmlMensaje(esc, h)}
-		${h.respuestas.map((r) => `<div class="respuesta">${htmlMensaje(esc, r)}</div>`).join('')}
+		${htmlMensaje(esc, h, d.admin)}
+		${h.respuestas.map((r) => `<div class="respuesta">${htmlMensaje(esc, r, d.admin)}</div>`).join('')}
 		<div class="acciones">
 			${(h.tipo === 'experiencia' || h.tipo === 'personalizacion') && h.clave && h.punto && d.abrir3D ? '<button class="boton secundario pequeno" type="button" data-ver-3d>Ver en 3D</button>' : ''}
 			${h.tipo === 'plano' && h.punto && d.imagenPlano ? '<button class="boton secundario pequeno" type="button" data-ver-plano>Ver en el plano</button>' : ''}
@@ -100,6 +102,7 @@ function htmlHilo(d: Dependencias, h: Hilo, n: number | null, lugar: string): st
 		<div data-zona-plano></div>
 		<form class="peticion-form respuesta-form" data-respuesta hidden novalidate>
 			<label>Tu respuesta<textarea name="texto" rows="2" maxlength="2000"></textarea></label>
+			<p class="ayuda">${AVISO_COMENTARIOS}</p>
 			<p class="error" role="alert"></p>
 			<div class="acciones"><button class="boton pequeno" type="submit">Enviar</button><button class="enlace" type="button" data-cancelar>Cancelar</button></div>
 		</form>
@@ -175,6 +178,7 @@ export async function pintarComentarios(caja: HTMLElement, plano: HTMLElement | 
 			<p class="ayuda">${ayuda}</p>
 			<p class="aviso-punto" data-aviso-punto hidden>Comentario en el punto marcado <span class="marca-plano nueva en-linea">+</span> · <button class="enlace" type="button" data-quitar-punto>Quitar el punto</button></p>
 			<label>Comentario<textarea name="texto" rows="2" maxlength="2000" placeholder="${s.tipo === 'plano' ? 'Por ejemplo: esta puerta debería abrir hacia el pasillo.' : s.tipo === 'experiencia' ? 'Por ejemplo: en general, los muebles se ven pequeños.' : s.tipo === 'personalizacion' ? 'Por ejemplo: el suelo de roble se ve demasiado oscuro.' : 'Por ejemplo: falta la zona de piscina.'}"></textarea></label>
+			<p class="ayuda">${AVISO_COMENTARIOS}</p>
 			<p class="error" role="alert"></p>
 			<div class="acciones">
 				<button class="boton secundario pequeno" type="submit">Comentar</button>
@@ -277,6 +281,16 @@ export async function pintarComentarios(caja: HTMLElement, plano: HTMLElement | 
 			if (e) { alert(d.traducir(e)); return; }
 			await recargar();
 		});
+		// MUNE Studio: corregir solo ese comentario si lleva un dato personal (decisión 73), antes de pasarlo a Claude
+		art.querySelectorAll<HTMLButtonElement>('[data-corregir]').forEach((b) => b.addEventListener('click', async () => {
+			const m = [h, ...h.respuestas].find((x) => x.id === Number(b.dataset.corregir));
+			if (!m) return;
+			const nuevo = prompt('Quita solo el dato personal (nombre, correo, teléfono, DNI…) y deja el resto igual. El texto corregido sustituye al original.', m.texto);
+			if (nuevo === null || nuevo.trim() === m.texto.trim()) return;
+			const { error: e } = await d.sb.rpc('corregir_comentario', { p_comentario: m.id, p_texto: nuevo });
+			if (e) { alert(d.traducir(e)); return; }
+			await recargar();
+		}));
 		art.querySelector('[data-borrar]')?.addEventListener('click', async () => {
 			if (!confirm('¿Borrar este comentario?')) return;
 			const { error: e } = await d.sb.rpc('borrar_comentario', { p_comentario: id });

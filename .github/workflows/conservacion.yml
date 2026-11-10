@@ -1,0 +1,91 @@
+# Aplicar los plazos de conservación (decisión 73, 048_conservacion.sql).
+#
+# Cada noche, con la cuenta «ejecutor» (EJECUTOR_CLAVE):
+#  · elimina las cuentas que llevan 30 días sin ningún acceso activo (antes
+#    guarda aparte quién era, para sus aprobaciones y entregas);
+#  · borra el registro técnico y las copias y simulacros de más de 90 días, y
+#    los registros de avisos automáticos de más de 12 meses.
+# Lo que es prueba (aprobaciones, publicaciones, exportaciones, eliminaciones,
+# portfolio, selecciones…) no se borra nunca solo. Aquí solo salen números: ni
+# correos ni nombres.
+# A mano (Run workflow) se lanza en «simular»: dice qué haría, sin borrar nada.
+# Si falla, abre un aviso «⚠️ …» (email) que se cierra solo cuando vuelve a
+# funcionar. Gratis.
+name: Aplicar los plazos de conservación
+run-name: plazos de conservación${{ github.event_name == 'workflow_dispatch' && inputs.simular && ' (simulación)' || '' }}
+
+on:
+  schedule:
+    - cron: '29 4 * * *'
+  workflow_dispatch:
+    inputs:
+      simular:
+        description: solo contar lo que se haría, sin borrar nada
+        type: boolean
+        default: true
+
+permissions:
+  issues: write
+
+concurrency:
+  group: conservacion
+  cancel-in-progress: false
+
+jobs:
+  aplicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      EJECUTOR_CLAVE: ${{ secrets.EJECUTOR_CLAVE }}
+      SIMULAR: ${{ github.event_name == 'workflow_dispatch' && inputs.simular && 'si' || 'no' }}
+      TITULO: ⚠️ Los plazos de conservación no se han podido aplicar
+    steps:
+      - name: Aplicar
+        shell: python3 {0}
+        run: |
+          import json, os, sys, urllib.request
+          SUPABASE = 'https://iowtdenlkxjqzlpwizgb.supabase.co'
+          PUBLICA = 'sb_publishable_LLvwP-xexV-Hlz2R585IQQ_H2NfJebR'
+          def pedir(ruta, cuerpo, token=None):
+              cab = {'apikey': PUBLICA, 'Content-Type': 'application/json'}
+              if token: cab['Authorization'] = f'Bearer {token}'
+              r = urllib.request.Request(SUPABASE + ruta, data=json.dumps(cuerpo).encode(), headers=cab, method='POST')
+              with urllib.request.urlopen(r, timeout=60) as res:
+                  return json.loads(res.read().decode() or 'null')
+          simular = os.environ['SIMULAR'] == 'si'
+          sesion = pedir('/auth/v1/token?grant_type=password', {'email': 'hello.muneprojects+ejecutor@gmail.com', 'password': os.environ['EJECUTOR_CLAVE']})['access_token']
+          r = pedir('/rest/v1/rpc/aplicar_conservacion', {'p_simular': simular}, sesion)
+          if r.get('cerrado'):
+              print(r['cerrado']); sys.exit(0)
+          verbo = 'Se eliminarían' if simular else 'Eliminadas'
+          print(('SIMULACIÓN: no se ha borrado nada.\n' if simular else '') +
+                f"{verbo} {r['cuentas_eliminadas']} cuenta(s) sin acceso desde hace 30 días o más.\n"
+                f"Esperando sus 30 días: {r['cuentas_esperando']}" + (f" (la primera, el {r['proxima_eliminacion'][:10]})" if r.get('proxima_eliminacion') else '') + '.\n'
+                f"Registro técnico de más de 90 días: {r['registro_tecnico']}.\n"
+                f"Copias y simulacros de más de 90 días: {r['copias_y_simulacros']}.\n"
+                f"Avisos automáticos de más de 12 meses: {r['avisos_enviados'] + r['registro_avisos']}.")
+
+      - name: Avisar si ha fallado
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh label create sistema --repo "$REPO" --color 9B2C2C --description "Avisos del sistema (vigilancia automática)" 2>/dev/null || true
+          abierto=$(gh issue list --repo "$REPO" --label sistema --state open --limit 100 --json number,title \
+            --jq '.[] | select(.title == $ENV.TITULO) | .number' | head -n1)
+          [[ -n "$abierto" ]] || gh issue create --repo "$REPO" --label sistema --title "$TITULO" --body "$(printf '%s\n' \
+            "Los plazos de conservación no se han podido aplicar esta noche. No se ha perdido nada: se reintenta la noche siguiente. Díselo a Claude." "" \
+            "Detalle: $GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID" "" \
+            "_Este aviso se cierra solo la próxima vez que funcione._")"
+
+      - name: Cerrar el aviso si ya funciona
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          for n in $(gh issue list --repo "$REPO" --label sistema --state open --limit 100 --json number,title \
+            --jq '.[] | select(.title == $ENV.TITULO) | .number'); do
+            gh issue close "$n" --repo "$REPO" --comment "Resuelto: los plazos de conservación vuelven a aplicarse."
+          done
