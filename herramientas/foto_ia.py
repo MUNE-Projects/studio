@@ -122,14 +122,23 @@ if os.path.exists(ruta_m):
     mt = np.asarray(Image.open(ruta_m).convert('RGB').resize(original.size, Image.NEAREST)).astype(np.int32)
     clave = mt[..., 0] * 65536 + mt[..., 1] * 256 + mt[..., 2]
     dC = np.zeros_like(a); dY = np.zeros(a.shape[:2], np.float32)
+    rp = profundidad.replace('.png', '-proteger.png')
+    prot = np.asarray(Image.open(rp).convert('L').resize(original.size, Image.NEAREST)).astype(int) if os.path.exists(rp) else np.zeros(clave.shape, int)
+    # pieza a pieza (cada trozo suelto de cada material): dos cojines iguales en dos sofás
+    # se corrigen cada uno con lo suyo
+    trozos = []
     for kk in np.unique(clave):
-        sel = clave == kk
+        n, et = cv2.connectedComponents((clave == kk).astype(np.uint8), connectivity=8)
+        trozos += [et == t for t in range(1, n)]
+    for sel in trozos:
         if sel.sum() < 200: continue
         # el centro de la zona: la IA puede haber movido el borde unos píxeles
         nucleo = np.asarray(Image.fromarray((sel * 255).astype(np.uint8)).filter(ImageFilter.MinFilter(7))) > 0
         z = nucleo if nucleo.sum() > 100 else sel
         dC[sel] = (np.median(co[z], 0) - np.median(ca[z], 0)) * k
-        dY[sel] = (np.median(yo[z]) - np.median(ya[z])) * kl
+        # los tejidos también recuperan su claridad a medias: la IA los deslava (cojines)
+        kz = max(kl, arg('--claridad-tela', 0.5)) if abs(np.median(prot[z]) - 140) <= 1 else kl
+        dY[sel] = (np.median(yo[z]) - np.median(ya[z])) * kz
     dC = cv2.GaussianBlur(dC, (0, 0), 3); dY = cv2.GaussianBlur(dY, (0, 0), 3)
     mezcla = ya[..., None] + dY[..., None] + ca + dC
 # 1b) nada inventado: donde la IA dibuja líneas que el render no tiene (una barra en un armario
@@ -176,13 +185,19 @@ if os.path.exists(ruta_p) and '--sin-proteger' not in sys.argv:
             if len(peq): piezas |= np.isin(etiquetas, peq)
         piezas &= ~np.isin(pr, [round(255 * 0.55)])
     # más margen en las piezas: lo que la IA pone en su lugar (un interruptor) suele ser más ancho
-    m = np.maximum(borde_suave(vidrio, 9, 3), borde_suave(piezas, 35, 4))
-    mezcla = mezcla * (1 - m) + o * m
-    # d) las alfombras: la IA las funde con el suelo. Su color y su tejido son los del
+    m = np.maximum(borde_suave(vidrio, 9, 3), borde_suave(piezas, 21, 4))
+    # con la luz de lo que hay alrededor en la foto de la IA: si no, se ven cuadrados (más
+    # oscuros o más claros) alrededor de los focos del techo, las velas…
+    yo_ = o @ np.array([0.299, 0.587, 0.114])
+    fuera = (1 - np.clip(cv2.dilate((m[..., 0] > 0.02).astype(np.uint8), np.ones((5, 5), np.uint8)), 0, 1)).astype(np.float32)
+    bl = lambda x: cv2.GaussianBlur(x.astype(np.float32), (0, 0), 18)
+    luz = (bl(Ya * fuera) + 1) / (bl(yo_ * fuera) + 1)
+    mezcla = mezcla * (1 - m) + (o * np.clip(luz, 0.5, 2.0)[..., None]) * m
+    # d) las alfombras (la IA las funde con el suelo) y los modelos con texturas reales de la
+    #    biblioteca (la mesa de hormigón salía de madera): su color y su tejido son los del
     #    render; la luz (sombras, sol), la de la IA
     alfombra = abs(pr - round(255 * 0.7)) <= 1
     if alfombra.any():
-        yo_ = o @ np.array([0.299, 0.587, 0.114])
         g = cv2.GaussianBlur(Ya.astype(np.float32), (0, 0), 10) / np.maximum(cv2.GaussianBlur(yo_.astype(np.float32), (0, 0), 10), 1)
         za = cv2.GaussianBlur(cv2.erode(alfombra.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(np.float32), (0, 0), 1.5)[..., None]
         mezcla = mezcla * (1 - za) + (o * np.clip(g, 0.6, 1.6)[..., None]) * za

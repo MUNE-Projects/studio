@@ -260,6 +260,15 @@ for ob in esc.objects:
             nombre = mt.name + (':alfombra' if 'alfombra' in ob.name.lower() else '')
             if nombre not in cambiados: cambiados[nombre] = material(nombre)
             ranura.material = cambiados[nombre]
+        elif mt.use_nodes and not mt.get('mune_aov'):
+            # modelos de la biblioteca con sus texturas reales (plantas, jarrones, la mesa…):
+            # la pasada de IA respeta su acabado (como las alfombras) y sus bordes
+            mt['mune_aov'] = 1
+            import hashlib
+            hsh = hashlib.md5(mt.name.encode()).digest()
+            for nom, val in (('proteger', 0.7), ('materiales', (hsh[0] / 255, hsh[1] / 255, hsh[2] / 255, 1))):
+                aov = mt.node_tree.nodes.new('ShaderNodeOutputAOV'); aov.aov_name = nom
+                aov.inputs['Value' if nom == 'proteger' else 'Color'].default_value = val
 print('materiales:', len(cambiados))
 
 # ------------------------------------------------------------------ cámara
