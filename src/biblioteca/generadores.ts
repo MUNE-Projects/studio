@@ -166,7 +166,8 @@ const sofa: Gen = ( k, c ) => {
 		const lado = i % 2 === 0 ? - 1 : 1;
 		const orden = Math.floor( i / 2 );
 		const x = lado * ( W / 2 - brazo - 0.24 - orden * 0.3 );
-		cojin( k, m, x, y0 + 0.57, z0 + 0.4 + orden * 0.05, 0.44 - orden * 0.06, 0.42 - orden * 0.06, 0.3, lado * - 0.18 );
+		// delante del respaldo (no hundido en él), casi de pie y un poco girado: así tiene volumen
+		cojin( k, m, x, y0 + 0.6, z0 + 0.5 + orden * 0.07, 0.46 - orden * 0.06, 0.44 - orden * 0.06, 0.2, lado * - 0.22 );
 
 	} );
 	const manta = s( c, 'manta', '' );

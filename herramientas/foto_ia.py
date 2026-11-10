@@ -197,6 +197,13 @@ if os.path.exists(ruta_p) and '--sin-proteger' not in sys.argv:
     #    biblioteca (la mesa de hormigón salía de madera): su color y su tejido son los del
     #    render; la luz (sombras, sol), la de la IA
     alfombra = abs(pr - round(255 * 0.7)) <= 1
+    # …y los cojines (trozos pequeños de tela): la IA los aplasta contra el respaldo
+    if os.path.exists(ruta_m) and '--sin-cojines' not in sys.argv:
+        tela = np.isin(pr, [round(255 * 0.55)])
+        for kk in np.unique(clave[tela]):
+            n, et, st, _ = cv2.connectedComponentsWithStats((tela & (clave == kk)).astype(np.uint8), connectivity=4)
+            peq = np.where((st[1:, cv2.CC_STAT_AREA] > 300) & (st[1:, cv2.CC_STAT_AREA] < clave.size * arg('--cojin', 0.02)))[0] + 1
+            if len(peq): alfombra |= np.isin(et, peq)
     if alfombra.any():
         g = cv2.GaussianBlur(Ya.astype(np.float32), (0, 0), 10) / np.maximum(cv2.GaussianBlur(yo_.astype(np.float32), (0, 0), 10), 1)
         za = cv2.GaussianBlur(cv2.erode(alfombra.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(np.float32), (0, 0), 1.5)[..., None]
